@@ -1,27 +1,19 @@
 {
-    "version": 2,
-    "headers": [
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
         {
-            "source": "/(.*)",
-            "headers": [
-                {
-                    "key": "Permissions-Policy",
-                    "value": "geolocation=(self)"
-                }
-            ]
+          "key": "Permissions-Policy",
+          "value": "geolocation=(self)"
         }
-    ],
-    "routes": [
-        {
-            "src": "/firebase-messaging-sw\\.js",
-            "dest": "/firebase-messaging-sw.js"
-        },
-        {
-            "handle": "filesystem"
-        },
-        {
-            "src": "/(.*)",
-            "dest": "/index.html"
-        }
-    ]
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
 }
