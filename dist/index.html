@@ -1,0 +1,1493 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Vero — replica</title>
+    <style>
+      /* ============ FONTS ============ */
+      @font-face {
+        font-family: "Louize Display";
+        src: url(/fonts/LouizeDisplay.woff2) format("woff2");
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: "Louize Display";
+        src: url(/fonts/LouizeDisplay-Italic.woff2) format("woff2");
+        font-weight: 400;
+        font-style: italic;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: "Beausite Classic";
+        src: url(/fonts/BeausiteClassic-Regular.woff2) format("woff2");
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: "Beausite Classic";
+        src: url(/fonts/BeausiteClassic-Medium.woff2) format("woff2");
+        font-weight: 500;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      /* ============ TOKENS ============ */
+      :root {
+        --color-black: #000;
+        --color-white: #fff;
+        --color-grey-100: #f8f8f8;
+        --color-grey-300: #d9d9d9;
+        --color-grey-600: #979696;
+        --color-grey-900: #181615;
+        --color-beige-100: #f3f0ed;
+        --color-beige-300: #e6d8cc;
+        --color-orange: #e97e00;
+        --color-red: #9d1414;
+        --color-background-primary: var(--color-beige-100);
+        --color-background-secondary: var(--color-beige-300);
+
+        --ease-custom-1: cubic-bezier(0.25, 0.1, 0.25, 1);
+        --ease-custom-1-reverse: cubic-bezier(0.75, 0, 0.75, 0.9);
+        --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
+        --ease-in-out-expo: cubic-bezier(0.87, 0, 0.13, 1);
+        --ease-in-quad: cubic-bezier(0.55, 0.085, 0.68, 0.53);
+        --ease-out-quad: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        --ease-in-out-quad: cubic-bezier(0.455, 0.03, 0.515, 0.955);
+        --ease-in-quart: cubic-bezier(0.5, 0, 0.75, 0);
+        --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+        --ease-in-out-quart: cubic-bezier(0.76, 0, 0.24, 1);
+        --ease-in-sine: cubic-bezier(0.12, 0, 0.39, 0);
+        --ease-out-sine: cubic-bezier(0.61, 1, 0.88, 1);
+        --ease-in-quint: cubic-bezier(0.64, 0, 0.78, 0);
+        --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+        --ease-in-out-quint: cubic-bezier(0.83, 0, 0.17, 1);
+        --ease-in-cubic: cubic-bezier(0.32, 0, 0.67, 0);
+        --ease-out-cubic: cubic-bezier(0.33, 1, 0.68, 1);
+        --ease-in-out-cubic: cubic-bezier(0.65, 0, 0.35, 1);
+        --ease-in-out-circ: cubic-bezier(0.85, 0, 0.15, 1);
+
+        --font-family-primary:
+          "Louize Display", Georgia, "Times New Roman", Garamond,
+          "Palatino Linotype", "Book Antiqua", serif;
+        --font-family-content:
+          "Beausite Classic", Roboto, "Helvetica Neue", Helvetica, Arial,
+          "Segoe UI", sans-serif;
+        --font-weight-regular: 400;
+        --font-weight-medium: 500;
+
+        --font-display-1: 400 2.875rem/1.1 var(--font-family-primary);
+        --font-display-2: 400 2.1875rem/1 var(--font-family-primary);
+        --font-display-3: 400 1.5625rem/1.3 var(--font-family-primary);
+        --font-display-4: 500 1.25rem/1.15 var(--font-family-content);
+        --font-display-5: 400 1.125rem/1.5 var(--font-family-primary);
+        --font-body: 400 1.125rem/1.5 var(--font-family-primary);
+        --font-label-1: 400 1.125rem/1.1 var(--font-family-primary);
+        --font-label-2: 500 1.125rem/1.5 var(--font-family-content);
+        --font-label-form: 400 0.9375rem/1 var(--font-family-content);
+        --font-tiny-1: 400 0.8125rem/1.6 var(--font-family-content);
+        --font-tiny-2: 400 0.625rem/1.4 var(--font-family-content);
+        --font-button: 400 0.9375rem/1 var(--font-family-primary);
+        --font-header: 400 clamp(46px, 5vw, 120px)/1 var(--font-family-primary);
+
+        --grid-columns: 2;
+        --grid-gap: 10px;
+        --page-margin: 20px;
+        --coin-radius: 75px;
+      }
+      @media screen and (min-width: 930px) {
+        :root {
+          --font-display-1: 400 7.5rem/1 var(--font-family-primary);
+          --font-display-2: 400 2.5rem/1 var(--font-family-primary);
+          --font-display-3: 400 5rem/1 var(--font-family-primary);
+          --font-display-4: 500 1.875rem/1.06 var(--font-family-content);
+          --font-display-5: 400 1.3125rem/1 var(--font-family-primary);
+          --font-label-1: 400 1rem/1.1 var(--font-family-primary);
+          --font-label-2: 500 0.9375rem/1.5 var(--font-family-content);
+          --font-header: 400 clamp(46px, 6.5vw, 120px)/1
+            var(--font-family-primary);
+          --grid-columns: 12;
+          --page-margin: 30px;
+        }
+      }
+
+      /* ============ RESET ============ */
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html {
+        background: var(--color-grey-100);
+        height: 100%;
+        -webkit-font-smoothing: antialiased;
+      }
+      body {
+        margin: 0;
+        font-size: 16px;
+        font-family: var(--font-family-content);
+        font-weight: 400;
+        background: var(--color-background-primary);
+        color: var(--color-grey-900);
+        transition: background-color 2s var(--ease-out-quart);
+        display: flex;
+        flex-direction: column;
+        position: relative;
+      }
+      img,
+      video,
+      canvas {
+        display: block;
+        max-width: 100%;
+      }
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+      h1,
+      h2,
+      h3,
+      p,
+      ul,
+      figure {
+        margin: 0;
+        padding: 0;
+      }
+      ul {
+        list-style: none;
+      }
+      button {
+        font: inherit;
+        color: inherit;
+        background: none;
+        border: 0;
+        cursor: pointer;
+      }
+      .container {
+        width: 100%;
+        max-width: 1728px;
+        margin-inline: auto;
+        padding-inline: var(--page-margin);
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(var(--grid-columns), [start-column] 1fr);
+        gap: 0 var(--grid-gap);
+      }
+      .sr {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+      }
+
+      /* ============ TEXT REVEAL ============ */
+      .at {
+        display: block;
+      }
+      .at .line {
+        display: block;
+      }
+      .at .word {
+        display: inline-block;
+        vertical-align: bottom;
+        overflow: hidden;
+        margin: -0.15em;
+        padding: 0.15em;
+      }
+      .at .word > span {
+        display: inline-block;
+        transform: translateY(calc(100% + 0.75em));
+        transition: transform 1.4s calc(var(--stagger) * 0.1s)
+          var(--ease-out-expo);
+        will-change: transform;
+      }
+      .at.is-visible .word > span {
+        transform: translateY(0);
+      }
+      .at .it {
+        font-style: italic;
+        text-transform: none;
+      }
+      .at .up {
+        text-transform: uppercase;
+      }
+
+      /* ============ BUTTON ============ */
+      .Button {
+        position: relative;
+        z-index: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 45px;
+        min-height: 45px;
+        padding: 10px 22px;
+        font: var(--font-button);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--color-grey-900);
+        transition: color 0.3s var(--ease-custom-1);
+        overflow: hidden;
+      }
+      .Button::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        background: var(--color-grey-100);
+        transform: scaleY(0);
+        transform-origin: bottom;
+        transition:
+          opacity 0.3s var(--ease-custom-1),
+          transform 1s var(--ease-out-expo);
+      }
+      .Button.is-visible::after {
+        transform: scaleY(1);
+      }
+      .Button::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        box-shadow:
+          -20px -4px 44px #e97e000a,
+          24px 10px 60px #9d141408;
+      }
+      .Button i {
+        font-style: italic;
+        text-transform: none;
+      }
+      .Button .stack {
+        position: relative;
+        display: inline-block;
+        overflow: hidden;
+        margin: -0.2em;
+        padding: 0.2em;
+      }
+      .Button .content,
+      .Button .copy {
+        display: block;
+        transition: transform 1.2s var(--ease-out-expo);
+      }
+      .Button .copy {
+        position: absolute;
+        inset: 0;
+        transform: translateY(calc(100% + 0.4em));
+      }
+      .Button:hover .content {
+        transform: translateY(calc(-100% - 0.4em));
+      }
+      .Button:hover .copy {
+        transform: translateY(0);
+      }
+      .Button.theme-ghost::after {
+        opacity: 0.2;
+      }
+
+      /* ============ LOADER ============ */
+      .Loader {
+        position: fixed;
+        inset: 0;
+        z-index: 200;
+        background: var(--color-background-primary);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        transition:
+          opacity 0.8s var(--ease-out-quart),
+          visibility 0.8s;
+      }
+      .Loader.is-done {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+      .Loader .top {
+        font: var(--font-family-primary);
+        font-size: calc(7.05128vw - 1.84615px);
+        line-height: 1;
+        text-transform: uppercase;
+        text-align: center;
+      }
+      .Loader .bottom {
+        font-family: var(--font-family-primary);
+        font-size: calc(7.85256vw - 5.69231px);
+        line-height: 1;
+        text-transform: uppercase;
+        text-align: center;
+      }
+      .Loader .window {
+        width: 196px;
+        height: 140px;
+        margin: 18px auto;
+        overflow: hidden;
+        background: var(--color-beige-300);
+      }
+      .Loader .window video,
+      .Loader .window img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .Loader .bar {
+        position: absolute;
+        left: var(--page-margin);
+        right: var(--page-margin);
+        bottom: 30px;
+        border-top: 1px solid var(--color-grey-900);
+        display: flex;
+        justify-content: flex-end;
+        padding-top: 6px;
+      }
+      .Loader .pct {
+        font: var(--font-label-1);
+        letter-spacing: 0.02em;
+      }
+
+      /* ============ HEADER ============ */
+      .Header {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        z-index: 120;
+        padding-top: 30px;
+        pointer-events: none;
+      }
+      .Header .top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        max-width: 1728px;
+        margin-inline: auto;
+        padding-inline: var(--page-margin);
+      }
+      .Header .Button {
+        pointer-events: auto;
+      }
+      .Header .brand {
+        position: fixed;
+        top: 38px;
+        left: 50%;
+        translate: -50% 0;
+        width: 88px;
+        font-family: var(--font-family-primary);
+        font-size: 26px;
+        line-height: 1;
+        letter-spacing: 0.02em;
+        text-align: center;
+        text-transform: uppercase;
+        visibility: hidden;
+      }
+      .Header.is-solo .brand {
+        visibility: visible;
+      }
+
+      /* Menu overlay */
+      .Menu {
+        position: fixed;
+        inset: 0 0 auto 0;
+        height: 78vh;
+        z-index: 110;
+        background: var(--color-background-primary);
+        transform: translateY(-101%);
+        transition: transform 1s var(--ease-in-out-quint);
+        display: flex;
+        align-items: center;
+      }
+      .Menu.is-open {
+        transform: translateY(0);
+      }
+      .Menu .inner {
+        width: 100%;
+        max-width: 1728px;
+        margin-inline: auto;
+        padding-inline: var(--page-margin);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 40px;
+      }
+      .Menu .primary li {
+        display: flex;
+        align-items: baseline;
+        gap: 18px;
+      }
+      .Menu .primary .num {
+        font: var(--font-body);
+        letter-spacing: 0.02em;
+        color: var(--color-grey-900);
+        opacity: 0.8;
+      }
+      .Menu .primary a {
+        font: var(--font-header);
+        text-transform: uppercase;
+        letter-spacing: -0.01em;
+        display: inline-block;
+        transition: opacity 0.4s var(--ease-out-quart);
+      }
+      .Menu .primary a:hover {
+        text-decoration: underline;
+        text-underline-offset: 0.08em;
+        text-decoration-thickness: 1px;
+      }
+      .Menu .side {
+        text-align: right;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        height: 60vh;
+      }
+      .Menu .side p,
+      .Menu .side a {
+        font: var(--font-display-5);
+        letter-spacing: 0.02em;
+      }
+      .Menu .legals a {
+        font-style: italic;
+        display: block;
+      }
+      @media (max-width: 929px) {
+        .Menu .side {
+          display: none;
+        }
+      }
+
+      /* ============ HERO ============ */
+      .MainHero {
+        position: relative;
+        height: 100lvh;
+      }
+      .MainHero .mask {
+        --mask-progress: 1;
+        --mask-scale-h: calc(
+          1 - 0.3 * max(0, calc(var(--mask-progress) - 0.1))
+        );
+        --mask-scale-v: calc(1 - 0.3 * var(--mask-progress));
+        clip-path: polygon(
+          calc(50% - 50% * var(--mask-scale-h))
+            calc(50% - 50% * var(--mask-scale-v)),
+          calc(50% + 50% * var(--mask-scale-h))
+            calc(50% - 50% * var(--mask-scale-v)),
+          calc(50% + 50% * var(--mask-scale-h))
+            calc(50% + 50% * var(--mask-scale-v)),
+          calc(50% - 50% * var(--mask-scale-h))
+            calc(50% + 50% * var(--mask-scale-v))
+        );
+        transition: clip-path 0.2s var(--ease-out-quart);
+        will-change: clip-path;
+        width: 100%;
+        height: 100lvh;
+        position: relative;
+        overflow: hidden;
+      }
+      .MainHero .media {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .MainHero .content {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: var(--color-beige-100);
+        pointer-events: none;
+      }
+      .MainHero .logo {
+        font-family: var(--font-family-primary);
+        font-size: 96px;
+        line-height: 1;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        transform-origin: center center;
+        will-change: transform, opacity;
+      }
+      .MainHero .title {
+        font: var(--font-display-5);
+        letter-spacing: 0.02em;
+        opacity: 0;
+        margin-top: 10px;
+        transition: opacity 0.8s var(--ease-out-quart);
+      }
+      .MainHero.is-title-visible .title {
+        opacity: 1;
+      }
+      .ScrollCue {
+        position: fixed;
+        bottom: 26px;
+        left: 50%;
+        translate: -50% 0;
+        width: 24px;
+        height: 24px;
+        color: var(--color-beige-100);
+        animation: cue 2s infinite var(--ease-in-out-quad);
+        transition: opacity 0.4s var(--ease-out-quart);
+      }
+      .ScrollCue.hidden {
+        opacity: 0;
+      }
+      @keyframes cue {
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(6px);
+        }
+      }
+
+      /* ============ LARGE TITLE ============ */
+      .LargeTitle {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 32px;
+        text-align: center;
+      }
+      .LargeTitle .uptitle {
+        font: var(--font-label-1);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .LargeTitle .title {
+        font: var(--font-display-1);
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+      @media (max-width: 929px) {
+        .LargeTitle .title {
+          letter-spacing: 0.01em;
+        }
+        .LargeTitle .uptitle {
+          letter-spacing: 0.02em;
+        }
+      }
+      .SecondaryHero {
+        position: relative;
+        padding-block: 100px;
+      }
+
+      /* ============ DRESS DISCOVER (sticky scaler) ============ */
+      .DressDiscover {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        height: calc(100lvh + 1800px);
+        margin-bottom: calc(200px - 10lvh);
+        padding-bottom: max(100px, 10lvh);
+      }
+      .DressDiscover .stage {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100lvh;
+        overflow: clip;
+        pointer-events: none;
+      }
+      .DressDiscover .webgl {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+      }
+      .DressDiscover .webgl .obj {
+        width: 200px;
+        height: 200px;
+        object-fit: cover;
+        transform-origin: 50% 50%;
+        will-change: transform;
+        transform: scale(var(--obj-scale, 1));
+      }
+      .DressDiscover .text {
+        position: absolute;
+        left: 20px;
+        width: calc(100% - 40px);
+        text-align: center;
+        font: var(--font-display-1);
+        letter-spacing: 0;
+        text-transform: uppercase;
+        white-space: pre-wrap;
+        font-size: clamp(46px, calc(14.4531vw - 65px), 120px);
+      }
+      .DressDiscover .firstText {
+        top: 38%;
+      }
+      .DressDiscover .secondText {
+        top: 38%;
+      }
+      .DressDiscover .content {
+        position: relative;
+        width: 450px;
+        max-width: 100%;
+        margin-top: 100lvh;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 24px;
+      }
+      .DressDiscover .content .title {
+        font: var(--font-display-4);
+        letter-spacing: -0.02em;
+      }
+      .DressDiscover .content .description {
+        font: var(--font-body);
+        letter-spacing: 0.02em;
+      }
+
+      /* ============ FULL SIZE SCROLLER STEPPER ============ */
+      .Stepper {
+        position: relative;
+        margin-block: 200px;
+      }
+      .Stepper .sticky {
+        position: sticky;
+        top: 0;
+        height: 100lvh;
+        overflow: hidden;
+      }
+      .Stepper .item {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        clip-path: polygon(
+          calc((1 - var(--mask-progress, 1)) * 100%) 0,
+          100% 0,
+          100% 100%,
+          calc((1 - var(--mask-progress, 1)) * 100%) 100%
+        );
+        will-change: clip-path;
+      }
+      .Stepper .item img,
+      .Stepper .item video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .Stepper .text {
+        position: absolute;
+        bottom: 6vh;
+        left: 0;
+        white-space: nowrap;
+        color: var(--color-beige-100);
+        font: var(--font-display-3);
+        font-size: calc(4.26065vw + 6.37594px);
+        text-transform: uppercase;
+        will-change: transform;
+      }
+      .Stepper .text i {
+        font-style: italic;
+        text-transform: none;
+      }
+      .Stepper .pois {
+        position: absolute;
+        left: var(--page-margin);
+        top: 50%;
+        translate: 0 -50%;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .Stepper .poi {
+        width: 8px;
+        height: 8px;
+        background: var(--color-beige-100);
+        transform: rotate(45deg);
+        opacity: 0.35;
+        transition: opacity 0.4s var(--ease-out-quart);
+      }
+      .Stepper .poi.is-active {
+        opacity: 1;
+      }
+      .Stepper .track {
+        height: 300vh;
+      }
+
+      /* ============ DIPTYCH ============ */
+      .Diptych .container {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px 10px;
+      }
+      @media (max-width: 929px) {
+        .Diptych .container {
+          grid-template-columns: 1fr;
+        }
+      }
+      .Diptych .col {
+        display: flex;
+        flex-direction: column;
+        gap: 120px;
+      }
+      .Diptych .sticky {
+        position: sticky;
+        top: 0;
+        height: 100lvh;
+        display: flex;
+        align-items: center;
+      }
+      .Diptych figure img {
+        width: 100%;
+        height: auto;
+        object-fit: cover;
+      }
+      .Diptych .edito {
+        padding-block: 22vh;
+        display: flex;
+        flex-direction: column;
+        gap: 28px;
+        align-items: center;
+        text-align: center;
+      }
+      .Diptych .edito .lead {
+        font: var(--font-display-4);
+        letter-spacing: -0.02em;
+      }
+      .Diptych .edito .body {
+        font: var(--font-body);
+        letter-spacing: 0.02em;
+      }
+      .Diptych .quote {
+        font: var(--font-display-4);
+        letter-spacing: -0.02em;
+        text-align: center;
+      }
+      .Diptych .author {
+        font: var(--font-label-1);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        text-align: center;
+        margin-top: 22px;
+      }
+
+      /* ============ MEDIA GRID ============ */
+      .MediaGrid {
+        width: 100%;
+        padding-top: 172px;
+        overflow: visible;
+      }
+      .MediaGrid .items {
+        display: grid;
+        width: 100%;
+        margin: auto;
+        grid-template-columns: repeat(5, 1fr);
+        gap: clamp(14px, 6.65509vw, 115px) clamp(16px, 10.4167vw, 180px);
+      }
+      @media (max-width: 929px) {
+        .MediaGrid .items {
+          grid-template-columns: repeat(2, 1fr);
+          gap: 50px 10px;
+        }
+      }
+      .MediaGridItem {
+        position: relative;
+        aspect-ratio: 190/237;
+        --multiplier: 0;
+        --y: 0px;
+        transform: translate3d(0, calc(var(--y) * var(--multiplier)), 0);
+        will-change: transform;
+      }
+      .MediaGrid .items > :nth-child(5n + 1),
+      .MediaGrid .items > :nth-child(5n + 5) {
+        --multiplier: 2.4;
+      }
+      .MediaGrid .items > :nth-child(5n + 2),
+      .MediaGrid .items > :nth-child(5n + 4) {
+        --multiplier: 1.2;
+      }
+      .MediaGridItem .mediaContainer {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        transition: transform 0.6s var(--ease-out-quart);
+      }
+      .MediaGridItem .media {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transition: transform 0.6s var(--ease-out-quart);
+      }
+      .MediaGridItem:hover .media {
+        transform: scale(1.15);
+      }
+      .MediaGridItem .legend {
+        position: absolute;
+        left: 50%;
+        translate: -50% 0;
+        bottom: -22px;
+        font: var(--font-label-1);
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        opacity: 0;
+        transition: opacity 0.4s var(--ease-out-sine);
+      }
+      .MediaGridItem:hover .legend {
+        opacity: 1;
+      }
+      .MediaGridPush {
+        position: relative;
+      }
+      .MediaGridPush .push {
+        position: sticky;
+        bottom: 50vh;
+        width: 270px;
+        margin: -45px auto 0;
+        z-index: 5;
+      }
+
+      /* ============ LARGE QUOTE ============ */
+      .LargeQuote {
+        position: relative;
+        margin: 100px 0 150px;
+        padding-top: calc(var(--coin-radius) * 2 + 100px);
+        padding-bottom: calc(var(--coin-radius) * 1.5);
+      }
+      .LargeQuote .coin {
+        width: calc(var(--coin-radius) * 2);
+        height: calc(var(--coin-radius) * 2);
+        margin: 0 auto;
+        position: absolute;
+        top: 0;
+        left: 50%;
+        translate: -50% 0;
+        border-radius: 50%;
+        background: radial-gradient(
+          circle at 35% 30%,
+          #fff,
+          #c9c9c9 45%,
+          #6f6f6f 75%,
+          #3a3a3a
+        );
+        box-shadow:
+          inset 0 0 0 6px rgba(255, 255, 255, 0.35),
+          0 20px 50px rgba(0, 0, 0, 0.12);
+        animation: coinspin 6s linear infinite;
+      }
+      @keyframes coinspin {
+        to {
+          transform: rotateY(360deg);
+        }
+      }
+      .LargeQuote .quote {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-height: 50vh;
+        justify-content: center;
+      }
+      .LargeQuote .lines {
+        font: var(--font-display-1);
+        letter-spacing: 0;
+        text-transform: uppercase;
+        font-size: clamp(46px, calc(16.6667vw - 72px), 190px);
+        line-height: 1;
+        width: 100%;
+      }
+      .LargeQuote .lines .line {
+        display: block;
+        white-space: nowrap;
+        will-change: transform;
+      }
+      .LargeQuote .author {
+        font: var(--font-display-5);
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        margin-top: 30px;
+      }
+
+      /* ============ REASSURANCE ============ */
+      .Reassurance {
+        margin: 180px 0 100px;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 24px;
+      }
+      .Reassurance .title {
+        font: var(--font-display-4);
+        letter-spacing: -0.02em;
+      }
+      .Reassurance .sub {
+        font: var(--font-body);
+        letter-spacing: 0.02em;
+      }
+
+      /* ============ FOOTER ============ */
+      .Footer {
+        padding: 30px 0 16px;
+        background: var(--color-background-primary);
+        border-top: 1px solid rgba(24, 22, 21, 0.12);
+      }
+      .Footer .nav a {
+        display: block;
+        font: var(--font-label-2);
+        letter-spacing: 0.0375em;
+      }
+      .Footer .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 40px;
+        flex-wrap: wrap;
+      }
+      .Footer .label {
+        font: var(--font-tiny-2);
+        font-size: 0.75rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .Footer .field {
+        display: flex;
+        align-items: stretch;
+        border-bottom: 1px solid;
+        max-width: 360px;
+        margin-top: 14px;
+      }
+      .Footer .field input {
+        flex: 1;
+        min-width: 0;
+        border: 0;
+        background: 0 0;
+        padding: 8px 0;
+        font: inherit;
+        font-size: 15px;
+        letter-spacing: 0.02em;
+        color: inherit;
+      }
+      .Footer .field input::placeholder {
+        color: currentColor;
+        opacity: 0.55;
+      }
+      .Footer .field button {
+        padding: 0 8px;
+        font-size: 18px;
+      }
+      .Footer .social a {
+        display: block;
+        text-align: right;
+        font: var(--font-label-2);
+        letter-spacing: 0.0375em;
+      }
+      .Footer .wordmark {
+        font-family: var(--font-family-primary);
+        font-size: min(30vw, 420px);
+        line-height: 0.72;
+        text-align: center;
+        text-transform: uppercase;
+        letter-spacing: -0.01em;
+        margin: 60px 0 30px;
+        user-select: none;
+      }
+      .Footer .legals {
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        flex-wrap: wrap;
+        font: var(--font-button);
+        letter-spacing: 0.03em;
+        color: var(--color-grey-600);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- LOADER -->
+    <div class="Loader" id="loader">
+      <div class="top at">WHERE <em class="it">your</em> WEDDING</div>
+      <div class="window"><img src="/assets/loader.jpg" alt="" /></div>
+      <div class="bottom at">DRESS BECOMES <em class="it">art.</em></div>
+      <div class="bar"><span class="pct" id="pct">0%</span></div>
+    </div>
+
+    <!-- HEADER -->
+    <header class="Header" id="header">
+      <div class="top">
+        <button class="Button is-visible" id="menuBtn" aria-expanded="false">
+          <span class="stack"
+            ><span class="content">Menu</span
+            ><span class="copy">Close</span></span
+          >
+        </button>
+        <span class="brand"> VERO </span>
+        <a class="Button is-visible" href="/product">
+          <span class="stack"
+            ><span class="content"><i>Start your</i> COMMISSION</span>
+            <span class="copy"><i>Start your</i> COMMISSION</span></span
+          >
+        </a>
+      </div>
+    </header>
+
+    <!-- MENU OVERLAY -->
+    <nav class="Menu" id="menu">
+      <div class="inner">
+        <ul class="primary">
+          <li><span class="num">I.</span><a href="/">Home</a></li>
+          <li><span class="num">II.</span><a href="/about">About us</a></li>
+          <li><span class="num">III.</span><a href="/process">Process</a></li>
+          <li><span class="num">IV.</span><a href="/gallery">Gallery</a></li>
+          <li><span class="num">V.</span><a href="/product">Order</a></li>
+          <li><span class="num">VI.</span><a href="/registry">Registry</a></li>
+        </ul>
+        <div class="side">
+          <div>
+            <p>Contact:</p>
+            <p>+1 (000) 000-0000</p>
+            <p>hello@example.com</p>
+          </div>
+          <div class="legals">
+            <a href="/legals/faq">FAQ</a>
+            <a href="/featured-designers"
+              >Featured Designers &amp; Photography</a
+            >
+            <a href="/legals/terms">Terms &amp; Conditions</a>
+            <a href="/legals/policy">Privacy Policy</a>
+          </div>
+        </div>
+      </div>
+    </nav>
+
+    <main id="main">
+      <!-- 1. HERO -->
+      <section class="MainHero" id="hero">
+        <div class="mask">
+          <video
+            class="media"
+            src="/assets/hero.mp4"
+            autoplay
+            muted
+            loop
+            playsinline
+            poster="/assets/hero.jpg"></video>
+        </div>
+        <div class="content">
+          <div class="logo" id="heroLogo">Vero</div>
+          <p class="title at" data-reveal>
+            <i>Custom</i> SCULPTURE <i>of your</i> WEDDING DRESS.
+          </p>
+        </div>
+        <svg
+          class="ScrollCue"
+          id="cue"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.2">
+          <path d="M5 9l7 7 7-7" />
+        </svg>
+      </section>
+
+      <!-- 2. DRESS DISCOVER (pinned scaler) -->
+      <section class="DressDiscover" id="discover">
+        <div class="stage">
+          <div class="webgl">
+            <img
+              class="obj"
+              id="discoverObj"
+              src="/assets/sculpture.jpg"
+              alt="" />
+          </div>
+          <p class="text firstText at" data-reveal>
+            <span class="line"><i>Your most</i> IMPORTANT DRESS</span>
+          </p>
+          <p class="text secondText at" data-reveal>
+            <span class="line">DESERVES TO LAST <i>forever.</i></span>
+          </p>
+        </div>
+        <div class="content">
+          <h2 class="title at" data-reveal>
+            Headline sentence goes here, two or three lines long.
+          </h2>
+          <div class="description at" data-reveal>
+            Supporting paragraph. Replace with your own copy — five lines at
+            this width matches the original rhythm.
+          </div>
+          <a class="Button" href="/product" data-btn
+            ><span class="stack">
+              <span class="content"><i>Start your</i> COMMISSION</span>
+              <span class="copy"><i>Start your</i> COMMISSION</span></span
+            ></a
+          >
+        </div>
+      </section>
+
+      <!-- 3. SECONDARY HERO -->
+      <section class="SecondaryHero">
+        <div class="container">
+          <div class="LargeTitle at" data-reveal>
+            <div class="uptitle"><i>the</i> ESSENCE <i>of</i> VERO</div>
+            <h2 class="title">Where innovation<br />meets craftsmanship</h2>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. STEPPER -->
+      <section class="Stepper" id="stepper">
+        <div class="sticky">
+          <div class="item" data-step="0" style="--mask-progress: 1">
+            <img src="/assets/step-1.jpg" alt="" />
+          </div>
+          <div class="item" data-step="1" style="--mask-progress: 0">
+            <img src="/assets/step-2.jpg" alt="" />
+          </div>
+          <div class="item" data-step="2" style="--mask-progress: 0">
+            <img src="/assets/step-3.jpg" alt="" />
+          </div>
+          <p class="text" id="stepText">
+            <i>From</i> DRESS, <i>to</i> DATA, <i>to</i> SCULPTURE.
+          </p>
+          <div class="pois" id="pois">
+            <i class="poi is-active"></i><i class="poi"></i><i class="poi"></i>
+          </div>
+        </div>
+        <div class="track"></div>
+      </section>
+
+      <!-- 5. DIPTYCH -->
+      <div class="Diptych">
+        <div class="container">
+          <div class="col">
+            <div class="sticky">
+              <figure><img src="/assets/diptych-tall.jpg" alt="" /></figure>
+            </div>
+          </div>
+          <div class="col">
+            <figure><img src="/assets/diptych-a.jpg" alt="" /></figure>
+            <div class="edito">
+              <p class="lead at" data-reveal>Two-line lead statement.</p>
+              <p class="body at" data-reveal>
+                Body paragraph — replace with your own text.
+              </p>
+              <a class="Button" href="/process" data-btn
+                ><span class="stack">
+                  <span class="content">DISCOVER <i>our</i> PROCESS</span>
+                  <span class="copy">DISCOVER <i>our</i> PROCESS</span></span
+                ></a
+              >
+            </div>
+            <figure><img src="/assets/diptych-b.jpg" alt="" /></figure>
+            <div class="edito">
+              <p class="quote at" data-reveal>
+                “Pull quote goes here, five lines at this measure.”
+              </p>
+              <p class="author at" data-reveal>
+                Name Surname, <i>founder of</i> Studio
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 6. SECONDARY HERO 2 -->
+      <section class="SecondaryHero">
+        <div class="container">
+          <div class="LargeTitle at" data-reveal>
+            <div class="uptitle"><i>your</i> MEMORY</div>
+            <h2 class="title">Will forever<br />be a masterpiece.</h2>
+          </div>
+        </div>
+      </section>
+
+      <!-- 7. MEDIA GRID -->
+      <section class="MediaGridPush">
+        <div class="MediaGrid">
+          <div class="container">
+            <ul class="items" id="grid"></ul>
+          </div>
+          <a class="Button push" href="/gallery" data-btn
+            ><span class="stack">
+              <span class="content"><i>Explore the</i> GALLERY</span>
+              <span class="copy"><i>Explore the</i> GALLERY</span></span
+            ></a
+          >
+        </div>
+      </section>
+
+      <!-- 8. LARGE QUOTE -->
+      <section class="LargeQuote" id="quote">
+        <div class="coin"></div>
+        <div class="quote">
+          <div class="lines" id="quoteLines">
+            <span class="line">I held a moment</span>
+            <span class="line">in my hand brilliant</span>
+            <span class="line">as a star fragile as</span>
+            <span class="line">a flower, a tiny silver</span>
+            <span class="line">of one hour.</span>
+          </div>
+          <p class="author at" data-reveal>Carl Sandburg</p>
+        </div>
+      </section>
+
+      <!-- 9. REASSURANCE -->
+      <section class="Reassurance">
+        <p class="title at" data-reveal>Closing headline</p>
+        <p class="sub at" data-reveal>Closing sub-line.</p>
+        <a class="Button" href="/product" data-btn
+          ><span class="stack">
+            <span class="content"><i>Start your</i> COMMISSION</span>
+            <span class="copy"><i>Start your</i> COMMISSION</span></span
+          ></a
+        >
+      </section>
+    </main>
+
+    <footer class="Footer">
+      <div class="container">
+        <div class="row">
+          <nav class="nav">
+            <a href="/">Home</a><a href="/product">Order</a
+            ><a href="/process">Process</a> <a href="/about">About</a
+            ><a href="/gallery">Gallery</a>
+          </nav>
+          <ul class="social">
+            <li><a href="#">Instagram ↗</a></li>
+            <li><a href="#">LinkedIn ↗</a></li>
+            <li><a href="#">Registry ↗</a></li>
+          </ul>
+        </div>
+        <form class="capture" onsubmit="return false;">
+          <span class="label">Stay in touch with the studio</span>
+          <div class="field">
+            <input
+              type="email"
+              placeholder="Email address"
+              aria-label="Email address" /><button>⟶</button>
+          </div>
+        </form>
+        <div class="wordmark">Vero</div>
+        <div class="legals">
+          <span>Accessibility</span><span>Terms &amp; Conditions ↗</span
+          ><span>Privacy Policy ↗</span> <span>Featured Designers ↗</span
+          ><span>All Rights Reserved</span><span><u>Credits</u></span>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      /* ---------- smooth scroll (lerp, matches the site's virtual scroller) ---------- */
+      const SS = { target: 0, current: 0, ease: 0.09, max: 0 };
+      function resize() {
+        SS.max = document.body.scrollHeight - innerHeight;
+      }
+      addEventListener("resize", resize);
+      /* The site drives layout from a virtual value; we keep native scroll and expose
+   a smoothed progress so transforms don't jitter. */
+      let smooth = 0;
+      function raf() {
+        smooth += (scrollY - smooth) * 0.12;
+        document.documentElement.style.setProperty(
+          "--scroll",
+          smooth.toFixed(2) + "px",
+        );
+        updateHero();
+        updateDiscover();
+        updateStepper();
+        updateGrid();
+        updateQuote();
+        requestAnimationFrame(raf);
+      }
+
+      /* ---------- word-splitting text reveal ---------- */
+      function split(el) {
+        if (el.dataset.split) return;
+        el.dataset.split = "1";
+        const walk = (node, out) => {
+          node.childNodes.forEach((n) => {
+            if (n.nodeType === 3) {
+              n.textContent.split(/(\s+)/).forEach((t) => {
+                if (!t.trim()) {
+                  out.push(document.createTextNode(t));
+                  return;
+                }
+                const w = document.createElement("span");
+                w.className = "word";
+                const i = document.createElement("span");
+                i.textContent = t;
+                w.appendChild(i);
+                out.push(w);
+              });
+            } else if (n.nodeType === 1) {
+              const clone = n.cloneNode(false);
+              const inner = [];
+              walk(n, inner);
+              inner.forEach((x) => clone.appendChild(x));
+              out.push(clone);
+            }
+          });
+        };
+        const out = [];
+        walk(el, out);
+        el.innerHTML = "";
+        out.forEach((n) => el.appendChild(n));
+        [...el.querySelectorAll(".word")].forEach((w, i) =>
+          w.style.setProperty("--stagger", i),
+        );
+      }
+      const io = new IntersectionObserver(
+        (es) =>
+          es.forEach((e) => {
+            if (e.isIntersecting) {
+              e.target.classList.add("is-visible");
+              io.unobserve(e.target);
+            }
+          }),
+        { threshold: 0.15 },
+      );
+      document.querySelectorAll("[data-reveal]").forEach((el) => {
+        split(el);
+        io.observe(el);
+      });
+      const ioBtn = new IntersectionObserver(
+        (es) =>
+          es.forEach((e) => {
+            if (e.isIntersecting) {
+              e.target.classList.add("is-visible");
+              ioBtn.unobserve(e.target);
+            }
+          }),
+        { threshold: 0.3 },
+      );
+      document.querySelectorAll("[data-btn]").forEach((b) => ioBtn.observe(b));
+
+      /* ---------- loader ---------- */
+      const loader = document.getElementById("loader"),
+        pct = document.getElementById("pct");
+      let p = 0;
+      const tick = setInterval(() => {
+        p = Math.min(100, p + Math.random() * 9);
+        pct.textContent = Math.round(p) + "%";
+        if (p >= 100) {
+          clearInterval(tick);
+          setTimeout(() => {
+            loader.classList.add("is-done");
+            document.getElementById("hero").classList.add("is-title-visible");
+          }, 250);
+        }
+      }, 110);
+
+      /* ---------- hero: clip-path mask + logo docking ---------- */
+      const hero = document.getElementById("hero"),
+        heroMask = hero.querySelector(".mask"),
+        heroLogo = document.getElementById("heroLogo"),
+        cue = document.getElementById("cue"),
+        header = document.getElementById("header");
+      function updateHero() {
+        const h = innerHeight,
+          prog = Math.min(1, Math.max(0, 1 - smooth / (h * 0.9)));
+        heroMask.style.setProperty("--mask-progress", (1 - prog).toFixed(3));
+        const t = Math.min(1, smooth / (h * 0.65));
+        const s = 1 - t * 0.73,
+          y = -t * (h / 2 - 38);
+        heroLogo.style.transform = `translateY(${y}px) scale(${s})`;
+        heroLogo.style.opacity = t > 0.95 ? 0 : 1;
+        header.classList.toggle("is-solo", t > 0.95);
+        cue.classList.toggle("hidden", smooth > 60);
+      }
+
+      /* ---------- discover: pinned object scale ---------- */
+      const disc = document.getElementById("discover"),
+        obj = document.getElementById("discoverObj");
+      function updateDiscover() {
+        const r = disc.getBoundingClientRect(),
+          total = disc.offsetHeight - innerHeight;
+        let t = -r.top / total;
+        t = Math.min(1, Math.max(0, t));
+        obj.style.setProperty("--obj-scale", (0.35 + t * 6.5).toFixed(3));
+        disc.querySelector(".firstText").style.opacity = t < 0.45 ? 1 : 0;
+        disc.querySelector(".secondText").style.opacity = t >= 0.45 ? 1 : 0;
+      }
+
+      /* ---------- stepper: 3 steps, horizontal wipe + text travel ---------- */
+      const stepper = document.getElementById("stepper"),
+        items = [...stepper.querySelectorAll(".item")],
+        stepText = document.getElementById("stepText"),
+        pois = [...document.querySelectorAll("#pois .poi")];
+      function updateStepper() {
+        const r = stepper.getBoundingClientRect(),
+          total = stepper.offsetHeight - innerHeight;
+        let t = -r.top / total;
+        t = Math.min(1, Math.max(0, t));
+        const seg = 1 / (items.length - 1);
+        items.forEach((it, i) => {
+          if (i === 0) {
+            it.style.setProperty("--mask-progress", 1);
+            return;
+          }
+          const local = Math.min(1, Math.max(0, (t - (i - 1) * seg) / seg));
+          it.style.setProperty("--mask-progress", local.toFixed(3));
+        });
+        const overflow = stepText.scrollWidth - innerWidth + 60;
+        stepText.style.transform = `translateX(${(-overflow * t).toFixed(1)}px)`;
+        const active = Math.round(t * (items.length - 1));
+        pois.forEach((p, i) => p.classList.toggle("is-active", i === active));
+      }
+
+      /* ---------- media grid: column parallax ---------- */
+      const grid = document.getElementById("grid");
+      for (let i = 0; i < 20; i++) {
+        const li = document.createElement("li");
+        li.className = "MediaGridItem";
+        li.innerHTML =
+          '<div class="mediaContainer"><img class="media" src="/assets/grid-' +
+          ((i % 10) + 1) +
+          '.jpg" alt=""></div><span class="legend">Vero</span>';
+        grid.appendChild(li);
+      }
+      const gridItems = [...grid.children];
+      function updateGrid() {
+        const r = grid.getBoundingClientRect();
+        const y = (innerHeight - r.top) * -0.045;
+        gridItems.forEach((it) =>
+          it.style.setProperty("--y", y.toFixed(1) + "px"),
+        );
+      }
+
+      /* ---------- quote: alternating horizontal drift ---------- */
+      const quote = document.getElementById("quote"),
+        qLines = [...document.querySelectorAll("#quoteLines .line")];
+      function updateQuote() {
+        const r = quote.getBoundingClientRect();
+        const t = (innerHeight - r.top) / (innerHeight + r.height);
+        qLines.forEach((l, i) => {
+          const dir = i % 2 ? 1 : -1,
+            range = l.scrollWidth - innerWidth + 120;
+          l.style.transform = `translateX(${(dir * range * (t - 0.5) * 1.2).toFixed(1)}px)`;
+        });
+      }
+
+      /* ---------- menu ---------- */
+      const menuBtn = document.getElementById("menuBtn"),
+        menu = document.getElementById("menu");
+      menuBtn.addEventListener("click", () => {
+        const open = menu.classList.toggle("is-open");
+        menuBtn.setAttribute("aria-expanded", open);
+        document.body.style.overflow = open ? "hidden" : "";
+      });
+
+      resize();
+      raf();
+    </script>
+  </body>
+</html>
