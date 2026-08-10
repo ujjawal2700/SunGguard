@@ -1,0 +1,270 @@
+# ==============================================================================
+# Render Blueprint — SunGguard
+#
+# This file MUST live at the repository root. Render only reads `render.yaml`
+# from the root of the connected repo, which is why the previous copy at
+# backend/render.yaml was never picked up.
+#
+# The backend lives in ./backend, so each service sets `rootDir: backend` and
+# builds with Render's native Node runtime — no Dockerfile involved.
+#
+# Secrets are declared `sync: false`, which means: Render creates the key but
+# leaves the value blank for you to fill in the dashboard. Nothing secret is
+# committed here.
+# ==============================================================================
+
+# ── Shared configuration ──────────────────────────────────────────────────────
+# Defined once and pulled into all three services via `fromGroup`, so a secret
+# is entered a single time instead of three.
+envVarGroups:
+  - name: sungguard-shared
+    envVars:
+      # --- Runtime ------------------------------------------------------------
+      # Pinned explicitly: without it Render picks its own default. Your
+      # Dockerfile used node:18, but Node 18 and 20 are both past end-of-life,
+      # so this deploys on the current LTS.
+      - key: NODE_VERSION
+        value: "22"
+
+      # --- Database -----------------------------------------------------------
+      - key: MONGO_URI
+        sync: false
+
+      # --- Auth ---------------------------------------------------------------
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 30d
+
+      # --- Frontend / CORS ----------------------------------------------------
+      # FRONTEND_URL is not optional: it drives CORS (index.js) and the PhonePe
+      # return URL (paymentService.js). Unset, that redirect becomes the literal
+      # string "undefined/payment-status" and payments break on return.
+      - key: FRONTEND_URL
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+
+      # --- OTP / SMS ----------------------------------------------------------
+      # USE_MOCK_OTP is deliberately absent. Setting it to "true" makes every
+      # OTP request throw a 500 under NODE_ENV=production (otp.service.js), and
+      # it overrides NODE_ENV, so it must never be defined here.
+      - key: USE_REAL_SMS
+        value: "true"
+      - key: OTP_LENGTH
+        value: "4"
+      - key: OTP_EXPIRY_MINUTES
+        value: "5"
+      - key: OTP_MAX_FAILED_ATTEMPTS
+        value: "5"
+      - key: OTP_SEND_RATE_LIMIT_MAX
+        value: "5"
+      - key: OTP_SEND_RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: OTP_VERIFY_RATE_LIMIT_MAX
+        value: "10"
+      - key: OTP_VERIFY_RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: SMS_INDIA_HUB_URL
+        sync: false
+      - key: SMS_INDIA_HUB_API_KEY
+        sync: false
+      - key: SMS_INDIA_HUB_SENDER_ID
+        sync: false
+      - key: SMS_INDIA_HUB_GWID
+        sync: false
+      - key: SMS_INDIA_HUB_DLT_TEMPLATE_ID
+        sync: false
+      - key: SMS_INDIA_HUB_TEMPLATE_TEXT
+        sync: false
+
+      # --- Payments -----------------------------------------------------------
+      # PHONEPE_ENV must be PRODUCTION here. Your local .env uses SANDBOX.
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: PHONEPE_ENV
+        value: PRODUCTION
+      - key: PHONEPE_MERCHANT_ID
+        sync: false
+      - key: PHONEPE_CLIENT_ID
+        sync: false
+      - key: PHONEPE_CLIENT_SECRET
+        sync: false
+      - key: PHONEPE_CLIENT_VERSION
+        sync: false
+      - key: PHONEPE_WEBHOOK_USERNAME
+        sync: false
+      - key: PHONEPE_WEBHOOK_SECRET
+        sync: false
+
+      # --- Media --------------------------------------------------------------
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+
+      # --- Email --------------------------------------------------------------
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_SECURE
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: MAIL_FROM_NAME
+        sync: false
+
+      # --- Firebase (push notifications) --------------------------------------
+      # FIREBASE_SERVICE_ACCOUNT is the full service-account JSON on one line.
+      - key: FIREBASE_SERVICE_ACCOUNT
+        sync: false
+      - key: FIREBASE_DATABASE_URL
+        sync: false
+
+      # --- Maps ---------------------------------------------------------------
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
+      - key: MAPS_RL_IP_PER_MIN
+        value: "60"
+      - key: MAPS_RL_USER_PER_MIN
+        value: "30"
+
+      # --- Business rules -----------------------------------------------------
+      - key: API_BASE_URL
+        sync: false
+      - key: PICKUP_RADIUS_METERS
+        value: "5000"
+      - key: RETURN_WINDOW_MINUTES
+        value: "1440"
+      - key: DEFAULT_DELIVERY_TIMEOUT_MS
+        value: "30000"
+      - key: DELIVERY_BROADCAST_REQUIRE_VERIFIED
+        value: "true"
+
+services:
+  # ── Key Value store (Redis) ─────────────────────────────────────────────────
+  # Not optional. With NODE_ENV=production the app refuses to boot unless Redis
+  # is reachable (app/config/redis.js), and the worker/scheduler run Bull queues
+  # that have no non-Redis fallback.
+  #
+  # NOTE: if your Render account still uses the older name, change `keyvalue`
+  # to `redis` below — that is the only edit needed.
+  - type: keyvalue
+    name: sungguard-redis
+    plan: free
+    region: oregon
+    ipAllowList: []          # internal network only; no public access
+    maxmemoryPolicy: allkeys-lru
+
+  # ── API ─────────────────────────────────────────────────────────────────────
+  - type: web
+    name: sungguard-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    region: oregon
+    plan: standard
+    numInstances: 2
+    healthCheckPath: /health/ready
+    autoDeploy: true
+    envVars:
+      - fromGroup: sungguard-shared
+      - key: NODE_ENV
+        value: production
+      - key: PROCESS_ROLE
+        value: api
+      # PORT is intentionally NOT set. Render injects it on the native Node
+      # runtime and index.js already reads `process.env.PORT || 7000`; pinning
+      # a value here fights Render's port detection.
+      # Wired automatically from the Key Value service above — never paste a
+      # connection string by hand.
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: sungguard-redis
+          property: connectionString
+      # Pinned to "false" on purpose. Your local .env sets REDIS_DISABLED=true,
+      # which throws on boot in production; pinning it here means a copied
+      # value can never silently re-disable Redis.
+      - key: REDIS_DISABLED
+        value: "false"
+      - key: TRUST_PROXY
+        value: "true"
+      - key: LOG_LEVEL
+        value: info
+      - key: ENABLE_REQUEST_LOGGING
+        value: "true"
+      - key: ENABLE_SIGNED_UPLOADS
+        value: "true"
+
+  # ── Queue worker ────────────────────────────────────────────────────────────
+  - type: worker
+    name: sungguard-worker
+    runtime: node
+    rootDir: backend
+    buildCommand: npm ci --omit=dev
+    startCommand: npm run worker
+    region: oregon
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - fromGroup: sungguard-shared
+      - key: NODE_ENV
+        value: production
+      - key: PROCESS_ROLE
+        value: worker
+      - key: HEALTH_CHECK_PORT
+        value: "9090"
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: sungguard-redis
+          property: connectionString
+      - key: REDIS_DISABLED
+        value: "false"
+      - key: LOG_LEVEL
+        value: info
+
+  # ── Scheduler ───────────────────────────────────────────────────────────────
+  - type: worker
+    name: sungguard-scheduler
+    runtime: node
+    rootDir: backend
+    buildCommand: npm ci --omit=dev
+    startCommand: npm run scheduler
+    region: oregon
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - fromGroup: sungguard-shared
+      - key: NODE_ENV
+        value: production
+      - key: PROCESS_ROLE
+        value: scheduler
+      - key: HEALTH_CHECK_PORT
+        value: "9090"
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: sungguard-redis
+          property: connectionString
+      - key: REDIS_DISABLED
+        value: "false"
+      - key: LOG_LEVEL
+        value: info
+      - key: AUTO_CANCEL_INTERVAL_MS
+        value: "10000"
+      - key: PAYOUT_BATCH_INTERVAL_MS
+        value: "900000"
+      - key: ENABLE_PAYOUT_BATCH_JOB
+        value: "true"
