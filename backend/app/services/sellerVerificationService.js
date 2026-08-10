@@ -4,7 +4,7 @@ import Seller from "../models/seller.js";
 import OtpVerification from "../models/otpVerification.js";
 import { getRedisClient } from "../config/redis.js";
 import { sendSmsIndiaHubOtp } from "./smsIndiaHubService.js";
-import { MOCK_OTP, useRealSMS } from "../utils/otp.js";
+import { MOCK_OTP, allowMockOtpInProduction, useRealSMS } from "../utils/otp.js";
 import { sendSellerVerificationOtpEmail, useRealEmailOTP } from "./emailService.js";
 
 const SELLER_SIGNUP_PURPOSE = "seller_signup";
@@ -54,7 +54,7 @@ function generateSellerOtp(channel) {
   const useRealDelivery =
     channel === "email" ? useRealEmailOTP() : useRealSMS();
 
-  if (production && !useRealDelivery) {
+  if (production && !useRealDelivery && !allowMockOtpInProduction()) {
     const error = new Error(
       channel === "email"
         ? "Email OTP delivery is not configured in production"
@@ -297,10 +297,7 @@ export async function issueSellerVerificationOtp({
     }
   }
 
-  let otp = generateSellerOtp(normalizedChannel);
-  if (normalizedChannel === "phone" && target === "6268423925") {
-    otp = "1234";
-  }
+  const otp = generateSellerOtp(normalizedChannel);
   const expiresAt = new Date(now.getTime() + OTP_EXPIRY_MINUTES() * 60 * 1000);
 
   if (!session) {

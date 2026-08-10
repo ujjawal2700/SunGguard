@@ -10,6 +10,7 @@
 import mongoose from 'mongoose';
 import { getProcessRole, isComponentEnabled, validateProcessRole } from './processRole.js';
 import { isRedisEnabled, getRedisClient, waitForRedis } from '../config/redis.js';
+import { allowMockOtpInProduction } from '../utils/otp.js';
 import { createAllIndexes } from '../services/databaseIndexManager.js';
 import { startSearchIndexWorker } from '../services/searchSyncService.js';
 // Side-effect import: registers every Mongoose model so the boot-time
@@ -167,6 +168,13 @@ function logStartupInfo() {
   console.log(`  - Scheduler: ${components.scheduler ? '✓' : '✗'}`);
   console.log(`Redis: ${isRedisEnabled() ? 'Enabled' : 'Disabled'}`);
   console.log(`MongoDB: ${mongoose.connection.readyState === 1 ? 'Connected' : 'Connecting...'}`);
+  if (env === 'production' && allowMockOtpInProduction()) {
+    console.warn('!'.repeat(60));
+    console.warn('⚠  ALLOW_MOCK_OTP_IN_PRODUCTION is ON.');
+    console.warn('⚠  Any phone number can sign in with the fixed mock OTP.');
+    console.warn('⚠  Unset this variable before real users arrive.');
+    console.warn('!'.repeat(60));
+  }
   console.log('='.repeat(60));
 }
 

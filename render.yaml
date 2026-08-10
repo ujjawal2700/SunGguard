@@ -49,6 +49,21 @@ envVarGroups:
       # USE_MOCK_OTP is deliberately absent. Setting it to "true" makes every
       # OTP request throw a 500 under NODE_ENV=production (otp.service.js), and
       # it overrides NODE_ENV, so it must never be defined here.
+      #
+      # TESTING BEFORE SMS IS PROVISIONED
+      # ---------------------------------
+      # To sign in with the fixed mock OTP (1234) on a deployed environment,
+      # set BOTH of these in the Render dashboard (not here):
+      #     USE_REAL_SMS=false
+      #     ALLOW_MOCK_OTP_IN_PRODUCTION=true
+      # Both are required: with USE_REAL_SMS=true the app generates a random
+      # OTP and tries to send it, which needs the SMS_INDIA_HUB_* values below.
+      #
+      # While that is on, ANY phone number can sign in on the deployed URL.
+      # Delete ALLOW_MOCK_OTP_IN_PRODUCTION before real users arrive; the API
+      # prints a loud startup warning for as long as it is set.
+      #
+      # This blueprint intentionally ships the launch-ready value.
       - key: USE_REAL_SMS
         value: "true"
       - key: OTP_LENGTH
