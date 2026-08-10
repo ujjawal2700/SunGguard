@@ -72,14 +72,51 @@ envVarGroups:
         value: "5"
       - key: OTP_MAX_FAILED_ATTEMPTS
         value: "5"
+      # Throttling. Three independent layers guard the login route, and they
+      # use DIFFERENT variable names — setting only one leaves the others at
+      # their code defaults, which is what produced the 429s during testing.
+      #
+      #   1. per-IP, per-route      OTP_RATE_LIMIT_*  / AUTH_RATE_LIMIT_*
+      #   2. per-mobile, per-route  OTP_SEND_RATE_LIMIT_* / OTP_VERIFY_RATE_LIMIT_*
+      #   3. per-phone, in-service  OTP_SEND_LIMIT_*  / OTP_VERIFY_LIMIT_*
+      #                             + OTP_RESEND_COOLDOWN_SECONDS
+      #
+      # Values below are loosened for pre-launch testing. TIGHTEN BEFORE
+      # LAUNCH — the code defaults (shown in brackets) are the safe baseline.
+
+      # Layer 1 — per IP  [OTP: 15/60s, AUTH: 40/60s]
+      - key: OTP_RATE_LIMIT_MAX
+        value: "100"
+      - key: OTP_RATE_LIMIT_WINDOW_MS
+        value: "60000"
+      - key: AUTH_RATE_LIMIT_MAX
+        value: "200"
+      - key: AUTH_RATE_LIMIT_WINDOW_MS
+        value: "60000"
+
+      # Layer 2 — per mobile+IP  [send 5/15min, verify 10/15min]
       - key: OTP_SEND_RATE_LIMIT_MAX
-        value: "5"
+        value: "100"
       - key: OTP_SEND_RATE_LIMIT_WINDOW_MS
         value: "900000"
       - key: OTP_VERIFY_RATE_LIMIT_MAX
-        value: "10"
+        value: "100"
       - key: OTP_VERIFY_RATE_LIMIT_WINDOW_MS
         value: "900000"
+
+      # Layer 3 — per phone, inside the service  [send 5/15min, verify 20/15min,
+      # 60s resend cooldown]. This is the layer that returned
+      # "Too many OTP requests. Try again later."
+      - key: OTP_SEND_LIMIT_PER_WINDOW
+        value: "100"
+      - key: OTP_SEND_LIMIT_WINDOW_SECONDS
+        value: "900"
+      - key: OTP_VERIFY_LIMIT_PER_WINDOW
+        value: "100"
+      - key: OTP_VERIFY_LIMIT_WINDOW_SECONDS
+        value: "900"
+      - key: OTP_RESEND_COOLDOWN_SECONDS
+        value: "0"
       - key: SMS_INDIA_HUB_URL
         sync: false
       - key: SMS_INDIA_HUB_API_KEY
