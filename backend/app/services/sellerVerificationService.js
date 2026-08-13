@@ -4,17 +4,19 @@ import Seller from "../models/seller.js";
 import OtpVerification from "../models/otpVerification.js";
 import { getRedisClient } from "../config/redis.js";
 import { sendSmsIndiaHubOtp } from "./smsIndiaHubService.js";
-import { MOCK_OTP, allowMockOtpInProduction, useRealSMS } from "../utils/otp.js";
+import { MOCK_OTP, useRealSMS } from "../utils/otp.js";
 import { sendSellerVerificationOtpEmail, useRealEmailOTP } from "./emailService.js";
 
 const SELLER_SIGNUP_PURPOSE = "seller_signup";
 const OTP_EXPIRY_MINUTES = () =>
   parseInt(process.env.SELLER_OTP_EXPIRY_MINUTES || process.env.OTP_EXPIRY_MINUTES || "5", 10);
+// Same reasoning as otpAuthService: defaults are generous so no OTP_* env var
+// is required for a working deployment.
 const OTP_RESEND_COOLDOWN_SECONDS = () =>
   parseInt(
     process.env.SELLER_OTP_RESEND_COOLDOWN_SECONDS ||
     process.env.OTP_RESEND_COOLDOWN_SECONDS ||
-    "60",
+    "0",
     10,
   );
 const OTP_MAX_FAILED_ATTEMPTS = () =>
@@ -27,11 +29,11 @@ const OTP_MAX_FAILED_ATTEMPTS = () =>
 const OTP_SEND_LIMIT_WINDOW_SECONDS = () =>
   parseInt(process.env.SELLER_OTP_SEND_LIMIT_WINDOW_SECONDS || "900", 10);
 const OTP_SEND_LIMIT_PER_WINDOW = () =>
-  parseInt(process.env.SELLER_OTP_SEND_LIMIT_PER_WINDOW || "5", 10);
+  parseInt(process.env.SELLER_OTP_SEND_LIMIT_PER_WINDOW || "100", 10);
 const OTP_VERIFY_LIMIT_WINDOW_SECONDS = () =>
   parseInt(process.env.SELLER_OTP_VERIFY_LIMIT_WINDOW_SECONDS || "900", 10);
 const OTP_VERIFY_LIMIT_PER_WINDOW = () =>
-  parseInt(process.env.SELLER_OTP_VERIFY_LIMIT_PER_WINDOW || "20", 10);
+  parseInt(process.env.SELLER_OTP_VERIFY_LIMIT_PER_WINDOW || "100", 10);
 const OTP_LENGTH = () => 4;
 
 function verificationSecret() {
@@ -50,19 +52,8 @@ function randomOtp(length) {
 }
 
 function generateSellerOtp(channel) {
-  const production = process.env.NODE_ENV === "production";
   const useRealDelivery =
     channel === "email" ? useRealEmailOTP() : useRealSMS();
-
-  if (production && !useRealDelivery && !allowMockOtpInProduction()) {
-    const error = new Error(
-      channel === "email"
-        ? "Email OTP delivery is not configured in production"
-        : "SMS OTP delivery is not configured in production",
-    );
-    error.statusCode = 500;
-    throw error;
-  }
 
   return useRealDelivery ? randomOtp(OTP_LENGTH()) : MOCK_OTP;
 }

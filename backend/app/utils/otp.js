@@ -1,19 +1,20 @@
 const MOCK_OTP = "1234";
 
+/**
+ * The single switch for the entire OTP system.
+ *
+ *   unset (or anything but "true")  every OTP is the fixed MOCK_OTP and no SMS
+ *                                   is sent. Works with zero configuration, in
+ *                                   every environment including production.
+ *   USE_REAL_SMS=true               random OTPs delivered over SMS. Requires
+ *                                   the SMS_INDIA_HUB_* values to be set.
+ *
+ * Mock mode is deliberately permitted in production: it is how this deployment
+ * runs before launch. Set USE_REAL_SMS=true when you are ready to go live —
+ * that one variable switches every auth flow at once.
+ */
 export const useRealSMS = () =>
   process.env.USE_REAL_SMS === "true" || process.env.USE_REAL_SMS === "1";
-
-/**
- * Deliberate escape hatch for testing a deployed environment before an SMS
- * provider is wired up. Off unless explicitly switched on.
- *
- * While this is enabled, ANY phone number can sign in on that deployment using
- * the fixed MOCK_OTP. It is a temporary pre-launch aid, not a config option —
- * unset it before real users arrive.
- */
-export const allowMockOtpInProduction = () =>
-  process.env.ALLOW_MOCK_OTP_IN_PRODUCTION === "true" ||
-  process.env.ALLOW_MOCK_OTP_IN_PRODUCTION === "1";
 
 const OTP_LENGTH = Math.max(4, parseInt(process.env.OTP_LENGTH || "4", 10));
 
@@ -23,15 +24,7 @@ function randomOtp(length) {
   return String(Math.floor(min + Math.random() * (max - min + 1)));
 }
 
-export const generateOTP = () => {
-  const production = process.env.NODE_ENV === "production";
-  if (production && !useRealSMS() && !allowMockOtpInProduction()) {
-    const err = new Error("Mock OTP mode is disabled in production");
-    err.statusCode = 500;
-    throw err;
-  }
-  return useRealSMS() ? randomOtp(OTP_LENGTH) : MOCK_OTP;
-};
+export const generateOTP = () => (useRealSMS() ? randomOtp(OTP_LENGTH) : MOCK_OTP);
 
 /**
  * 6-digit parcel pickup OTP shown on the customer app.

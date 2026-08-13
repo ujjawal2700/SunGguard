@@ -6,8 +6,12 @@ import { getRedisClient } from "../config/redis.js";
 import { isValidE164Phone, maskPhone, normalizePhoneNumber } from "../utils/phone.js";
 
 const OTP_EXPIRY_MINUTES = () => parseInt(process.env.OTP_EXPIRY_MINUTES || "5", 10);
+// Throttling defaults are set generously so a normal deployment needs no
+// OTP_* environment variables at all. They still bound abuse (this endpoint
+// creates a Customer record for unknown numbers) without tripping during
+// ordinary use or testing. Override via env only if you need them tighter.
 const OTP_RESEND_COOLDOWN_SECONDS = () =>
-  parseInt(process.env.OTP_RESEND_COOLDOWN_SECONDS || "60", 10);
+  parseInt(process.env.OTP_RESEND_COOLDOWN_SECONDS || "0", 10);
 const OTP_MAX_FAILED_ATTEMPTS = () =>
   parseInt(process.env.OTP_MAX_FAILED_ATTEMPTS || "5", 10);
 const OTP_LOCKOUT_MINUTES = () =>
@@ -15,11 +19,11 @@ const OTP_LOCKOUT_MINUTES = () =>
 const OTP_SEND_LIMIT_WINDOW_SECONDS = () =>
   parseInt(process.env.OTP_SEND_LIMIT_WINDOW_SECONDS || "900", 10);
 const OTP_SEND_LIMIT_PER_WINDOW = () =>
-  parseInt(process.env.OTP_SEND_LIMIT_PER_WINDOW || "5", 10);
+  parseInt(process.env.OTP_SEND_LIMIT_PER_WINDOW || "100", 10);
 const OTP_VERIFY_LIMIT_WINDOW_SECONDS = () =>
   parseInt(process.env.OTP_VERIFY_LIMIT_WINDOW_SECONDS || "900", 10);
 const OTP_VERIFY_LIMIT_PER_WINDOW = () =>
-  parseInt(process.env.OTP_VERIFY_LIMIT_PER_WINDOW || "20", 10);
+  parseInt(process.env.OTP_VERIFY_LIMIT_PER_WINDOW || "100", 10);
 function otpHashSecret() {
   return process.env.OTP_HASH_SECRET || process.env.JWT_SECRET || "unsafe-dev-secret";
 }

@@ -1,487 +1,381 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAuth } from '@core/context/AuthContext';
 import { useSettings } from '@core/context/SettingsContext';
-import {
-    Phone,
-    ShieldCheck,
-    User,
-    ShoppingBag,
-    ChevronRight,
-    MapPin,
-    Zap,
-    Utensils,
-    Smartphone,
-    ShoppingBasket,
-    Heart,
-    Star,
-    ChevronLeft
-} from 'lucide-react';
-import { toast } from 'sonner';
 import { customerApi } from '../services/customerApi';
-import BgImage from '@/assets/image.png';
+import {
+    AcceptedStamp,
+    Caption,
+    ConsignmentNote,
+    ConsignmentNumber,
+    DeliveryCode,
+    DepotGround,
+    InkBarcode,
+    NoteAction,
+    NoteField,
+    NoteFooter,
+    NotePane,
+    NoteStub,
+    NoteSwitch,
+    RouteLeader,
+    TearEdge,
+    noteInput,
+    stackIn,
+    stackItem,
+} from '@shared/components/auth/consignmentKit';
+import { MONO, STILL } from '@shared/design/tokens';
 
-const CATEGORIES = [
-    {
-        title: "Grocery",
-        icon: <ShoppingBasket size={28} />,
-        color: "#ecfeff",
-        ring: "var(--primary)",
-        text: "var(--brand-500)",
-        theme: "var(--primary)",
-        shadow: "rgba(97, 218, 251, 0.3)",
-        img: "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=600"
-    },
-    {
-        title: "Store",
-        icon: <Smartphone size={28} />,
-        color: "#f0f9ff",
-        ring: "var(--brand-400)",
-        text: "#0369a1",
-        theme: "var(--brand-500)",
-        shadow: "rgba(14, 165, 233, 0.3)",
-        img: "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&q=80&w=600"
-    },
-    {
-        title: "Food",
-        icon: <Utensils size={28} />,
-        color: "#f0fdfa",
-        ring: "#22d3ee",
-        text: "#0e7490",
-        theme: "var(--brand-500)",
-        shadow: "rgba(14, 165, 233, 0.3)",
-        img: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&q=80&w=600"
-    },
-    {
-        title: "Health",
-        icon: <ShieldCheck size={28} />,
-        color: "#eff6ff",
-        ring: "#60a5fa",
-        text: "#1d4ed8",
-        theme: "#3b82f6",
-        shadow: "rgba(59, 130, 246, 0.3)",
-        img: "https://images.unsplash.com/photo-1512678080530-7760d81faba6?q=80&w=1200&auto=format&fit=crop"
-    },
+/**
+ * Customer sign-in, filed as a consignment note.
+ *
+ * The booking flow treats a parcel as a waybill you fill in; this is the same
+ * artifact one step earlier — the note that opens the account, where the
+ * consignee is you. The docket number in the stub is built from the number
+ * being typed, so the field being answered is visible in the carrier's own
+ * format before anything is submitted.
+ */
+
+const PHONE_LENGTH = 10;
+const CODE_LENGTH = 4;
+const RESEND_SECONDS = 30;
+
+const MODES = [
+    { value: 'login', label: 'Sign in' },
+    { value: 'signup', label: 'Open account' },
 ];
 
+const formatPhone = (digits) =>
+    digits.length > 5 ? `${digits.slice(0, 5)} ${digits.slice(5)}` : digits;
+
 const CustomerAuth = () => {
-    const [isLogin, setIsLogin] = useState(true);
-    const [isLoading, setIsLoading] = useState(false);
-    const [showOtp, setShowOtp] = useState(false);
-    const [timer, setTimer] = useState(0);
-    const [carouselIndex, setCarouselIndex] = useState(0);
+    const navigate = useNavigate();
     const { login } = useAuth();
     const { settings } = useSettings();
-    const appName = settings?.appName || 'App';
+    const reduce = useReducedMotion();
+
+    const carrier = settings?.appName || 'SunGguard';
     const logoUrl = settings?.logoUrl || '';
-    const navigate = useNavigate();
 
-    const [formData, setFormData] = useState({
-        phone: '',
-        otp: '',
-        name: ''
-    });
+    const [mode, setMode] = useState('login');
+    const [step, setStep] = useState('identity'); // 'identity' | 'code'
+    const [busy, setBusy] = useState(false);
+    const [accepted, setAccepted] = useState(false);
+    const [timer, setTimer] = useState(0);
+    const [codeError, setCodeError] = useState('');
+    const [name, setName] = useState('');
+    const [phone, setPhone] = useState('');
+    const [code, setCode] = useState('');
 
-    const activeCategory = CATEGORIES[carouselIndex];
+    const isLogin = mode === 'login';
+    const phoneReady = phone.length === PHONE_LENGTH;
+    const nameReady = isLogin || name.trim().length > 1;
+    const identityReady = phoneReady && nameReady;
 
+    /* Resend countdown. */
     useEffect(() => {
-        const interval = setInterval(() => {
-            setCarouselIndex((prev) => (prev + 1) % CATEGORIES.length);
-        }, 3000);
-        return () => clearInterval(interval);
-    }, []);
-
-    useEffect(() => {
-        let interval;
-        if (timer > 0) {
-            interval = setInterval(() => setTimer(t => t - 1), 1000);
-        }
-        return () => clearInterval(interval);
+        if (timer <= 0) return undefined;
+        const id = setInterval(() => setTimer((t) => Math.max(0, t - 1)), 1000);
+        return () => clearInterval(id);
     }, [timer]);
 
-    const handleSendOtp = async (e) => {
-        e?.preventDefault();
-        if (formData.phone.length !== 10) {
-            toast.error('Enter valid 10-digit number');
+    /* How far along the route this note is — drives the rail and the barcode. */
+    const progress = useMemo(() => {
+        if (accepted) return 1;
+        const phoneRatio = Math.min(phone.length / PHONE_LENGTH, 1);
+        const identity = isLogin
+            ? phoneRatio
+            : (name.trim() ? 0.35 : 0) + phoneRatio * 0.65;
+        if (step === 'code') return 0.62 + 0.38 * (code.length / CODE_LENGTH);
+        return 0.62 * identity;
+    }, [accepted, phone, name, isLogin, step, code]);
+
+    const switchMode = (next) => {
+        if (next === mode) return;
+        setMode(next);
+        setCodeError('');
+    };
+
+    const sendCode = async (event) => {
+        event?.preventDefault();
+        if (!phoneReady) {
+            toast.error(`Enter all ${PHONE_LENGTH} digits of your mobile number`);
             return;
         }
-        setIsLoading(true);
+        if (!nameReady) {
+            toast.error('Enter the sender name');
+            return;
+        }
+
+        setBusy(true);
         try {
             if (isLogin) {
-                await customerApi.sendLoginOtp({ phone: formData.phone });
+                await customerApi.sendLoginOtp({ phone });
             } else {
-                await customerApi.sendSignupOtp({ name: formData.name, phone: formData.phone });
+                await customerApi.sendSignupOtp({ name: name.trim(), phone });
             }
-            setShowOtp(true);
-            setTimer(30);
-            toast.success('OTP sent!');
+            setCode('');
+            setCodeError('');
+            setStep('code');
+            setTimer(RESEND_SECONDS);
+            toast.success(`Code sent to +91 ${formatPhone(phone)}`);
         } catch (error) {
-            toast.error('Failed to send OTP');
+            toast.error(error?.response?.data?.message || "Couldn't send the code. Try again.");
         } finally {
-            setIsLoading(false);
+            setBusy(false);
         }
     };
 
-    const handleVerifyOtp = async (e) => {
-        e.preventDefault();
-        if (formData.otp.length !== 4) {
-            toast.error('Enter 4-digit code');
+    const verifyCode = async (event) => {
+        event?.preventDefault();
+        if (code.length !== CODE_LENGTH) {
+            setCodeError(`Enter all ${CODE_LENGTH} digits.`);
             return;
         }
-        setIsLoading(true);
+
+        setBusy(true);
+        setCodeError('');
         try {
-            const response = await customerApi.verifyOtp({ phone: formData.phone, otp: formData.otp });
+            const response = await customerApi.verifyOtp({ phone, otp: code });
             const { token, customer } = response.data.result;
+            setAccepted(true);
             login({ ...customer, token, role: 'customer' });
-            toast.success('Successfully Logged In!');
-            navigate('/');
+            toast.success(isLogin ? 'Signed in' : 'Account opened');
+            // Let the stamp land before the route changes.
+            setTimeout(() => navigate('/'), reduce ? 0 : 620);
         } catch (error) {
-            const apiMessage = error?.response?.data?.message;
-            toast.error(apiMessage || 'Invalid OTP');
-        } finally {
-            setIsLoading(false);
+            setCode('');
+            setCodeError(
+                error?.response?.data?.message ||
+                    "That code didn't match. Check the 4 digits and try again.",
+            );
+            setBusy(false);
         }
+    };
+
+    const goBack = () => {
+        setStep('identity');
+        setCode('');
+        setCodeError('');
     };
 
     return (
-        <div className="min-h-screen w-full relative flex items-center justify-center font-['Outfit',_sans-serif] overflow-hidden">
+        <DepotGround>
+            <ConsignmentNote>
+                {/* ── Carrier's copy ───────────────────────────────────────── */}
+                <NoteStub carrier={carrier} logoUrl={logoUrl}>
+                    <ConsignmentNumber digits={phone} settled={accepted} />
+                    <RouteLeader
+                        progress={progress}
+                        from={isLogin ? 'Your number' : 'New sender'}
+                        to={accepted ? 'Accepted' : 'Verified'}
+                    />
+                </NoteStub>
 
-            {/* Dynamic Atmospheric Background */}
-            <div 
-                className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat transition-all duration-1000"
-                style={{ backgroundImage: `url(${BgImage})` }}
-            >
-                <motion.div
-                    animate={{ backgroundColor: activeCategory.color }}
-                    transition={{ duration: 1.5 }}
-                    className="absolute inset-0 opacity-80 backdrop-blur-sm"
-                />
-            </div>
+                <TearEdge />
 
-            {/* Animated Blurred Blobs */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-                <motion.div
-                    animate={{
-                        backgroundColor: activeCategory.theme,
-                        x: [0, 50, 0],
-                        y: [0, 30, 0],
-                        scale: [1, 1.2, 1]
-                    }}
-                    transition={{
-                        backgroundColor: { duration: 1.5 },
-                        x: { duration: 8, repeat: Infinity, ease: "easeInOut" },
-                        y: { duration: 10, repeat: Infinity, ease: "easeInOut" },
-                        scale: { duration: 12, repeat: Infinity, ease: "easeInOut" }
-                    }}
-                    className="absolute -top-24 -left-24 w-96 h-96 rounded-full blur-[100px] opacity-20"
-                />
-                <motion.div
-                    animate={{
-                        backgroundColor: activeCategory.theme,
-                        x: [0, -40, 0],
-                        y: [0, -60, 0],
-                        scale: [1, 1.1, 1]
-                    }}
-                    transition={{
-                        backgroundColor: { duration: 1.5 },
-                        x: { duration: 9, repeat: Infinity, ease: "easeInOut" },
-                        y: { duration: 7, repeat: Infinity, ease: "easeInOut" },
-                        scale: { duration: 15, repeat: Infinity, ease: "easeInOut" }
-                    }}
-                    className="absolute -bottom-24 -right-24 w-[500px] h-[500px] rounded-full blur-[120px] opacity-30"
-                />
-            </div>
-
-            {/* Premium Centered Card Container */}
-            <div className="w-[92%] max-w-[400px] h-[85vh] max-h-[780px] bg-white relative z-10 overflow-hidden rounded-[40px] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.15)] border border-white/40 flex flex-col transition-colors duration-1000">
-
-                {/* Scrollable Content Container */}
-                <div className="h-full overflow-y-auto no-scrollbar pb-20">
-
-                    {/* Header: Immersive Category Visuals */}
-                    <motion.div
-                        animate={{ backgroundColor: activeCategory.theme }}
-                        transition={{ duration: 1 }}
-                        className="relative h-[35%] w-full overflow-hidden"
-                    >
-                        <AnimatePresence mode="wait">
-                            <motion.div
-                                key={carouselIndex}
-                                initial={{ opacity: 0, scale: 1.1 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 1.05 }}
-                                transition={{ duration: 0.8 }}
-                                className="absolute inset-0"
-                            >
-                                <img
-                                    src={activeCategory.img}
-                                    className="w-full h-full object-cover"
-                                    loading="lazy"
-                                    alt="banner"
-                                />
-                                <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/10 to-transparent opacity-60" style={{ backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.4), rgba(0,0,0,0.1), ${activeCategory.theme})` }} />
-                            </motion.div>
-                        </AnimatePresence>
-
-                        {/* Top Branding Bar */}
-                        <div className="absolute top-8 left-0 w-full px-6 flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <div className="w-10 h-10 bg-white/20 backdrop-blur-xl rounded-xl flex items-center justify-center border border-white/30">
-                                    <ShoppingBag size={20} className="text-white" />
-                                </div>
-                                <span className="text-white font-black tracking-tighter text-xl">{appName.toUpperCase()}</span>
-                            </div>
-                        </div>
-
-                        {/* Centered App Message */}
-                        <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-8 text-white pt-10">
-                            <motion.h2
-                                key={carouselIndex}
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="text-2xl font-black tracking-tight leading-none mb-2"
-                            >
-                                {activeCategory.title.toUpperCase()} INSIDE
-                            </motion.h2>
-                            <p className="text-[10px] font-bold uppercase tracking-[4px] opacity-70">Everything delivered fast</p>
-                        </div>
-
-                        {/* S-Curve Divider */}
-                        <div className="absolute -bottom-1 left-0 w-full leading-[0]">
-                            <svg viewBox="0 0 1440 320" preserveAspectRatio="none" className="w-full h-24">
-                                <path
-                                    fill="#ffffff"
-                                    d="M0,224L40,213.3C80,203,160,181,240,186.7C320,192,400,224,480,240C560,256,640,256,720,234.7C800,213,880,171,960,165.3C1040,160,1120,192,1200,208C1280,224,1360,224,1400,224L1440,224L1440,320L1400,320C1360,320,1280,320,1200,320C1120,320,1040,320,960,320C880,320,800,320,720,320C640,320,560,320,480,320C400,320,320,320,240,320C160,320,80,320,40,320L0,320Z"
-                                />
-                            </svg>
-                        </div>
-                    </motion.div>
-
-                    {/* Circular Carousel Control */}
-                    <div className="relative -mt-14 flex justify-center z-20">
-                        <div className="w-28 h-28 rounded-full bg-white border-4 border-white shadow-[0_15px_40px_rgba(97,218,251,0.2)] flex items-center justify-center overflow-hidden transition-shadow duration-1000" style={{ boxShadow: `0 15px 40px ${activeCategory.shadow}` }}>
-                            <AnimatePresence mode="wait">
-                                    <motion.div
-                                        key={carouselIndex}
-                                        initial={{ opacity: 0, scale: 0.5, rotate: -20 }}
-                                        animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                                        exit={{ opacity: 0, scale: 1.5, rotate: 20 }}
-                                        className="w-full h-full"
-                                        style={{ color: activeCategory.text }}
-                                    >
-                                        {logoUrl ? (
-                                            <img
-                                                src={logoUrl}
-                                                alt={`${appName} logo`}
-                                                loading="lazy"
-                                                className="w-full h-full object-cover"
-                                            />
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: activeCategory.color }}>
-                                                {activeCategory.icon}
-                                            </div>
-                                        )}
-                                    </motion.div>
-                            </AnimatePresence>
-                        </div>
-                    </div>
-
-
-                    {/* Authentication Form Block */}
-                    <div className="px-6 pt-6 pb-10">
-                        <AnimatePresence mode="wait">
-                            {!showOtp ? (
+                {/* ── Sender's copy ────────────────────────────────────────── */}
+                <div className="relative px-6 pb-7 pt-5">
+                    <AnimatePresence mode="wait" initial={false}>
+                        {step === 'identity' ? (
+                            <NotePane key="identity" paneKey="identity" direction={1}>
                                 <motion.div
-                                    key="main-form"
-                                    initial={{ opacity: 0, y: 20 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, x: -20 }}
+                                    variants={reduce ? undefined : stackIn}
+                                    initial="hidden"
+                                    animate="show"
                                     className="space-y-5"
                                 >
-                                    {/* App Style Tab Switcher */}
-                                    <div className="flex bg-gray-50 rounded-2xl p-1.5 border border-gray-100">
-                                        <button
-                                            onClick={() => setIsLogin(true)}
-                                            className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${isLogin ? 'bg-white shadow-sm' : 'text-gray-400'}`}
-                                            style={{ color: isLogin ? activeCategory.theme : undefined }}
-                                        >
-                                            Login
-                                        </button>
-                                        <button
-                                            onClick={() => setIsLogin(false)}
-                                            className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${!isLogin ? 'bg-white shadow-sm' : 'text-gray-400'}`}
-                                            style={{ color: !isLogin ? activeCategory.theme : undefined }}
-                                        >
-                                            Sign Up
-                                        </button>
-                                    </div>
+                                    <motion.div variants={reduce ? undefined : stackItem}>
+                                        <NoteSwitch
+                                            name="customer-auth"
+                                            options={MODES}
+                                            value={mode}
+                                            onChange={switchMode}
+                                        />
+                                    </motion.div>
 
-                                    <div className="space-y-2 text-center">
-                                        <h3 className="text-xl font-black text-gray-900 tracking-tight">
-                                            {isLogin ? 'Welcome Back!' : 'Create Account'}
-                                        </h3>
-                                        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest leading-none">
-                                            OTP will be sent for verification
+                                    <motion.div variants={reduce ? undefined : stackItem}>
+                                        <h1 className="text-[22px] font-extrabold tracking-tight text-slate-900 leading-tight">
+                                            {isLogin ? 'Sign in' : 'Open an account'}
+                                        </h1>
+                                        <p className="mt-1 text-[13px] leading-snug text-slate-500">
+                                            {isLogin
+                                                ? "We'll text a 4-digit code to the number on file."
+                                                : "We'll text a 4-digit code to confirm your number."}
                                         </p>
-                                    </div>
+                                    </motion.div>
 
-                                    <form onSubmit={handleSendOtp} className="space-y-4">
-                                        {!isLogin && (
-                                            <div className="relative group">
-                                                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300 transition-colors" style={{ color: 'inherit' }}>
-                                                    <User size={18} className="group-focus-within:text-[var(--theme-color)]" style={{ color: 'inherit' }} />
+                                    <form onSubmit={sendCode} className="space-y-4">
+                                        <AnimatePresence initial={false}>
+                                            {!isLogin && (
+                                                <motion.div
+                                                    key="sender-name"
+                                                    initial={reduce ? false : { opacity: 0, height: 0 }}
+                                                    animate={{ opacity: 1, height: 'auto' }}
+                                                    exit={reduce ? { opacity: 0 } : { opacity: 0, height: 0 }}
+                                                    transition={reduce ? STILL : { duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                                                    className="overflow-hidden"
+                                                >
+                                                    <NoteField label="Sender name" filled={Boolean(name.trim())}>
+                                                        <input
+                                                            type="text"
+                                                            name="name"
+                                                            autoComplete="name"
+                                                            placeholder="As it should appear on the label"
+                                                            value={name}
+                                                            onChange={(event) => setName(event.target.value)}
+                                                            className={noteInput(Boolean(name.trim()))}
+                                                        />
+                                                    </NoteField>
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
+
+                                        <motion.div variants={reduce ? undefined : stackItem}>
+                                            <NoteField
+                                                label="Contact number"
+                                                filled={phoneReady}
+                                                hint="Riders call this number for pickup and drop."
+                                            >
+                                                <div className="relative">
+                                                    <span
+                                                        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 border-r border-slate-200 pr-2.5 text-[15px] font-bold text-slate-400"
+                                                        style={{ fontFamily: MONO }}
+                                                    >
+                                                        +91
+                                                    </span>
+                                                    <input
+                                                        type="tel"
+                                                        name="phone"
+                                                        inputMode="numeric"
+                                                        autoComplete="tel-national"
+                                                        maxLength={PHONE_LENGTH + 1}
+                                                        placeholder="98765 43210"
+                                                        value={formatPhone(phone)}
+                                                        onChange={(event) =>
+                                                            setPhone(
+                                                                event.target.value
+                                                                    .replace(/\D/g, '')
+                                                                    .slice(0, PHONE_LENGTH),
+                                                            )
+                                                        }
+                                                        className={`${noteInput(phoneReady)} pl-[68px] tabular-nums`}
+                                                        style={{ fontFamily: MONO }}
+                                                    />
                                                 </div>
-                                                <input
-                                                    required
-                                                    name="name"
-                                                    placeholder="Full Name"
-                                                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl pl-12 pr-4 py-4 text-sm font-bold text-gray-800 outline-none focus:bg-white transition-all"
-                                                    style={{ '--theme-color': activeCategory.theme }}
-                                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                                    onFocus={(e) => e.target.style.borderColor = activeCategory.theme}
-                                                    onBlur={(e) => e.target.style.borderColor = '#F3F4F6'}
-                                                />
-                                            </div>
-                                        )}
-                                        <div className="relative group">
-                                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300 transition-colors">
-                                                <Phone size={18} />
-                                            </div>
-                                            <div className="absolute left-11 top-1/2 -translate-y-1/2 font-black text-sm text-gray-400 border-r border-gray-200 pr-2">
-                                                +91
-                                            </div>
-                                            <input
-                                                required
-                                                name="phone"
-                                                maxLength={10}
-                                                placeholder="Mobile Number"
-                                                className="w-full bg-gray-50 border border-gray-100 rounded-2xl pl-20 pr-4 py-4 text-sm font-bold text-gray-800 outline-none focus:bg-white transition-all"
-                                                onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '') })}
-                                                onFocus={(e) => e.target.style.borderColor = activeCategory.theme}
-                                                onBlur={(e) => e.target.style.borderColor = '#F3F4F6'}
-                                            />
-                                        </div>
+                                            </NoteField>
+                                        </motion.div>
 
-                                        <button
-                                            type="submit"
-                                            disabled={isLoading}
-                                            className="w-full text-white py-5 rounded-[24px] text-xs font-black tracking-[4px] flex items-center justify-center gap-3 active:scale-95 transition-all uppercase"
-                                            style={{ backgroundColor: activeCategory.theme, boxShadow: `0 20px 40px ${activeCategory.shadow}` }}
-                                        >
-                                            {isLoading ? 'Verifying...' : 'Continue'}
-                                            <ChevronRight size={18} />
-                                        </button>
+                                        <motion.div variants={reduce ? undefined : stackItem} className="pt-1">
+                                            <NoteAction type="submit" busy={busy} disabled={!identityReady}>
+                                                <span className="inline-flex items-center gap-2.5">
+                                                    Send code
+                                                    <ArrowRight size={15} strokeWidth={2.6} />
+                                                </span>
+                                            </NoteAction>
+                                        </motion.div>
                                     </form>
 
-                                    {/* Legal Agreement Footer */}
-                                    <div className="pt-2 flex flex-col items-center gap-1">
-                                        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest text-center">
-                                            By continuing, you agree to our
-                                        </p>
-                                        <div className="flex items-center gap-1.5 underline decoration-gray-200 underline-offset-4">
-                                            <button 
-                                                onClick={() => navigate('/terms')}
-                                                className="text-[10px] font-black uppercase tracking-widest hover:text-gray-900 transition-colors"
-                                                style={{ color: activeCategory.theme }}
-                                            >
-                                                Terms & Condition
-                                            </button>
-                                            <span className="text-[8px] text-gray-300">•</span>
-                                            <button 
-                                                onClick={() => navigate('/privacy-policy')}
-                                                className="text-[10px] font-black uppercase tracking-widest hover:text-gray-900 transition-colors"
-                                                style={{ color: activeCategory.theme }}
-                                            >
-                                                Privacy Policy
-                                            </button>
-                                        </div>
-                                    </div>
+                                    <motion.div variants={reduce ? undefined : stackItem}>
+                                        <NoteFooter
+                                            onTerms={() => navigate('/terms')}
+                                            onPrivacy={() => navigate('/privacy')}
+                                        />
+                                    </motion.div>
                                 </motion.div>
-                            ) : (
-                                <motion.div
-                                    key="otp-view"
-                                    initial={{ opacity: 0, x: 20 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    className="space-y-10"
-                                >
-                                    <div className="flex items-center gap-4">
+                            </NotePane>
+                        ) : (
+                            <NotePane key="code" paneKey="code" direction={-1}>
+                                <div className="space-y-5">
+                                    <div className="flex items-start gap-3">
                                         <button
-                                            onClick={() => setShowOtp(false)}
-                                            className="w-10 h-10 bg-gray-50 border border-gray-100 rounded-full flex items-center justify-center text-gray-400"
+                                            type="button"
+                                            onClick={goBack}
+                                            aria-label="Back to your number"
+                                            className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-slate-200 bg-white text-slate-500 outline-none transition-colors hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-[color:var(--primary)]"
                                         >
-                                            <ChevronLeft size={20} />
+                                            <ArrowLeft size={17} />
                                         </button>
-                                        <div>
-                                            <h3 className="text-xl font-black text-gray-900 tracking-tight">Verify Device</h3>
-                                            <p className="text-[10px] font-black tracking-widest text-gray-400 uppercase">+91 {formData.phone}</p>
+                                        <div className="min-w-0">
+                                            <h1 className="text-[22px] font-extrabold tracking-tight text-slate-900 leading-tight">
+                                                Enter the code
+                                            </h1>
+                                            <Caption className="mt-1.5">
+                                                Sent to +91 {formatPhone(phone)}
+                                            </Caption>
                                         </div>
                                     </div>
 
-                                    <form onSubmit={handleVerifyOtp} className="space-y-10">
-                                        <div className="flex justify-between gap-3 px-1">
-                                            {[...Array(4)].map((_, i) => (
-                                                <input
-                                                    key={i}
-                                                    type="tel"
-                                                    maxLength={1}
-                                                    className="w-14 h-16 bg-white border-2 border-gray-200 rounded-3xl text-center text-2xl font-black outline-none shadow-[0_18px_45px_rgba(15,23,42,0.35)] focus:bg-white focus:border-[var(--theme-color)] focus:shadow-[0_24px_65px_rgba(15,23,42,0.55)] transition-all"
-                                                    style={{ color: activeCategory.theme }}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Backspace' && !e.target.value && i > 0) {
-                                                            e.target.previousElementSibling.focus();
-                                                        }
-                                                    }}
-                                                    onChange={(e) => {
-                                                        const val = e.target.value;
-                                                        if (val && i < 3) (e.target.nextElementSibling).focus();
-                                                        const otpArr = formData.otp.split('');
-                                                        otpArr[i] = val;
-                                                        setFormData({ ...formData, otp: otpArr.join('') });
-                                                    }}
-                                                    onFocus={(e) => e.target.style.borderColor = activeCategory.theme}
-                                                    onBlur={(e) => e.target.style.borderColor = ''}
-                                                />
-                                            ))}
+                                    <form onSubmit={verifyCode} className="space-y-5">
+                                        <NoteField
+                                            label="Delivery code"
+                                            filled={code.length === CODE_LENGTH}
+                                            error={codeError}
+                                        >
+                                            <DeliveryCode
+                                                value={code}
+                                                onChange={(next) => {
+                                                    setCode(next);
+                                                    if (codeError) setCodeError('');
+                                                }}
+                                                length={CODE_LENGTH}
+                                                error={Boolean(codeError)}
+                                                disabled={busy || accepted}
+                                            />
+                                        </NoteField>
+
+                                        <div className="min-h-[44px]">
+                                            {accepted ? (
+                                                <div className="grid place-items-center py-1">
+                                                    <AcceptedStamp>Accepted</AcceptedStamp>
+                                                </div>
+                                            ) : (
+                                                <NoteAction
+                                                    type="submit"
+                                                    busy={busy}
+                                                    disabled={code.length !== CODE_LENGTH}
+                                                >
+                                                    <span className="inline-flex items-center gap-2.5">
+                                                        Verify code
+                                                        <ArrowRight size={15} strokeWidth={2.6} />
+                                                    </span>
+                                                </NoteAction>
+                                            )}
                                         </div>
 
-                                        <div className="space-y-4">
-                                            <button
-                                                type="submit"
-                                                disabled={isLoading}
-                                                className="w-full bg-gray-900 text-white py-5 rounded-[24px] text-xs font-black tracking-[4px] shadow-2xl flex items-center justify-center gap-3 uppercase active:scale-95 transition-all"
-                                            >
-                                                {isLoading ? 'Authenticating...' : `Enter ${appName}`}
-                                            </button>
+                                        {!accepted && (
                                             <div className="flex justify-center">
                                                 <button
                                                     type="button"
-                                                    disabled={timer > 0}
-                                                    onClick={handleSendOtp}
-                                                    className={`text-[10px] font-black uppercase tracking-widest ${timer > 0 ? 'text-gray-300' : 'underline'}`}
-                                                    style={{ color: timer > 0 ? undefined : activeCategory.theme }}
+                                                    onClick={sendCode}
+                                                    disabled={timer > 0 || busy}
+                                                    className="rounded text-[10px] uppercase tracking-[0.16em] font-bold text-[color:var(--primary)] outline-none underline underline-offset-4 decoration-slate-200 disabled:text-slate-300 disabled:no-underline focus-visible:ring-2 focus-visible:ring-[color:var(--primary)]"
+                                                    style={{ fontFamily: MONO }}
                                                 >
-                                                    {timer > 0 ? `Resend Code in ${timer}s` : 'Resend Now'}
+                                                    {timer > 0 ? `Resend in ${timer}s` : 'Resend code'}
                                                 </button>
                                             </div>
-                                        </div>
+                                        )}
                                     </form>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
+                                </div>
+                            </NotePane>
+                        )}
+                    </AnimatePresence>
+
+                    {/* ── Machine-readable footer ──────────────────────────── */}
+                    <div className="mt-7 border-t border-dashed border-slate-200 pt-4">
+                        <InkBarcode ratio={progress} seed={phone || 'SG'} />
+                        <div className="mt-2 flex items-center justify-between">
+                            <Caption>{isLogin ? 'Returning sender' : 'New sender'}</Caption>
+                            <Caption>{accepted ? 'Accepted' : 'Awaiting verification'}</Caption>
+                        </div>
                     </div>
-
                 </div>
-            </div>
-
-            {/* Desktop Message */}
-            <div className="hidden md:block absolute bottom-10 right-10 text-white/20 text-xs font-bold uppercase tracking-[4px]">
-                Adaptive Theme Simulator
-            </div>
-        </div>
+            </ConsignmentNote>
+        </DepotGround>
     );
 };
 
 export default CustomerAuth;
-
-

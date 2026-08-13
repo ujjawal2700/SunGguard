@@ -13,7 +13,7 @@ const AUTH_RATE_LIMIT_MAX = () =>
 const OTP_RATE_LIMIT_WINDOW_MS = () =>
   parseInt(process.env.OTP_RATE_LIMIT_WINDOW_MS || "60000", 10);
 const OTP_RATE_LIMIT_MAX = () =>
-  parseInt(process.env.OTP_RATE_LIMIT_MAX || "15", 10);
+  parseInt(process.env.OTP_RATE_LIMIT_MAX || "100", 10);
 
 const PAYMENT_RATE_LIMIT_WINDOW_MS = () =>
   parseInt(process.env.PAYMENT_RATE_LIMIT_WINDOW_MS || "60000", 10);

@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import Header from './Header';
 import Footer from './Footer';
 import BottomNav from './BottomNav';
+import DesktopNav from './DesktopNav';
 import MiniCart from '../shared/MiniCart';
 import ProductDetailSheet from '../shared/ProductDetailSheet';
 import LocationGate from '../shared/LocationGate';
@@ -81,7 +82,9 @@ const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = fal
     const path = location.pathname.replace(/\/$/, '') || '/';
 
     const hideHeaderRoutes = ['/', '/categories', '/orders', '/transactions', '/profile', '/profile/edit', '/profile/parcel-history', '/wishlist', '/addresses', '/wallet', '/support', '/privacy', '/about', '/terms', '/checkout', '/search', '/chat', '/parcel'];
-    const hideBottomNavRoutes = ['/checkout', '/search', '/chat'];
+    // Legal and informational pages are read end-to-end and navigated back out
+    // of, so they get no bottom nav.
+    const hideBottomNavRoutes = ['/checkout', '/search', '/chat', '/terms', '/privacy'];
     const hideCartRoutes = ['/checkout', '/search', '/chat', '/parcel'];
 
     // If props are passed, use them. Otherwise, use route-based logic.
@@ -128,7 +131,13 @@ const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = fal
                 </>
             )}
 
-            <main className={cn("flex-1 md:pb-0", !showHeader && "pt-0", !fullHeight && "pb-24")}>
+            {/* Desktop navigation. BottomNav hides itself at md and the legacy
+                Header is suppressed on every live route, so without this there
+                is no way to reach History or Profile on a pointer device. */}
+            {!showHeader && <DesktopNav />}
+
+            {/* The bottom nav is fixed, so this padding only exists to clear it. */}
+            <main className={cn("flex-1 md:pb-0", !showHeader && "pt-0", !fullHeight && showBottomNav && "pb-24")}>
                 {children}
             </main>
 
@@ -149,10 +158,6 @@ const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = fal
             {/* Bottom Nav logic */}
             <div className="md:hidden">
                 {finalShowBottomNavMobile && <BottomNav />}
-            </div>
-            {/* Desktop Bottom Nav doesn't exist usually, but just in case of future changes */}
-            <div className="hidden md:block">
-                {showBottomNav && <BottomNav />}
             </div>
         </div>
     );

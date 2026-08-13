@@ -1097,7 +1097,7 @@ const ParcelDeliveryPage = () => {
 
   return (
     <div className="min-h-screen bg-slate-100 font-outfit">
-      <div ref={topRef} className="mx-auto max-w-2xl px-4 pt-7 pb-44 md:pb-32">
+      <div ref={topRef} className="mx-auto max-w-2xl px-4 pt-7 pb-10">
         {/* ── Masthead ─────────────────────────────────────────────────── */}
         <div className="mb-5">
           <Caption className="text-[color:var(--primary)]">
@@ -1858,59 +1858,54 @@ const ParcelDeliveryPage = () => {
             </AnimatePresence>
           </div>
 
-          {/* ── Action bar, clearing the bottom nav ────────────────────── */}
-          <div
-            className="fixed inset-x-0 z-[400] px-4 pointer-events-none md:bottom-5"
-            style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 5.25rem)' }}
-          >
-            <div className="mx-auto max-w-2xl flex items-center gap-2.5 pointer-events-auto">
-              {step > 0 && (
-                <motion.button
-                  type="button"
-                  onClick={() => goToStep(step - 1)}
-                  whileTap={reduce ? undefined : { scale: 0.94 }}
-                  className="grid place-items-center h-[54px] w-[54px] shrink-0 rounded-2xl bg-white border border-slate-200 text-slate-700 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.4)]"
-                  aria-label="Back a step"
-                >
-                  <ArrowLeft size={19} />
-                </motion.button>
-              )}
+          {/* ── Actions, in flow at the end of the step ─────────────────── */}
+          <div className="mt-5 flex items-center gap-2.5">
+            {step > 0 && (
+              <motion.button
+                type="button"
+                onClick={() => goToStep(step - 1)}
+                whileTap={reduce ? undefined : { scale: 0.94 }}
+                className="grid place-items-center h-[54px] w-[54px] shrink-0 rounded-2xl bg-white border border-slate-200 text-slate-700 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.4)]"
+                aria-label="Back a step"
+              >
+                <ArrowLeft size={19} />
+              </motion.button>
+            )}
 
-              {!isLastStep ? (
-                <motion.button
-                  type="button"
-                  onClick={handleContinue}
-                  whileTap={reduce ? undefined : { scale: 0.98 }}
-                  className="flex-1 h-[54px] rounded-2xl bg-[color:var(--primary)] text-white font-bold text-[15px] flex items-center justify-center gap-2 shadow-[0_14px_34px_-12px_color-mix(in_srgb,var(--primary)_75%,transparent)]"
-                >
-                  Continue
-                  <ArrowRight size={18} />
-                </motion.button>
-              ) : (
-                <motion.button
-                  type="submit"
-                  disabled={submitBlocked}
-                  whileTap={reduce || submitBlocked ? undefined : { scale: 0.98 }}
-                  className="flex-1 h-[54px] rounded-2xl bg-[color:var(--primary)] text-white font-bold text-[15px] flex items-center justify-center gap-2 shadow-[0_14px_34px_-12px_color-mix(in_srgb,var(--primary)_75%,transparent)] disabled:opacity-45 disabled:shadow-none"
-                >
-                  {loading ? (
-                    <>
-                      <Truck size={18} className="animate-pulse" />
-                      Booking…
-                    </>
-                  ) : paymentMethod === 'UPI' ? (
-                    <>
-                      Pay <Money value={totalFare} /> and request
-                    </>
-                  ) : (
-                    <>
-                      Request pickup
-                      <ArrowRight size={18} />
-                    </>
-                  )}
-                </motion.button>
-              )}
-            </div>
+            {!isLastStep ? (
+              <motion.button
+                type="button"
+                onClick={handleContinue}
+                whileTap={reduce ? undefined : { scale: 0.98 }}
+                className="flex-1 h-[54px] rounded-2xl bg-[color:var(--primary)] text-white font-bold text-[15px] flex items-center justify-center gap-2 shadow-[0_14px_34px_-12px_color-mix(in_srgb,var(--primary)_75%,transparent)]"
+              >
+                Continue
+                <ArrowRight size={18} />
+              </motion.button>
+            ) : (
+              <motion.button
+                type="submit"
+                disabled={submitBlocked}
+                whileTap={reduce || submitBlocked ? undefined : { scale: 0.98 }}
+                className="flex-1 h-[54px] rounded-2xl bg-[color:var(--primary)] text-white font-bold text-[15px] flex items-center justify-center gap-2 shadow-[0_14px_34px_-12px_color-mix(in_srgb,var(--primary)_75%,transparent)] disabled:opacity-45 disabled:shadow-none"
+              >
+                {loading ? (
+                  <>
+                    <Truck size={18} className="animate-pulse" />
+                    Booking…
+                  </>
+                ) : paymentMethod === 'UPI' ? (
+                  <>
+                    Pay <Money value={totalFare} /> and request
+                  </>
+                ) : (
+                  <>
+                    Request pickup
+                    <ArrowRight size={18} />
+                  </>
+                )}
+              </motion.button>
+            )}
           </div>
         </form>
       </div>

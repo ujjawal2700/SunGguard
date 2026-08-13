@@ -46,77 +46,20 @@ envVarGroups:
         sync: false
 
       # --- OTP / SMS ----------------------------------------------------------
-      # USE_MOCK_OTP is deliberately absent. Setting it to "true" makes every
-      # OTP request throw a 500 under NODE_ENV=production (otp.service.js), and
-      # it overrides NODE_ENV, so it must never be defined here.
+      # There is exactly ONE OTP variable, and it is not set here.
       #
-      # TESTING BEFORE SMS IS PROVISIONED
-      # ---------------------------------
-      # To sign in with the fixed mock OTP (1234) on a deployed environment,
-      # set BOTH of these in the Render dashboard (not here):
-      #     USE_REAL_SMS=false
-      #     ALLOW_MOCK_OTP_IN_PRODUCTION=true
-      # Both are required: with USE_REAL_SMS=true the app generates a random
-      # OTP and tries to send it, which needs the SMS_INDIA_HUB_* values below.
+      #   (unset)            every OTP is 1234, no SMS is sent. This is how the
+      #                      deployment runs before launch, in every environment
+      #                      including production. Nothing to configure.
+      #   USE_REAL_SMS=true  random OTPs over SMS. Needs the SMS_INDIA_HUB_*
+      #                      values below. Set this when you go live.
       #
-      # While that is on, ANY phone number can sign in on the deployed URL.
-      # Delete ALLOW_MOCK_OTP_IN_PRODUCTION before real users arrive; the API
-      # prints a loud startup warning for as long as it is set.
+      # Every OTP throttle now has a generous in-code default, so no OTP_* rate
+      # limit variable is required. Set one only if you want it tighter than the
+      # default; the names are listed in backend/.env.production.example.
       #
-      # This blueprint intentionally ships the launch-ready value.
-      - key: USE_REAL_SMS
-        value: "true"
-      - key: OTP_LENGTH
-        value: "4"
-      - key: OTP_EXPIRY_MINUTES
-        value: "5"
-      - key: OTP_MAX_FAILED_ATTEMPTS
-        value: "5"
-      # Throttling. Three independent layers guard the login route, and they
-      # use DIFFERENT variable names — setting only one leaves the others at
-      # their code defaults, which is what produced the 429s during testing.
-      #
-      #   1. per-IP, per-route      OTP_RATE_LIMIT_*  / AUTH_RATE_LIMIT_*
-      #   2. per-mobile, per-route  OTP_SEND_RATE_LIMIT_* / OTP_VERIFY_RATE_LIMIT_*
-      #   3. per-phone, in-service  OTP_SEND_LIMIT_*  / OTP_VERIFY_LIMIT_*
-      #                             + OTP_RESEND_COOLDOWN_SECONDS
-      #
-      # Values below are loosened for pre-launch testing. TIGHTEN BEFORE
-      # LAUNCH — the code defaults (shown in brackets) are the safe baseline.
-
-      # Layer 1 — per IP  [OTP: 15/60s, AUTH: 40/60s]
-      - key: OTP_RATE_LIMIT_MAX
-        value: "100"
-      - key: OTP_RATE_LIMIT_WINDOW_MS
-        value: "60000"
-      - key: AUTH_RATE_LIMIT_MAX
-        value: "200"
-      - key: AUTH_RATE_LIMIT_WINDOW_MS
-        value: "60000"
-
-      # Layer 2 — per mobile+IP  [send 5/15min, verify 10/15min]
-      - key: OTP_SEND_RATE_LIMIT_MAX
-        value: "100"
-      - key: OTP_SEND_RATE_LIMIT_WINDOW_MS
-        value: "900000"
-      - key: OTP_VERIFY_RATE_LIMIT_MAX
-        value: "100"
-      - key: OTP_VERIFY_RATE_LIMIT_WINDOW_MS
-        value: "900000"
-
-      # Layer 3 — per phone, inside the service  [send 5/15min, verify 20/15min,
-      # 60s resend cooldown]. This is the layer that returned
-      # "Too many OTP requests. Try again later."
-      - key: OTP_SEND_LIMIT_PER_WINDOW
-        value: "100"
-      - key: OTP_SEND_LIMIT_WINDOW_SECONDS
-        value: "900"
-      - key: OTP_VERIFY_LIMIT_PER_WINDOW
-        value: "100"
-      - key: OTP_VERIFY_LIMIT_WINDOW_SECONDS
-        value: "900"
-      - key: OTP_RESEND_COOLDOWN_SECONDS
-        value: "0"
+      # While USE_REAL_SMS is unset, anyone can sign in with 1234. The API logs
+      # a loud warning at every boot for as long as that is true.
       - key: SMS_INDIA_HUB_URL
         sync: false
       - key: SMS_INDIA_HUB_API_KEY

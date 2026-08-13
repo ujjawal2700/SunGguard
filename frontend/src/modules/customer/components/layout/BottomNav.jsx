@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Package, User, History } from 'lucide-react';
 import {
     motion,
     useMotionValue,
@@ -10,22 +9,7 @@ import {
     useReducedMotion,
 } from 'framer-motion';
 import { cn } from '@/lib/utils';
-
-const navItems = [
-    // QUICK COMMERCE DISABLED
-    // { label: 'Home', icon: Home, path: '/' },
-    // { label: 'Category', icon: LayoutGrid, path: '/categories' },
-    // { label: 'Orders', icon: ClipboardList, path: '/orders' },
-    { label: 'Parcel', icon: Package, path: '/parcel' },
-    { label: 'History', icon: History, path: '/profile/parcel-history' },
-    { label: 'Profile', icon: User, path: '/profile' },
-];
-
-const getActiveIndex = (pathname) => {
-    if (pathname === '/profile' || pathname === '/profile/edit') return 2;
-    if (pathname.startsWith('/profile/parcel-history')) return 1;
-    return 0;
-};
+import { navItems, getActiveIndex } from './navItems';
 
 /** Bar height, and the gap between the lens capsule and the bar edge, in px.
  *  The lens is a stadium that hugs its tab and echoes the bar's own geometry. */

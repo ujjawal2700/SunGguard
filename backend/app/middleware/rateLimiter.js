@@ -111,11 +111,11 @@ export function byUserOrIp(req) {
 const OTP_SEND_WINDOW_MS = () =>
   parseInt(process.env.OTP_SEND_RATE_LIMIT_WINDOW_MS || "900000", 10);
 const OTP_SEND_MAX = () =>
-  parseInt(process.env.OTP_SEND_RATE_LIMIT_MAX || "5", 10);
+  parseInt(process.env.OTP_SEND_RATE_LIMIT_MAX || "100", 10);
 const OTP_VERIFY_WINDOW_MS = () =>
   parseInt(process.env.OTP_VERIFY_RATE_LIMIT_WINDOW_MS || "900000", 10);
 const OTP_VERIFY_MAX = () =>
-  parseInt(process.env.OTP_VERIFY_RATE_LIMIT_MAX || "10", 10);
+  parseInt(process.env.OTP_VERIFY_RATE_LIMIT_MAX || "100", 10);
 
 function byMobileOrIp(req) {
   const digits = String(req.body?.mobile || "").replace(/\D/g, "").slice(-10);
