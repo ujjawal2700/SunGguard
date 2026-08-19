@@ -53,11 +53,49 @@ const OrderMock = jest.fn().mockImplementation((doc) => {
 OrderMock.find = mockOrderFind;
 OrderMock.findOne = mockOrderFindOne;
 
-jest.unstable_mockModule("mongoose", () => ({
-  default: {
+/**
+ * The service under test only needs `startSession`, but importing it pulls
+ * in model files transitively, and those evaluate `new mongoose.Schema(...)`
+ * at module load. A mock with only `startSession` makes them throw while the
+ * suite is still linking, which surfaces as "suite failed to run" rather than
+ * as a useful error. The stub below is inert — just enough shape for a schema
+ * file to finish evaluating.
+ */
+jest.unstable_mockModule("mongoose", () => {
+  class FakeSchema {
+    constructor(definition = {}, options = {}) {
+      this.obj = definition;
+      this.options = options;
+      this.statics = {};
+      this.methods = {};
+    }
+    index() { return this; }
+    pre() { return this; }
+    post() { return this; }
+    plugin() { return this; }
+    set() { return this; }
+    virtual() { return { get: () => this, set: () => this }; }
+  }
+  FakeSchema.Types = {
+    ObjectId: class FakeObjectId {},
+    Mixed: class FakeMixed {},
+    Decimal128: class FakeDecimal128 {},
+  };
+
+  const mongooseStub = {
     startSession: mockStartSession,
-  },
-}));
+    Schema: FakeSchema,
+    model: jest.fn(() => ({})),
+    models: {},
+    Types: {
+      ObjectId: Object.assign(function FakeObjectId(v) { return { value: v }; }, {
+        isValid: () => true,
+      }),
+    },
+  };
+
+  return { default: mongooseStub, ...mongooseStub };
+});
 
 jest.unstable_mockModule("../app/models/customer.js", () => ({
   default: {

@@ -27,6 +27,7 @@ import Card from "@/shared/components/ui/Card";
 import { useAuth } from "@core/context/AuthContext";
 import { deliveryApi } from "../services/deliveryApi";
 import { parcelApi } from "../../customer/services/parcelApi";
+import { cityParcelApi } from "../services/cityParcelApi";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -39,6 +40,10 @@ const Dashboard = () => {
   ); // 'delivery', 'return', 'parcel'
   const [availableOrders, setAvailableOrders] = useState([]);
   const [assignedParcel, setAssignedParcel] = useState(null);
+  // City Parcel is a separate module with its own collection, so it needs
+  // its own fetch — the pickup-service endpoint above never returns these.
+  const [assignedCityParcel, setAssignedCityParcel] = useState(null);
+  const [openCityJobs, setOpenCityJobs] = useState([]);
   const [earnings, setEarnings] = useState({
     today: 0,
     deliveries: 0,
@@ -46,6 +51,7 @@ const Dashboard = () => {
     cashCollected: 0,
   });
   const assignedParcelRequestRef = useRef({ inFlight: false, lastFetchedAt: 0 });
+  const cityParcelRequestRef = useRef({ inFlight: false, lastFetchedAt: 0 });
 
   // Sync isOnline with user profile from context
   useEffect(() => {
@@ -120,6 +126,34 @@ const Dashboard = () => {
     }
   }, []);
 
+  const fetchCityParcels = useCallback(async (force = false) => {
+    const now = Date.now();
+    if (!force && now - cityParcelRequestRef.current.lastFetchedAt < 30000) return;
+    if (cityParcelRequestRef.current.inFlight) return;
+    cityParcelRequestRef.current.inFlight = true;
+    try {
+      const [assigned, available] = await Promise.allSettled([
+        cityParcelApi.getAssigned({ ttl: 30000, forceRefresh: force }),
+        cityParcelApi.getAvailable({ ttl: 20000, forceRefresh: force }),
+      ]);
+
+      if (assigned.status === "fulfilled") {
+        const d = assigned.value?.data;
+        const list = d?.data?.parcels || d?.parcels || [];
+        setAssignedCityParcel(list[0] || null);
+      }
+      if (available.status === "fulfilled") {
+        const d = available.value?.data;
+        setOpenCityJobs(d?.data?.parcels || d?.parcels || []);
+      }
+    } catch {
+      /* a failed poll should never blank the dashboard */
+    } finally {
+      cityParcelRequestRef.current.inFlight = false;
+      cityParcelRequestRef.current.lastFetchedAt = Date.now();
+    }
+  }, []);
+
   useEffect(() => {
     fetchStats();
     fetchNotifications();
@@ -128,12 +162,13 @@ const Dashboard = () => {
   useEffect(() => {
     if (isOnline && activeTab === "delivery") {
       fetchAssignedParcel();
+      fetchCityParcels();
     }
     if (isOnline && !user?.isBusy) fetchAvailableOrders();
     else if (user?.isBusy) setAvailableOrders([]);
     // Layout already polls available for offer modals; this only fills the dashboard list.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: avoid user-object churn
-  }, [isOnline, activeTab, user?.isBusy, fetchAssignedParcel]);
+  }, [isOnline, activeTab, user?.isBusy, fetchAssignedParcel, fetchCityParcels]);
 
   const handleOnlineToggle = async () => {
     const newStatus = !isOnline;
@@ -314,6 +349,78 @@ const Dashboard = () => {
 
       {/* Main Content */}
       <div className="px-6 space-y-6">
+        {/* City Parcel — separate module, its own card. Placed first because a
+            job already in hand outranks one still on offer. */}
+        {assignedCityParcel && (
+          <Card className="bg-emerald-50/60 border border-emerald-100 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">
+                  Active City Delivery
+                </p>
+                <p className="text-sm font-bold text-slate-900 font-mono">
+                  {assignedCityParcel.referenceId}
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Status: {String(assignedCityParcel.status).replace(/_/g, " ")}
+                </p>
+                {String(assignedCityParcel.paymentMethod).toUpperCase() === "COD" &&
+                !assignedCityParcel.pickedUpAt ? (
+                  <p className="text-xs font-black text-amber-700 mt-1.5">
+                    Collect ₹
+                    {Number(assignedCityParcel.codCollection?.amount || 0).toFixed(2)} at pickup
+                  </p>
+                ) : null}
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() =>
+                  navigate(`/delivery/city-parcel/${assignedCityParcel._id}`)
+                }
+                className="h-9 px-3 text-[11px] font-black uppercase tracking-wider"
+              >
+                Open
+              </Button>
+            </div>
+          </Card>
+        )}
+
+        {!assignedCityParcel && openCityJobs.length > 0 && (
+          <Card className="bg-white border border-emerald-100 shadow-sm">
+            <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">
+              City Deliveries Nearby
+            </p>
+            <div className="mt-3 space-y-2">
+              {openCityJobs.slice(0, 3).map((job) => (
+                <div
+                  key={job._id}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2.5"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-bold text-slate-900">
+                      {job.pickupAddress?.fullAddress?.split(",")[0] || "Pickup"} →{" "}
+                      {job.dropAddress?.fullAddress?.split(",")[0] || "Drop"}
+                    </p>
+                    <p className="text-[11px] text-slate-500 font-mono">
+                      {job.distanceKm} km · earn ₹
+                      {Number(job.riderEarning || 0).toFixed(0)}
+                    </p>
+                  </div>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => navigate(`/delivery/city-parcel/${job._id}`)}
+                    className="h-8 shrink-0 px-3 text-[11px] font-black uppercase tracking-wider"
+                  >
+                    View
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
         {assignedParcel && (
           <Card className="bg-brand-50/50 border border-brand-100 shadow-sm">
             <div className="flex items-center justify-between gap-3">

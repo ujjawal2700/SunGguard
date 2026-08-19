@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./styles/design-system.css";
+@import "./styles/sunguard.css";
 
 @custom-variant dark (&:is(.dark *));
 

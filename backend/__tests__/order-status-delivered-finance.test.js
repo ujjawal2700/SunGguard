@@ -55,6 +55,9 @@ jest.unstable_mockModule("../app/services/orderWorkflowService.js", () => ({
   resolveWorkflowStatus: jest.fn(),
   startReturnPickupBroadcast: jest.fn(),
   removeReturnPickupTimeoutJob: jest.fn(),
+  // orderController imports this too; omitting it makes the whole module
+  // fail to link under ESM, which reads as "suite failed to run".
+  removeSellerTimeoutJob: jest.fn(),
 }));
 
 jest.unstable_mockModule("../app/services/finance/orderFinanceService.js", () => ({

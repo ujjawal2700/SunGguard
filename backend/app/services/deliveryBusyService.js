@@ -2,7 +2,9 @@ import mongoose from "mongoose";
 import Delivery from "../models/delivery.js";
 import Order from "../models/order.js";
 import Parcel from "../models/parcel.js";
+import CityParcel from "../models/cityParcel.js";
 import { WORKFLOW_STATUS } from "../constants/orderWorkflow.js";
+import { CITY_PARCEL_ACTIVE_STATUSES } from "../constants/cityParcelWorkflow.js";
 
 const ACTIVE_WORKFLOW = [
   WORKFLOW_STATUS.DELIVERY_ASSIGNED,
@@ -47,7 +49,7 @@ export async function deliveryPartnerHasActiveJob(deliveryId) {
   const oid = toOid(deliveryId);
   if (!oid) return false;
 
-  const [order, ret, parcel] = await Promise.all([
+  const [order, ret, parcel, cityParcel] = await Promise.all([
     Order.exists({
       deliveryBoy: oid,
       $or: [
@@ -72,9 +74,18 @@ export async function deliveryPartnerHasActiveJob(deliveryId) {
       deliveryPartnerId: oid,
       status: { $in: ACTIVE_PARCEL },
     }),
+    // City Parcel is a separate module with its own collection. Adding it
+    // here is purely additive: it can only mark a rider MORE busy, never
+    // wrongly free, so Order and Parcel behaviour is unchanged. Without it,
+    // a pickup-service job completing would clear isBusy on a rider who is
+    // still carrying a city parcel, and they would be offered a second job.
+    CityParcel.exists({
+      deliveryPartnerId: oid,
+      status: { $in: CITY_PARCEL_ACTIVE_STATUSES },
+    }),
   ]);
 
-  return Boolean(order || ret || parcel);
+  return Boolean(order || ret || parcel || cityParcel);
 }
 
 export async function syncDeliveryPartnerBusyFlag(deliveryId) {

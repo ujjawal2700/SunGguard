@@ -45,6 +45,11 @@ import {
   getFirebaseTrackingCleanupJobInterval,
   isFirebaseTrackingCleanupJobEnabled,
 } from "./app/jobs/firebaseTrackingCleanupJob.js";
+import {
+  getCityParcelSweeperJobHandler,
+  getCityParcelSweeperJobInterval,
+  isCityParcelSweeperEnabled,
+} from "./app/jobs/cityParcelSweeperJob.js";
 import logger from "./app/services/logger.js";
 import { stopScheduledJobs } from "./app/services/distributedScheduler.js";
 
@@ -350,6 +355,18 @@ async function startScheduler() {
     );
   }
 
+  // City Parcel deadlines: widen a stalled rider search, and auto-return a
+  // parcel whose customer never answered "we could not deliver, what now?".
+  // Both are idempotent, which is what lets them run on a schedule instead
+  // of on in-process timers that die with the process.
+  if (isCityParcelSweeperEnabled()) {
+    registerScheduledJob(
+      'cityParcelSweeperJob',
+      getCityParcelSweeperJobInterval(),
+      getCityParcelSweeperJobHandler()
+    );
+  }
+
   // Start all registered jobs
   await startScheduledJobs();
   registerSchedulerStopper(stopScheduledJobs);
@@ -358,6 +375,7 @@ async function startScheduler() {
   if (isPayoutBatchJobEnabled()) scheduledJobs.push('payoutBatchJob');
   if (isWalletLedgerVerifierEnabled()) scheduledJobs.push('walletLedgerVerifierJob');
   if (isFirebaseTrackingCleanupJobEnabled()) scheduledJobs.push('firebaseTrackingCleanupJob');
+  if (isCityParcelSweeperEnabled()) scheduledJobs.push('cityParcelSweeperJob');
   logger.info('Scheduler started', {
     jobs: scheduledJobs,
     role: getProcessRole()

@@ -1,0 +1,195 @@
+/* ==============================================================================
+   SUNGUARD — parcel design system
+   ==============================================================================
+
+   The token layer behind the parcel screens: home, booking, waybill history,
+   and verification. Layered on top of the app's existing theme contract in
+   index.css rather than replacing it, so nothing outside the parcel module
+   shifts.
+
+   Two source documents describe this system and they disagree in places
+   ("SunGuard Elite" wants 4px corners and a dark flagship; "Premium Logistics
+   Alpha" wants 16-24px corners and a light one). Where they conflict, the
+   supplied screens win, because those are what the client actually approved.
+   Resolved as:
+
+     accent     emerald, in BOTH themes. Both documents name green as the
+                action colour, and it carries the primary button in most of
+                the screens. One light mock shows blue; treated as an earlier
+                pass. Changing it is a single token below.
+     type       Hanken Grotesk for headings, JetBrains Mono for labels, IDs
+                and any figure that has to line up. The mono labelling is the
+                most recognisable thing in every screen.
+     radius     the larger scale -- the cards in the screens are visibly soft.
+     themes     both, since the same screens were supplied light and dark.
+   ============================================================================== */
+
+:root {
+  /* ---- ink & surface (light) ---- */
+  --sg-bg: #f4f6fb;
+  --sg-surface: #ffffff;
+  --sg-surface-2: #eef2f9;
+  --sg-surface-inverse: #0b1220;
+
+  --sg-ink: #0b1c30;
+  --sg-ink-2: #4a5568;
+  --sg-ink-3: #8a94a6;
+  --sg-ink-inverse: #f4f6fb;
+
+  --sg-line: #e2e8f2;
+  --sg-line-strong: #cbd5e5;
+
+  /* ---- the one action colour ---- */
+  --sg-accent: #0f9d58;
+  --sg-accent-ink: #ffffff;
+  --sg-accent-soft: #e6f5ec;
+  --sg-accent-line: #b9e3ca;
+
+  /* ---- status ---- */
+  --sg-transit: #1d4ed8;
+  --sg-transit-soft: #e5edff;
+  --sg-done: #0f9d58;
+  --sg-done-soft: #e6f5ec;
+  --sg-warn: #b45309;
+  --sg-warn-soft: #fdf2e3;
+  --sg-fail: #b3261e;
+  --sg-fail-soft: #fdeceb;
+
+  /* ---- shape ---- */
+  --sg-r-sm: 0.5rem;
+  --sg-r: 0.75rem;
+  --sg-r-lg: 1rem;
+  --sg-r-xl: 1.5rem;
+
+  --sg-shadow: 0 1px 2px rgb(11 28 48 / 0.04), 0 8px 24px -14px rgb(11 28 48 / 0.18);
+  --sg-shadow-lift: 0 2px 6px rgb(11 28 48 / 0.06), 0 18px 40px -22px rgb(11 28 48 / 0.32);
+
+  /* ---- type ---- */
+  --sg-font-display: "Hanken Grotesk", "Public Sans", system-ui, sans-serif;
+  --sg-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.dark {
+  /* Deep navy rather than neutral black -- the screens read cool, and a
+     true-black ground makes the emerald look radioactive. */
+  --sg-bg: #080d16;
+  --sg-surface: #101725;
+  --sg-surface-2: #17202f;
+  --sg-surface-inverse: #f4f6fb;
+
+  --sg-ink: #e6eaf2;
+  --sg-ink-2: #9aa5b8;
+  --sg-ink-3: #6b7688;
+  --sg-ink-inverse: #0b1220;
+
+  --sg-line: #212b3d;
+  --sg-line-strong: #2d394f;
+
+  /* Lifted for contrast against the dark ground; the light-mode green is
+     too dense to read here. */
+  --sg-accent: #34d399;
+  --sg-accent-ink: #04231a;
+  --sg-accent-soft: #0e2a22;
+  --sg-accent-line: #1d5344;
+
+  --sg-transit: #7aa2ff;
+  --sg-transit-soft: #16233d;
+  --sg-done: #34d399;
+  --sg-done-soft: #0e2a22;
+  --sg-warn: #e0a94a;
+  --sg-warn-soft: #2a2113;
+  --sg-fail: #f08a80;
+  --sg-fail-soft: #2c1614;
+
+  --sg-shadow: 0 1px 2px rgb(0 0 0 / 0.5), 0 10px 28px -16px rgb(0 0 0 / 0.85);
+  --sg-shadow-lift: 0 2px 8px rgb(0 0 0 / 0.55), 0 22px 48px -24px rgb(0 0 0 / 0.9);
+}
+
+/* Expose the scale to Tailwind utilities (v4 reads @theme). */
+@theme inline {
+  --color-sg-bg: var(--sg-bg);
+  --color-sg-surface: var(--sg-surface);
+  --color-sg-surface-2: var(--sg-surface-2);
+  --color-sg-surface-inverse: var(--sg-surface-inverse);
+  --color-sg-ink: var(--sg-ink);
+  --color-sg-ink-2: var(--sg-ink-2);
+  --color-sg-ink-3: var(--sg-ink-3);
+  --color-sg-ink-inverse: var(--sg-ink-inverse);
+  --color-sg-line: var(--sg-line);
+  --color-sg-line-strong: var(--sg-line-strong);
+  --color-sg-accent: var(--sg-accent);
+  --color-sg-accent-ink: var(--sg-accent-ink);
+  --color-sg-accent-soft: var(--sg-accent-soft);
+  --color-sg-accent-line: var(--sg-accent-line);
+  --color-sg-transit: var(--sg-transit);
+  --color-sg-transit-soft: var(--sg-transit-soft);
+  --color-sg-done: var(--sg-done);
+  --color-sg-done-soft: var(--sg-done-soft);
+  --color-sg-warn: var(--sg-warn);
+  --color-sg-warn-soft: var(--sg-warn-soft);
+  --color-sg-fail: var(--sg-fail);
+  --color-sg-fail-soft: var(--sg-fail-soft);
+
+  --font-sg-display: var(--sg-font-display);
+  --font-sg-mono: var(--sg-font-mono);
+}
+
+/* ---- type roles ----------------------------------------------------------
+   Headings run tight; labels run wide and uppercase. The contrast between
+   those two is what makes the screens look like shipping paperwork rather
+   than a generic app.
+   ------------------------------------------------------------------------- */
+
+.sg-display {
+  font-family: var(--sg-font-display);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  text-wrap: balance;
+}
+
+.sg-heading {
+  font-family: var(--sg-font-display);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+
+.sg-label {
+  font-family: var(--sg-font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1.4;
+}
+
+/* Anywhere digits must line up: waybill ids, fares, timers, codes. */
+.sg-data {
+  font-family: var(--sg-font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* ---- ticket motifs ------------------------------------------------------- */
+
+/* Perforation between the header and body of a consignment note. */
+.sg-perforation {
+  height: 1px;
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--sg-line-strong) 0 6px,
+    transparent 6px 12px
+  );
+}
+
+.sg-glass {
+  background: color-mix(in srgb, var(--sg-surface) 82%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sg-animate { animation: none !important; transition: none !important; }
+}

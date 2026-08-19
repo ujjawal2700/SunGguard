@@ -56,6 +56,7 @@ const PendingDeliveryBoys = React.lazy(
 const AdminParcelDashboard = React.lazy(
   () => import("../pages/AdminParcelDashboard"),
 );
+const CityParcelAdmin = React.lazy(() => import("../pages/CityParcelAdmin"));
 const DeliveryFunds = React.lazy(() => import("../pages/DeliveryFunds"));
 const AdminWallet = React.lazy(() => import("../pages/AdminWallet"));
 const WithdrawalRequests = React.lazy(
@@ -166,6 +167,12 @@ const navItems = [
     path: "/admin/parcels",
     icon: Package,
     color: "cyan",
+  },
+  {
+    label: "City Parcel",
+    path: "/admin/city-parcels",
+    icon: Truck,
+    color: "emerald",
   },
   { label: "Wallet", path: "/admin/wallet", icon: Wallet, color: "violet" },
   {
@@ -278,6 +285,7 @@ const AdminRoutes = () => {
           element={<PendingDeliveryBoys />}
         />
         <Route path="/parcels" element={<AdminParcelDashboard />} />
+        <Route path="/city-parcels" element={<CityParcelAdmin />} />
         <Route path="/tracking" element={<FleetTracking />} />
         <Route path="/delivery-funds" element={<DeliveryFunds />} />
         <Route path="/wallet" element={<AdminWallet />} />

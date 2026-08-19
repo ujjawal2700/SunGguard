@@ -1,4 +1,4 @@
-import { Package, User, History } from 'lucide-react';
+import { Home, Package, User, History } from 'lucide-react';
 
 /**
  * The customer's destinations, in one place.
@@ -8,18 +8,16 @@ import { Package, User, History } from 'lucide-react';
  * destination here reaches both.
  */
 export const navItems = [
-    // QUICK COMMERCE DISABLED
-    // { label: 'Home', icon: Home, path: '/' },
-    // { label: 'Category', icon: LayoutGrid, path: '/categories' },
-    // { label: 'Orders', icon: ClipboardList, path: '/orders' },
-    { label: 'Parcel', icon: Package, path: '/parcel' },
+    { label: 'Home', icon: Home, path: '/' },
+    { label: 'Parcel', icon: Package, path: '/parcel/local' },
     { label: 'History', icon: History, path: '/profile/parcel-history' },
     { label: 'Profile', icon: User, path: '/profile' },
 ];
 
 /** Which destination a pathname belongs to. Defaults to Parcel, the home step. */
 export const getActiveIndex = (pathname) => {
-    if (pathname === '/profile' || pathname === '/profile/edit') return 2;
-    if (pathname.startsWith('/profile/parcel-history')) return 1;
+    if (pathname === '/profile' || pathname.startsWith('/profile/edit')) return 3;
+    if (pathname.startsWith('/profile/parcel-history')) return 2;
+    if (pathname.startsWith('/parcel')) return 1;
     return 0;
 };

@@ -23,6 +23,7 @@ import healthRoute from "./healthRoutes.js";
 import metricsRoute from "./metricsRoutes.js";
 import authOtpRoute from "../modules/otp/otp.routes.js";
 import parcelRoute from "./parcelRoutes.js";
+import cityParcelRoute from "./cityParcelRoutes.js";
 // CAR WASH DISABLED — re-enable by uncommenting import + mount below
 // import carWashRoute from "./carWashRoutes.js";
 
@@ -73,6 +74,9 @@ const setupRoutes = (app) => {
     router.use("/admin/faqs", faqRoute);
     router.use("/public/faqs", faqRoute); // For public access without admin prefix
     router.use("/parcel", parcelRoute);
+    // City Parcel is a separate module on its own prefix. /parcel keeps its
+    // exact existing contract — nothing here shadows or overrides it.
+    router.use("/city-parcel", cityParcelRoute);
     // CAR WASH DISABLED
     // router.use("/car-wash", carWashRoute);
 

@@ -51,8 +51,11 @@ const AboutPage = lazy(() => import('../../modules/customer/pages/AboutPage'));
 const EditProfilePage = lazy(() => import('../../modules/customer/pages/EditProfilePage'));
 const PaymentStatusPage = lazy(() => import('../../modules/customer/pages/PaymentStatusPage'));
 const WalletPage = lazy(() => import('../../modules/customer/pages/WalletPage'));
+const ParcelHome = lazy(() => import('../../modules/customer/pages/ParcelHome'));
+const CityParcelBooking = lazy(() => import('../../modules/customer/pages/CityParcelBooking'));
+const CityParcelTracking = lazy(() => import('../../modules/customer/pages/CityParcelTracking'));
+const WaybillHistory = lazy(() => import('../../modules/customer/pages/WaybillHistory'));
 const ParcelDeliveryPage = lazy(() => import('../../modules/customer/pages/ParcelDeliveryPage'));
-const ParcelHistoryPage = lazy(() => import('../../modules/customer/pages/ParcelHistoryPage'));
 const ParcelSearchTrackingPage = lazy(() => import('../../modules/customer/pages/ParcelSearchTrackingPage'));
 // CAR WASH DISABLED
 // const CarWashBookingPage = lazy(() => import('../../modules/customer/pages/CarWashBookingPage'));
@@ -186,7 +189,7 @@ const AppRouter = () => {
                 {
                     element: <CustomerLayoutWrapper />,
                     children: [
-                        { index: true, element: <ProtectedRoute><ParcelDeliveryPage /></ProtectedRoute> },
+                        { index: true, element: <ProtectedRoute><ParcelHome /></ProtectedRoute> },
                         // QUICK COMMERCE DISABLED
                         // { path: 'categories', element: <CategoriesPage /> },
                         // { path: 'category/:categoryName', element: <CategoryProductsPage /> },
@@ -210,9 +213,12 @@ const AppRouter = () => {
                         { path: 'payment-status', element: <PaymentStatusPage /> },
                         { path: 'profile', element: <ProtectedRoute><ProfilePage /></ProtectedRoute> },
                         { path: 'profile/edit', element: <ProtectedRoute><EditProfilePage /></ProtectedRoute> },
-                        { path: 'profile/parcel-history', element: <ProtectedRoute><ParcelHistoryPage /></ProtectedRoute> },
+                        { path: 'profile/parcel-history', element: <ProtectedRoute><WaybillHistory /></ProtectedRoute> },
                         { path: 'wallet', element: <ProtectedRoute><WalletPage /></ProtectedRoute> },
-                        { path: 'parcel', element: <ProtectedRoute><ParcelDeliveryPage /></ProtectedRoute> },
+                        { path: 'parcel', element: <ProtectedRoute><ParcelHome /></ProtectedRoute> },
+                        { path: 'parcel/outstation', element: <ProtectedRoute><ParcelDeliveryPage /></ProtectedRoute> },
+                        { path: 'parcel/local', element: <ProtectedRoute><CityParcelBooking /></ProtectedRoute> },
+                        { path: 'parcel/local/track/:cityParcelId', element: <ProtectedRoute><CityParcelTracking /></ProtectedRoute> },
                         { path: 'parcel/search/:id', element: <ProtectedRoute><ParcelSearchTrackingPage /></ProtectedRoute> },
                         // CAR WASH DISABLED — customer booking / tracking
                         // { path: 'car-wash', element: <ProtectedRoute><CarWashBookingPage /></ProtectedRoute> },

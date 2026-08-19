@@ -29,6 +29,23 @@ jest.unstable_mockModule("../app/utils/geoUtils.js", () => ({
   distanceMeters: mockDistanceMeters,
 }));
 
+/**
+ * The service gates on "is this rider already carrying something" before it
+ * looks at coordinates. The real implementation reaches into Order, Delivery
+ * and Parcel, none of which are usefully mocked here, so stub the whole
+ * service and let each test say whether the rider is free.
+ */
+const mockHasActiveJob = jest.fn().mockResolvedValue(false);
+const mockMarkBusy = jest.fn();
+const mockClearBusy = jest.fn();
+
+jest.unstable_mockModule("../app/services/deliveryBusyService.js", () => ({
+  deliveryPartnerHasActiveJob: mockHasActiveJob,
+  markDeliveryPartnerBusy: mockMarkBusy,
+  clearDeliveryPartnerBusy: mockClearBusy,
+  syncDeliveryPartnerBusyFlag: jest.fn(),
+}));
+
 const {
   buildSellerOrdersQuery,
   fetchAvailableOrdersForDelivery,
@@ -53,6 +70,9 @@ function makeSelectChain(result) {
 describe("orderQueryService", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // clearAllMocks drops the resolved value too, so restate the default:
+    // an idle, approved rider.
+    mockHasActiveJob.mockResolvedValue(false);
   });
 
   test("buildSellerOrdersQuery maps sidebar status values and date range", () => {
@@ -79,6 +99,7 @@ describe("orderQueryService", () => {
   test("fetchAvailableOrdersForDelivery returns requiresLocation when rider has no coordinates", async () => {
     mockDeliveryFindById.mockResolvedValue({
       _id: "rider-1",
+      isVerified: true,
       location: null,
     });
 
@@ -95,6 +116,7 @@ describe("orderQueryService", () => {
   test("fetchAvailableOrdersForDelivery filters V2 orders by effective search radius and merges with legacy", async () => {
     mockDeliveryFindById.mockResolvedValue({
       _id: "rider-1",
+      isVerified: true,
       location: {
         type: "Point",
         coordinates: [77.59, 12.97],

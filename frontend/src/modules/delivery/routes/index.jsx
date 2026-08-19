@@ -25,6 +25,7 @@ import Withdrawals from "../pages/profile/Withdrawals";
 import Wallet from "../pages/profile/Wallet";
 import Notifications from "../pages/Notifications";
 import ParcelTaskPage from "../pages/ParcelTaskPage";
+import CityParcelTaskPage from "../pages/CityParcelTaskPage";
 import NotFoundPage from "@shared/components/NotFoundPage";
 
 const DeliveryRoutes = () => {
@@ -59,6 +60,8 @@ const DeliveryRoutes = () => {
         <Route path="profile/wallet" element={<Wallet />} />
         <Route path="notifications" element={<Notifications />} />
         <Route path="parcel-task/:parcelId" element={<ParcelTaskPage />} />
+        {/* City Parcel is a separate module; the pickup-service route above is unchanged. */}
+        <Route path="city-parcel/:cityParcelId" element={<CityParcelTaskPage />} />
         <Route path="/" element={<Navigate to="dashboard" replace />} />
       </Route>
       <Route path="*" element={<NotFoundPage homePath="/delivery/dashboard" />} />
