@@ -1,5 +1,9 @@
 import handleResponse from "../utils/helper.js";
-import { geocodeAddress, geocodePlaceId } from "../services/mapsGeocodeService.js";
+import {
+  geocodeAddress,
+  geocodePlaceId,
+  reverseGeocode,
+} from "../services/mapsGeocodeService.js";
 
 export const geocodeAddressController = async (req, res) => {
   try {
@@ -29,6 +33,35 @@ export const geocodeAddressController = async (req, res) => {
       error: {
         code: e.code || "GEOCODE_FAILED",
         message: e.message || "Geocoding failed",
+      },
+    });
+  }
+};
+
+/**
+ * Coordinates -> address. This is what makes "detect my location" produce
+ * something a customer recognises instead of a pair of numbers.
+ *
+ * Kept server-side like forward geocoding so the API key is never shipped to
+ * a client and the shared cache absorbs repeat lookups from the same spot.
+ */
+export const reverseGeocodeController = async (req, res) => {
+  try {
+    const { lat, lng } = req.query;
+    const result = await reverseGeocode(lat, lng);
+
+    return handleResponse(res, 200, "Address found", {
+      location: { lat: result.lat, lng: result.lng },
+      formattedAddress: result.formattedAddress,
+      placeId: result.placeId,
+      components: result.components || {},
+    });
+  } catch (e) {
+    const status = e.statusCode || 500;
+    return handleResponse(res, status, e.message || "Reverse geocoding failed", {
+      error: {
+        code: e.code || "REVERSE_GEOCODE_FAILED",
+        message: e.message || "Reverse geocoding failed",
       },
     });
   }

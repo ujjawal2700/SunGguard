@@ -322,6 +322,21 @@ export async function acceptAtomic({ deliveryId, cityParcelId, idempotencyKey = 
     }
   }
 
+  // "Already mine" is checked before the busy gate, because the rider's
+  // active job may BE this parcel — a double-tap or a retry after a dropped
+  // response. Ordering it after the gate makes a retry fail with "finish your
+  // current job", which is both wrong and impossible to act on.
+  const existing = await CityParcel.findById(cityParcelId)
+    .select("deliveryPartnerId")
+    .lean();
+
+  if (existing && String(existing.deliveryPartnerId) === String(oid)) {
+    const own = await CityParcel.findById(cityParcelId)
+      .populate("customerId", "name phone")
+      .populate("deliveryPartnerId", "name phone vehicleType vehicleNumber");
+    return { parcel: own, duplicate: true };
+  }
+
   if (await deliveryPartnerHasActiveJob(oid)) {
     const err = new Error("Finish your current job before taking another.");
     err.statusCode = 409;
@@ -376,6 +391,18 @@ export async function acceptAtomic({ deliveryId, cityParcelId, idempotencyKey = 
 
   if (!claimed) {
     const latest = await CityParcel.findById(cityParcelId).select("status deliveryPartnerId searchExpiresAt skippedBy").lean();
+
+    // The rider already owns this job. A double-tap or a retried request
+    // after a flaky response should land them on the job, not tell them
+    // someone else took it. The Redis idempotency check above covers this
+    // when Redis is available; this covers it when it is not.
+    if (latest && String(latest.deliveryPartnerId) === String(oid)) {
+      const own = await CityParcel.findById(cityParcelId)
+        .populate("customerId", "name phone")
+        .populate("deliveryPartnerId", "name phone vehicleType vehicleNumber");
+      return { parcel: own, duplicate: true };
+    }
+
     let message = "This job is no longer available";
     if (!latest) message = "That job no longer exists";
     else if (latest.deliveryPartnerId) message = "Another rider got there first.";

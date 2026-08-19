@@ -22,6 +22,17 @@ function cacheKeyAddress(address, country) {
   return `geocode:v2:${h}`;
 }
 
+/**
+ * Coordinates are rounded to ~11 m before hashing. Raw GPS jitters on every
+ * reading, so keying on exact values would make the cache useless — every
+ * lookup would miss and bill another API call.
+ */
+function cacheKeyLatLng(lat, lng) {
+  const raw = `geocode:v2:rev:${Number(lat).toFixed(4)}:${Number(lng).toFixed(4)}`;
+  const h = crypto.createHash("sha1").update(raw).digest("hex");
+  return `geocode:v2:${h}`;
+}
+
 function cacheKeyPlaceId(placeId) {
   const raw = `geocode:v2:pid:${placeId || ""}`.toLowerCase();
   const h = crypto.createHash("sha1").update(raw).digest("hex");
@@ -258,6 +269,154 @@ export async function geocodePlaceId(placeId) {
     );
   } catch {
     // ignore
+  }
+
+  return result;
+}
+
+
+/**
+ * Reverse geocode coordinates into a readable address.
+ *
+ * This is what turns a GPS fix into something a customer recognises and a
+ * rider can act on, so it returns the structured parts (line, locality, city,
+ * state, pincode) as well as the formatted string — the booking form needs
+ * them separately.
+ *
+ * Cached exactly like forward geocoding: Redis first, Mongo behind it.
+ */
+export async function reverseGeocode(lat, lng) {
+  const latitude = Number(lat);
+  const longitude = Number(lng);
+
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    const err = new Error("lat and lng are required");
+    err.statusCode = 400;
+    throw err;
+  }
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+    const err = new Error("lat or lng is out of range");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    const err = new Error(
+      "Google Maps API key missing. Set GOOGLE_MAPS_API_KEY (Geocoding API).",
+    );
+    err.statusCode = 500;
+    err.code = "MAPS_KEY_MISSING";
+    throw err;
+  }
+
+  const key = cacheKeyLatLng(latitude, longitude);
+  const redis = getRedisClient();
+
+  if (redis) {
+    try {
+      const cached = await redis.get(key);
+      if (cached) return JSON.parse(cached);
+    } catch {
+      // ignore cache errors
+    }
+  }
+
+  try {
+    const doc = await GeocodeCache.findOne({ key }).lean();
+    if (doc && doc.expiresAt && doc.expiresAt > new Date()) {
+      return {
+        lat: doc.lat,
+        lng: doc.lng,
+        formattedAddress: doc.formattedAddress || "",
+        placeId: doc.placeId || null,
+        types: Array.isArray(doc.types) ? doc.types : [],
+        components: doc.components || {},
+      };
+    }
+  } catch {
+    // ignore cache errors
+  }
+
+  const resp = await client.reverseGeocode({
+    params: { latlng: { lat: latitude, lng: longitude }, key: apiKey },
+    timeout: 10000,
+  });
+
+  const status = resp.data?.status;
+  if (status && status !== "OK") {
+    const msg = resp.data?.error_message || status;
+    const err = new Error(`Reverse geocoding failed: ${msg}`);
+    err.statusCode = status === "ZERO_RESULTS" ? 404 : 502;
+    err.code = status;
+    throw err;
+  }
+
+  const first = resp.data?.results?.[0];
+  if (!first) {
+    const err = new Error("No address found at those coordinates");
+    err.statusCode = 404;
+    err.code = "ZERO_RESULTS";
+    throw err;
+  }
+
+  const pick = (...types) => {
+    const match = (first.address_components || []).find((c) =>
+      types.some((t) => c.types?.includes(t)),
+    );
+    return match?.long_name || "";
+  };
+
+  const components = {
+    // Street-level line the customer would actually write down.
+    line: [
+      pick("premise", "street_number"),
+      pick("route"),
+    ].filter(Boolean).join(", "),
+    locality: pick("sublocality_level_1", "sublocality", "neighborhood"),
+    city: pick("locality", "administrative_area_level_3", "administrative_area_level_2"),
+    state: pick("administrative_area_level_1"),
+    pincode: pick("postal_code"),
+    country: pick("country"),
+  };
+
+  const result = {
+    lat: latitude,
+    lng: longitude,
+    formattedAddress: first.formatted_address || "",
+    placeId: first.place_id || null,
+    types: Array.isArray(first.types) ? first.types : [],
+    components,
+  };
+
+  const expiresAt = new Date(Date.now() + GEOCODE_CACHE_TTL_SEC() * 1000);
+
+  if (redis) {
+    try {
+      await redis.set(key, JSON.stringify(result), "EX", GEOCODE_CACHE_TTL_SEC());
+    } catch {
+      // ignore cache errors
+    }
+  }
+
+  try {
+    await GeocodeCache.updateOne(
+      { key },
+      {
+        $set: {
+          lat: result.lat,
+          lng: result.lng,
+          formattedAddress: result.formattedAddress,
+          placeId: result.placeId,
+          types: result.types,
+          components: result.components,
+          expiresAt,
+        },
+      },
+      { upsert: true },
+    );
+  } catch {
+    // ignore cache errors
   }
 
   return result;

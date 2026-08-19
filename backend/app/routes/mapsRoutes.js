@@ -1,9 +1,15 @@
 import express from "express";
-import { geocodeAddressController } from "../controller/mapsController.js";
+import {
+    geocodeAddressController,
+    reverseGeocodeController,
+} from "../controller/mapsController.js";
 import { verifyToken } from "../middleware/authMiddleware.js";
 import { mapsRateLimit } from "../middleware/mapsRateLimit.js";
 import { validate } from "../middleware/validate.js";
-import { geocodeQuerySchema } from "../validation/mapsValidation.js";
+import {
+    geocodeQuerySchema,
+    reverseGeocodeQuerySchema,
+} from "../validation/mapsValidation.js";
 
 const router = express.Router();
 
@@ -18,6 +24,16 @@ router.get(
     mapsRateLimit,
     validate(geocodeQuerySchema, "query"),
     geocodeAddressController,
+);
+
+// Reverse geocode: lat/lng -> address. Same auth + rate limit as forward,
+// for the same reason: this spends money on a shared API key.
+router.get(
+    "/reverse-geocode",
+    verifyToken,
+    mapsRateLimit,
+    validate(reverseGeocodeQuerySchema, "query"),
+    reverseGeocodeController,
 );
 
 export default router;

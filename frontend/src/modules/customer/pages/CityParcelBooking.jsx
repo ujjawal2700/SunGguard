@@ -1,14 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ArrowLeft, ArrowRight, User, Phone, Crosshair, MapPin, Package,
+  ArrowLeft, ArrowRight, User, Phone, Package,
   Loader2, IndianRupee, ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@core/context/AuthContext";
 import { cityParcelApi } from "../services/cityParcelApi";
-import MapPicker from "@shared/components/MapPicker";
+import { openCityParcelCheckout } from "../utils/cityParcelRazorpay";
+import LocationPicker from "../components/sunguard/LocationPicker";
+import { useCurrentLocation } from "../hooks/useCurrentLocation";
 import {
   Card, Label, Data, Barcode, StepTracker, Field, inputClass,
   PrimaryButton, GhostButton,
@@ -26,150 +28,112 @@ import {
 const STEPS = ["From", "To", "What", "Pay"];
 
 const emptyAddress = {
-  fullAddress: "", lat: null, lng: null, addressNote: "",
+  lat: null, lng: null,
+  // Filled by the reverse lookup; kept beside the typed parts, not instead.
+  formattedAddress: "",
   line: "", landmark: "", city: "", state: "",
 };
 
 /** The API wants one address string; the form collects it in readable parts. */
-const composeAddress = (addr) =>
-  [addr.line, addr.landmark, addr.city, addr.state]
+const composeAddress = (addr) => {
+  const typed = [addr.line, addr.landmark, addr.city, addr.state]
     .map((part) => String(part || "").trim())
     .filter(Boolean)
     .join(", ");
+  // What the customer wrote wins; the geocoded string is the safety net so a
+  // parcel is never sent with an address the rider cannot read.
+  return typed || String(addr.formattedAddress || "").trim();
+};
 
 const AddressStep = ({
-  heading, nameLabel, value, onChange, person, onPerson, showPerson,
-}) => {
-  const [picking, setPicking] = useState(false);
+  heading, nameLabel, value, onChange, person, onPerson,
+  onDetect, detecting, detectError,
+}) => (
+  <div className="space-y-5">
+    <h1 className="sg-display text-[26px] text-sg-ink">{heading}</h1>
 
-  const useMyLocation = () => {
-    if (!navigator.geolocation) return toast.error("Location isn't available");
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        onChange({ ...value, lat: pos.coords.latitude, lng: pos.coords.longitude });
-        toast.success("Pinned your location");
-      },
-      () => toast.error("Couldn't read your location"),
-      { enableHighAccuracy: true, timeout: 15000 },
-    );
-  };
+    {/* Map first: most people will detect or search rather than type. */}
+    <Card className="p-4">
+      <LocationPicker
+        value={value}
+        onChange={onChange}
+        onDetect={onDetect}
+        detecting={detecting}
+        detectError={detectError}
+      />
+    </Card>
 
-  return (
-    <div className="space-y-5">
-      <h1 className="sg-display text-[26px] text-sg-ink">{heading}</h1>
-
-      <Card className="space-y-4 p-4">
-        {showPerson ? (
-          <>
-            <Field label={nameLabel}>
-              <div className="relative">
-                <User className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-sg-ink-3" />
-                <input
-                  value={person.name}
-                  onChange={(e) => onPerson({ ...person, name: e.target.value })}
-                  placeholder="Full name"
-                  className={cn(inputClass, "pl-10")}
-                />
-              </div>
-            </Field>
-
-            <Field label="Phone">
-              <div className="relative">
-                <Phone className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-sg-ink-3" />
-                <input
-                  value={person.phone}
-                  onChange={(e) =>
-                    onPerson({ ...person, phone: e.target.value.replace(/[^\d+ ]/g, "") })
-                  }
-                  inputMode="tel"
-                  placeholder="+91 00000 00000"
-                  className={cn(inputClass, "pl-10")}
-                />
-              </div>
-            </Field>
-          </>
-        ) : null}
-
-        <Field label="House / Flat / Street">
-          <textarea
-            rows={2}
-            value={value.line}
-            onChange={(e) => onChange({ ...value, line: e.target.value })}
-            placeholder="Flat no, building, street or area"
-            className={cn(inputClass, "resize-none")}
-          />
-        </Field>
-
-        <Field label="Landmark" hint="Optional, but riders find you faster with one.">
+    <Card className="space-y-4 p-4">
+      <Field label={nameLabel}>
+        <div className="relative">
+          <User className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-sg-ink-3" />
           <input
-            value={value.landmark}
-            onChange={(e) => onChange({ ...value, landmark: e.target.value })}
-            placeholder="Near City Mall"
+            value={person.name}
+            onChange={(e) => onPerson({ ...person, name: e.target.value })}
+            placeholder="Full name"
+            className={cn(inputClass, "pl-10")}
+          />
+        </div>
+      </Field>
+
+      <Field label="Phone">
+        <div className="relative">
+          <Phone className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-sg-ink-3" />
+          <input
+            value={person.phone}
+            onChange={(e) =>
+              onPerson({ ...person, phone: e.target.value.replace(/[^\d+ ]/g, "") })
+            }
+            inputMode="tel"
+            placeholder="+91 00000 00000"
+            className={cn(inputClass, "pl-10")}
+          />
+        </div>
+      </Field>
+
+      <Field
+        label="House / Flat / Floor"
+        hint="The map gets us to the building; this gets us to the door."
+      >
+        <textarea
+          rows={2}
+          value={value.line}
+          onChange={(e) => onChange({ ...value, line: e.target.value })}
+          placeholder="Flat no, building, floor"
+          className={cn(inputClass, "resize-none")}
+        />
+      </Field>
+
+      <Field label="Landmark" hint="Optional, but riders find you faster with one.">
+        <input
+          value={value.landmark}
+          onChange={(e) => onChange({ ...value, landmark: e.target.value })}
+          placeholder="Near City Mall"
+          className={inputClass}
+        />
+      </Field>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="City">
+          <input
+            value={value.city}
+            onChange={(e) => onChange({ ...value, city: e.target.value })}
+            placeholder="City"
             className={inputClass}
           />
         </Field>
-
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="City">
-            <input
-              value={value.city}
-              onChange={(e) => onChange({ ...value, city: e.target.value })}
-              placeholder="City"
-              className={inputClass}
-            />
-          </Field>
-          <Field label="State">
-            <input
-              value={value.state}
-              onChange={(e) => onChange({ ...value, state: e.target.value })}
-              placeholder="State"
-              className={inputClass}
-            />
-          </Field>
-        </div>
-      </Card>
-
-      <Card className="relative overflow-hidden p-0">
-        <div className="h-44">
-          {picking ? (
-            <MapPicker
-              value={value.lat ? { lat: value.lat, lng: value.lng } : undefined}
-              onChange={(pos) =>
-                onChange({ ...value, lat: pos.lat, lng: pos.lng })
-              }
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={() => setPicking(true)}
-              className="grid h-full w-full place-items-center bg-sg-surface-2"
-            >
-              <span className="flex flex-col items-center gap-1.5">
-                <MapPin
-                  className={cn(
-                    "h-6 w-6",
-                    value.lat ? "text-sg-accent" : "text-sg-ink-3",
-                  )}
-                />
-                <span className="sg-label text-sg-ink-3">
-                  {value.lat ? "Pinned — tap to adjust" : "Tap to pin on map"}
-                </span>
-              </span>
-            </button>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={useMyLocation}
-          className="absolute bottom-3 right-3 grid h-10 w-10 place-items-center rounded-full bg-sg-surface shadow-[var(--sg-shadow)]"
-          aria-label="Use my current location"
-        >
-          <Crosshair className="h-4 w-4 text-sg-ink" />
-        </button>
-      </Card>
-    </div>
-  );
-};
+        <Field label="State">
+          <input
+            value={value.state}
+            onChange={(e) => onChange({ ...value, state: e.target.value })}
+            placeholder="State"
+            className={inputClass}
+          />
+        </Field>
+      </div>
+    </Card>
+  </div>
+);
 
 /* -------------------------------------------------------------------------- */
 
@@ -179,6 +143,8 @@ const CityParcelBooking = () => {
 
   const [step, setStep] = useState(0);
   const [config, setConfig] = useState(null);
+  const { detect, locating, error: detectError } = useCurrentLocation();
+  const autoDetectedRef = useRef(false);
   const [pickup, setPickup] = useState(emptyAddress);
   const [drop, setDrop] = useState(emptyAddress);
   const [sender, setSender] = useState({ name: "", phone: "" });
@@ -211,7 +177,46 @@ const CityParcelBooking = () => {
     }
   }, [user]);
 
-  const addressReady = (a) => Boolean(a.line?.trim() && a.city?.trim() && a.lat && a.lng);
+  /**
+   * Fold a detected or searched location into the address being edited.
+   *
+   * The reverse lookup fills city and state, but never overwrites what the
+   * customer has already typed — someone who corrected the city should not
+   * see it revert because the pin nudged.
+   */
+  const applyLocation = useCallback((current, found) => ({
+    ...current,
+    lat: found.lat,
+    lng: found.lng,
+    formattedAddress: found.formattedAddress || current.formattedAddress || "",
+    line: current.line || found.components?.line || "",
+    landmark: current.landmark || found.components?.locality || "",
+    city: current.city || found.components?.city || "",
+    state: current.state || found.components?.state || "",
+  }), []);
+
+  const detectInto = useCallback(
+    async (setter, { silent = false } = {}) => {
+      const found = await detect({ silent }).catch(() => null);
+      if (found) setter((current) => applyLocation(current, found));
+      return found;
+    },
+    [detect, applyLocation],
+  );
+
+  // Offer the customer's own location for pickup, once, without being asked.
+  // Silent because a refused permission prompt should not surface an error
+  // the customer never triggered.
+  useEffect(() => {
+    if (autoDetectedRef.current) return;
+    autoDetectedRef.current = true;
+    detectInto(setPickup, { silent: true });
+  }, [detectInto]);
+
+  // A pin plus either a typed line or a resolved address is enough to send
+  // a rider; demanding both blocks anyone whose building has no street name.
+  const addressReady = (a) =>
+    Boolean(a.lat && a.lng && (a.line?.trim() || a.formattedAddress?.trim()));
 
   const canContinue = useMemo(() => {
     if (step === 0) return addressReady(pickup) && sender.name.trim() && sender.phone.trim();
@@ -276,7 +281,15 @@ const CityParcelBooking = () => {
       const parcel = payload?.parcel;
 
       if (payload?.requiresPayment) {
-        await cityParcelApi.confirmPayment(parcel._id);
+        // The gateway hands back a signed receipt; the server checks that
+        // signature before any rider is dispatched. Nothing is confirmed
+        // client-side.
+        const receipt = await openCityParcelCheckout({
+          razorpay: payload.razorpay,
+          parcel,
+          customer: { name: sender.name, phone: sender.phone, email: user?.email },
+        });
+        await cityParcelApi.verifyPayment(parcel._id, receipt);
       }
       toast.success("Booked — finding you a rider");
       navigate(`/parcel/local/track/${parcel._id}`, { replace: true });
@@ -346,7 +359,9 @@ const CityParcelBooking = () => {
               onChange={setPickup}
               person={sender}
               onPerson={setSender}
-              showPerson
+              onDetect={() => detectInto(setPickup)}
+              detecting={locating}
+              detectError={detectError}
             />
           ) : step === 1 ? (
             <AddressStep
@@ -356,7 +371,9 @@ const CityParcelBooking = () => {
               onChange={setDrop}
               person={receiver}
               onPerson={setReceiver}
-              showPerson
+              onDetect={() => detectInto(setDrop)}
+              detecting={locating}
+              detectError={detectError}
             />
           ) : step === 2 ? (
             <div className="space-y-5">

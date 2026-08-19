@@ -12,6 +12,16 @@ const geocodeCacheSchema = new mongoose.Schema(
     formattedAddress: { type: String },
     placeId: { type: String },
     types: { type: [String], default: [] },
+    /**
+     * Structured address parts from a reverse lookup — line, locality, city,
+     * state, pincode, country. Stored so a cache hit can still fill a booking
+     * form; without this field the schema's strict mode would drop it on
+     * write and every cached hit would come back with no usable parts.
+     */
+    components: {
+      type: mongoose.Schema.Types.Mixed,
+      default: undefined,
+    },
     source: { type: String, enum: ["geocode-api"], default: "geocode-api" },
     expiresAt: { type: Date, required: true },
   },

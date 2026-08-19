@@ -60,10 +60,22 @@ export function validate(schema, source = "body") {
         message: joinJoiMessages(error),
       });
     }
-    // Mutating req.query / req.params is supported by Express and matches
-    // the pre-existing req.body pattern; downstream handlers see the
-    // sanitized value transparently.
-    req[source] = value;
+    // Express 4 exposed req.query as a plain writable property. Express 5
+    // makes it a getter-only accessor, so assigning to it throws
+    // "Cannot set property query of #<IncomingMessage> which has only a
+    // getter" and the request 500s before reaching the handler. Redefining
+    // the property gives downstream handlers the sanitized value without
+    // touching the accessor.
+    if (source === "query") {
+      Object.defineProperty(req, "query", {
+        value,
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
+    } else {
+      req[source] = value;
+    }
     return next();
   };
 }

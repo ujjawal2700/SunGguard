@@ -18,8 +18,9 @@ export const cityParcelApi = {
 
   create: (body) => axiosInstance.post("/city-parcel/create", body),
 
-  confirmPayment: (cityParcelId) =>
-    axiosInstance.post(`/city-parcel/${cityParcelId}/confirm-payment`),
+  /** Sends the gateway's signed receipt back for verification. */
+  verifyPayment: (cityParcelId, body) =>
+    axiosInstance.post(`/city-parcel/${cityParcelId}/verify-payment`, body),
 
   getHistory: (options = {}) =>
     getWithDedupe("/city-parcel/history", {}, {

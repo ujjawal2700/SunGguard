@@ -402,6 +402,23 @@ export async function resolveExpiredDecisions({ limit = 50 } = {}) {
  * dead-end while that policy is settled.
  */
 export async function flagCustomerUnreachable({ cityParcelId, deliveryId, note = "" }) {
+  // Checked separately from the update below: folding ownership into the
+  // query makes someone else's parcel report as "not on a return leg",
+  // which sends the rider looking for a problem that isn't theirs.
+  const owned = await CityParcel.findById(cityParcelId)
+    .select("deliveryPartnerId")
+    .lean();
+  if (!owned) {
+    const err = new Error("Parcel not found");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (String(owned.deliveryPartnerId) !== String(deliveryId)) {
+    const err = new Error("This is not your job");
+    err.statusCode = 403;
+    throw err;
+  }
+
   const updated = await CityParcel.findOneAndUpdate(
     {
       _id: cityParcelId,

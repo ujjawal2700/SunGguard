@@ -1,4 +1,5 @@
 import express from "express";
+import mongoose from "mongoose";
 import { verifyToken, allowRoles } from "../middleware/authMiddleware.js";
 import { validate } from "../middleware/validate.js";
 import {
@@ -22,7 +23,7 @@ import {
   getServiceability,
   calculateFare,
   createCityParcel,
-  confirmPayment,
+  verifyPayment,
   getHistory,
   trackCityParcel,
   respondToFailedDelivery,
@@ -58,6 +59,28 @@ import {
  */
 const router = express.Router();
 
+/**
+ * Reject a malformed parcel id before it reaches Mongoose.
+ *
+ * Without this, `/track/not-an-id` throws a CastError that surfaces as a 500
+ * carrying the internal model name and field path — an error the caller
+ * cannot act on and shouldn't see. A bad id in the URL is the caller's
+ * mistake, so it belongs in the 400 range.
+ *
+ * Registered as a param handler so every route taking :cityParcelId is
+ * covered, including ones added later.
+ */
+router.param("cityParcelId", (req, res, next, value) => {
+  if (!mongoose.Types.ObjectId.isValid(String(value))) {
+    return res.status(400).json({
+      success: false,
+      error: true,
+      message: "That parcel reference is not valid",
+    });
+  }
+  return next();
+});
+
 /* ==========================================================================
    CUSTOMER
    ========================================================================== */
@@ -70,7 +93,9 @@ router.get(
 );
 router.post("/calculate-fare", verifyToken, validate(calculateCityFareSchema), calculateFare);
 router.post("/create", verifyToken, validate(createCityParcelSchema), createCityParcel);
-router.post("/:cityParcelId/confirm-payment", verifyToken, confirmPayment);
+// Signature-verified. Replaces the earlier confirm-payment route, which
+// marked a booking PAID on request alone.
+router.post("/:cityParcelId/verify-payment", verifyToken, verifyPayment);
 router.get("/history", verifyToken, getHistory);
 router.get("/track/:cityParcelId", verifyToken, trackCityParcel);
 router.post("/:cityParcelId/my-code", verifyToken, getMyCode);

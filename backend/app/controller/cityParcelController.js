@@ -40,6 +40,11 @@ import {
 } from "../services/deliveryBusyService.js";
 import Delivery from "../models/delivery.js";
 import {
+  createCityParcelOrder,
+  verifyCityParcelSignature,
+  isRazorpayConfigured,
+} from "../services/cityParcelRazorpayService.js";
+import {
   notifyRiderAssigned,
   notifyCustomerOfStatus,
 } from "../services/cityParcelNotifyService.js";
@@ -202,37 +207,122 @@ export const createCityParcel = async (req, res) => {
       });
     }
 
-    return handleResponse(res, 201, "Complete payment to confirm", {
-      parcel,
-      requiresPayment: true,
-    });
+    // Online payment: open a Razorpay order now and hand the client what it
+    // needs to launch checkout. The parcel stays REQUESTED and unbroadcast
+    // until a verified signature comes back — no rider is dispatched against
+    // money that has not actually moved.
+    if (!isRazorpayConfigured()) {
+      await CityParcel.findByIdAndUpdate(parcel._id, {
+        $set: {
+          status: S.CANCELLED,
+          cancelledAt: new Date(),
+          cancelReason: "Online payment unavailable",
+        },
+      });
+      return handleResponse(
+        res,
+        503,
+        "Online payment is unavailable right now. Choose cash on pickup.",
+      );
+    }
+
+    try {
+      const razorpay = await createCityParcelOrder(parcel);
+      parcel.razorpayOrderId = razorpay.orderId;
+      await parcel.save();
+
+      return handleResponse(res, 201, "Complete payment to confirm", {
+        parcel,
+        requiresPayment: true,
+        razorpay,
+      });
+    } catch (payErr) {
+      await CityParcel.findByIdAndUpdate(parcel._id, {
+        $set: {
+          status: S.CANCELLED,
+          cancelledAt: new Date(),
+          cancelReason: "Could not start payment",
+        },
+      });
+      return fail(res, payErr);
+    }
   } catch (error) {
     return fail(res, error);
   }
 };
 
 /**
- * Marks an online booking paid and starts the rider search.
+ * Confirm an online payment and release the parcel to riders.
  *
- * Gateway signature verification is intentionally not here yet — it belongs
- * with the Razorpay wiring, and until that exists this route must stay
- * behind the same trust boundary as the rest of the customer API.
+ * The signature is the whole point: it is an HMAC only Razorpay can produce,
+ * so it proves the gateway actually took the money. The previous version of
+ * this endpoint marked the booking PAID on request alone, which meant anyone
+ * who could call it got a free delivery.
  */
-export const confirmPayment = async (req, res) => {
+export const verifyPayment = async (req, res) => {
   try {
     const { cityParcelId } = req.params;
+    const {
+      razorpay_order_id: razorpayOrderId,
+      razorpay_payment_id: razorpayPaymentId,
+      razorpay_signature: razorpaySignature,
+    } = req.body || {};
 
     const parcel = await CityParcel.findOne({
       _id: cityParcelId,
       customerId: req.user.id,
     });
     if (!parcel) return handleResponse(res, 404, "Booking not found");
+
+    // Replaying a verification must not start a second search.
+    if (parcel.paymentStatus === "PAID") {
+      return handleResponse(res, 200, "Already paid", { parcel });
+    }
+    if (parcel.isCod()) {
+      return handleResponse(res, 400, "This booking is cash on pickup");
+    }
     if (parcel.status !== S.REQUESTED) {
       return handleResponse(res, 409, "This booking is already in progress");
     }
 
+    // The order id must be the one we opened, not one supplied by the caller.
+    if (
+      parcel.razorpayOrderId &&
+      String(razorpayOrderId) !== String(parcel.razorpayOrderId)
+    ) {
+      return handleResponse(res, 400, "This payment belongs to another booking");
+    }
+
+    try {
+      verifyCityParcelSignature({
+        razorpayOrderId,
+        razorpayPaymentId,
+        razorpaySignature,
+      });
+    } catch (sigErr) {
+      await CityParcel.findByIdAndUpdate(cityParcelId, {
+        $set: { paymentStatus: "FAILED" },
+      });
+      logger.warn("City parcel payment verification failed", {
+        referenceId: parcel.referenceId,
+        reason: sigErr?.code || sigErr?.message,
+      });
+      return fail(res, sigErr);
+    }
+
     parcel.paymentStatus = "PAID";
+    parcel.razorpayPaymentId = razorpayPaymentId;
     await parcel.save();
+
+    await recordEvent({
+      cityParcelId: parcel._id,
+      status: S.REQUESTED,
+      previousStatus: S.REQUESTED,
+      actor: CITY_PARCEL_EVENT_ACTOR.CUSTOMER,
+      actorId: req.user.id,
+      note: "Payment confirmed",
+      meta: { razorpayPaymentId },
+    });
 
     const { parcel: searching } = await startBroadcast(parcel._id);
     return handleResponse(res, 200, "Payment confirmed", { parcel: searching });
@@ -419,20 +509,32 @@ export const riderGetAssigned = async (req, res) => {
       deliveryPartnerId: req.user.id,
       status: { $nin: [S.DELIVERED, S.RETURNED, S.CANCELLED] },
     })
-      .select(RIDER_SAFE_FIELDS + " receiver.name receiver.allowAlternate customerId")
+      // receiver.phone is selected so the last four can be derived below, and
+      // is stripped before the response leaves. Selecting only receiver.name
+      // left phoneLast4 empty, which made the read-back check impossible to
+      // satisfy and blocked every delivery from the rider app.
+      .select(
+        RIDER_SAFE_FIELDS +
+          " receiver.name receiver.phone receiver.allowAlternate customerId",
+      )
       .populate("customerId", "name phone")
       .sort({ createdAt: -1 })
       .lean();
 
     // The receiver's full number is never sent to the rider app. They see
     // the last four to read back, which is all the check requires.
-    const masked = parcels.map((p) => ({
-      ...p,
-      receiver: {
-        ...p.receiver,
-        phoneLast4: String(p.receiver?.phone || "").replace(/\D/g, "").slice(-4),
-      },
-    }));
+    const masked = parcels.map((p) => {
+      // Destructured out rather than spread over: spreading the receiver and
+      // adding phoneLast4 would keep the full number in the payload.
+      const { phone, ...receiverSafe } = p.receiver || {};
+      return {
+        ...p,
+        receiver: {
+          ...receiverSafe,
+          phoneLast4: String(phone || "").replace(/\D/g, "").slice(-4),
+        },
+      };
+    });
 
     return handleResponse(res, 200, "Assigned jobs", { parcels: masked });
   } catch (error) {
