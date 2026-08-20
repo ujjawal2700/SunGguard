@@ -250,25 +250,56 @@ export async function fetchAvailableForRider(deliveryId) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return [];
 
   const config = await CityParcelConfig.getConfig();
-  const radiusM = config.baseSearchRadiusKm * 1000;
+  const baseRadiusM = config.baseSearchRadiusKm * 1000;
 
+  /**
+   * Deliberately NOT filtered on `searchExpiresAt`.
+   *
+   * That field paces the push rounds — how long to wait before widening the
+   * radius and alerting more riders. It was never meant to decide whether a
+   * rider opening their app can see an open job, and using it that way made
+   * every unaccepted parcel vanish sixty seconds after booking: still
+   * SEARCHING, still unassigned, invisible to everyone.
+   *
+   * That was survivable only while a scheduler was running to widen the
+   * search. Deployments that run the API alone (PROCESS_ROLE=api) have no
+   * sweeper, so nothing ever revived them.
+   *
+   * An unassigned parcel in SEARCHING is available. Full stop.
+   */
   const open = await CityParcel.find({
     status: S.SEARCHING,
     deliveryPartnerId: null,
-    searchExpiresAt: { $gt: new Date() },
     skippedBy: { $ne: oid },
   })
     .select(RIDER_SAFE_FIELDS)
     .sort({ createdAt: -1 })
-    .limit(30)
+    .limit(50)
     .lean();
+
+  const now = Date.now();
 
   return open
     .filter((parcel) => {
       const pLat = Number(parcel.pickupAddress?.lat);
       const pLng = Number(parcel.pickupAddress?.lng);
       if (!Number.isFinite(pLat) || !Number.isFinite(pLng)) return false;
-      return distanceMeters(pLat, pLng, lat, lng) <= radiusM;
+
+      // A parcel nobody has taken widens its own reach over time, so it stays
+      // discoverable without depending on the sweeper to widen it. Capped, so
+      // a rider is never shown a job on the far side of the city.
+      const roundsElapsed = parcel.searchExpiresAt
+        ? Math.max(0, Math.floor((now - new Date(parcel.searchExpiresAt).getTime()) /
+            CITY_PARCEL_SEARCH_TIMEOUT_MS()))
+        : 0;
+      const widened =
+        baseRadiusM *
+        Math.min(
+          Math.pow(config.radiusMultiplier || 1.6, roundsElapsed),
+          Math.pow(config.radiusMultiplier || 1.6, CITY_PARCEL_SEARCH_MAX_ATTEMPTS()),
+        );
+
+      return distanceMeters(pLat, pLng, lat, lng) <= widened;
     })
     .map((parcel) => ({
       ...parcel,
@@ -379,7 +410,11 @@ export async function acceptAtomic({ deliveryId, cityParcelId, idempotencyKey = 
       _id: cityParcelId,
       status: S.SEARCHING,
       deliveryPartnerId: null,
-      searchExpiresAt: { $gt: now },
+      // No window guard, for the same reason the availability query has none:
+      // the broadcast round paces the push, it does not decide whether an
+      // unclaimed job can still be taken. Guarding here made jobs visible in
+      // the rider's list but impossible to accept, which is worse than
+      // hiding them.
       skippedBy: { $nin: [oid] },
     },
     {
@@ -406,8 +441,7 @@ export async function acceptAtomic({ deliveryId, cityParcelId, idempotencyKey = 
     let message = "This job is no longer available";
     if (!latest) message = "That job no longer exists";
     else if (latest.deliveryPartnerId) message = "Another rider got there first.";
-    else if (latest.searchExpiresAt && new Date(latest.searchExpiresAt) <= now)
-      message = "The accept window closed. Wait for the next one.";
+
     else if ((latest.skippedBy || []).some((id) => String(id) === String(oid)))
       message = "You skipped this job earlier.";
 

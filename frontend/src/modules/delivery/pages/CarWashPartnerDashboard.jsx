@@ -27,14 +27,11 @@ import Card from "@/shared/components/ui/Card";
 import { useAuth } from "@core/context/AuthContext";
 import { deliveryApi } from "../services/deliveryApi";
 import { carWashApi } from "../../customer/services/carWashApi";
-import { GoogleMap, Marker, DirectionsRenderer, useJsApiLoader } from "@react-google-maps/api";
+import { GoogleMap, Marker, DirectionsRenderer } from "@react-google-maps/api";
+import { useMapsLoader } from "@core/maps/useMapsLoader";
 
 const CarWashMap = ({ address, status }) => {
-  const { isLoaded } = useJsApiLoader({
-    id: "google-map-script",
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "",
-    libraries: ["places"],
-  });
+  const { isLoaded } = useMapsLoader();
 
   const [currentLocation, setCurrentLocation] = useState(null);
   const [directions, setDirections] = useState(null);

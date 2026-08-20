@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { GoogleMap, Marker, DirectionsRenderer, useJsApiLoader } from "@react-google-maps/api";
+import { GoogleMap, Marker, DirectionsRenderer } from "@react-google-maps/api";
 import { X, ShieldCheck, Zap, User, Phone, Package } from "lucide-react";
 import { toast } from "sonner";
 import { parcelApi } from "../services/parcelApi";
@@ -8,9 +8,9 @@ import { getOrderSocket, onParcelStatusUpdate } from "@/core/services/orderSocke
 import { createSocketTokenReader } from "@core/utils/authStorage";
 import { STORAGE_KEYS } from "@core/utils/storage";
 import ParcelReviewPrompt from "../components/parcel/ParcelReviewPrompt";
+import { useMapsLoader } from "@core/maps/useMapsLoader";
 
 const getCustomerToken = createSocketTokenReader(STORAGE_KEYS.AUTH_CUSTOMER);
-const MAP_LIBRARIES = ["places"];
 const SEARCH_STATUSES = new Set(["REQUESTED", "SEARCHING"]);
 const TERMINAL_STATUSES = new Set(["DELIVERED", "CANCELLED"]);
 /** After captain collects from user, customer live tracking ends. */
@@ -172,11 +172,7 @@ const ParcelSearchTrackingPage = () => {
     });
   }, []);
 
-  const { isLoaded } = useJsApiLoader({
-    id: "google-map-script",
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "",
-    libraries: MAP_LIBRARIES,
-  });
+  const { isLoaded } = useMapsLoader();
 
   const loadParcel = useCallback(async (silent = false) => {
     if (!id) return;

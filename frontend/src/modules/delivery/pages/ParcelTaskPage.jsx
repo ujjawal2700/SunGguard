@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { GoogleMap, Marker, OverlayView, useJsApiLoader } from "@react-google-maps/api";
+import { GoogleMap, Marker, OverlayView } from "@react-google-maps/api";
 import { MapPin, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { parcelApi } from "../../customer/services/parcelApi";
@@ -10,6 +10,7 @@ import {
   getCurrentPositionWithCache,
   saveDeliveryPartnerLocation,
 } from "../utils/deliveryLastLocation";
+import { useMapsLoader } from "@core/maps/useMapsLoader";
 
 const NEXT_STATUS = {
   ACCEPTED: { next: "RIDER_ASSIGNED", label: "Start Ride to Customer" },
@@ -17,7 +18,6 @@ const NEXT_STATUS = {
   // PICKUP_REACHED → PICKED_UP only after customer OTP verification (handled separately).
   PICKED_UP: { next: "OUT_FOR_DELIVERY", label: "Start Hub Drop" },
 };
-const MAP_LIBRARIES = ["geometry"];
 const TO_CUSTOMER_STATUSES = new Set(["ACCEPTED", "RIDER_ASSIGNED", "PICKUP_REACHED"]);
 
 const ROUTE_REFRESH_MS = 20000;
@@ -124,11 +124,7 @@ const ParcelTaskPage = () => {
     });
   }, []);
 
-  const { isLoaded, loadError } = useJsApiLoader({
-    id: "google-map-script",
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "",
-    libraries: MAP_LIBRARIES,
-  });
+  const { isLoaded, loadError } = useMapsLoader();
 
   const loadAssignedParcel = useCallback(async (silent = false, options = {}) => {
     const force = options.force === true;

@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   GoogleMap,
-  useJsApiLoader,
   Marker,
   Autocomplete,
 } from "@react-google-maps/api";
@@ -9,8 +8,8 @@ import { Search, MapPin, Navigation, Loader2 } from "lucide-react";
 import Modal from "./ui/Modal";
 import Button from "./ui/Button";
 import Input from "./ui/Input";
+import { useMapsLoader } from "@core/maps/useMapsLoader";
 
-const libraries = ["places"];
 const mapContainerStyle = {
   width: "100%",
   height: "340px",
@@ -109,11 +108,7 @@ const MapPicker = ({
     mapRef.current = mapInstance;
   }, []);
 
-  const { isLoaded, loadError } = useJsApiLoader({
-    id: "google-map-script",
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "",
-    libraries,
-  });
+  const { isLoaded, loadError } = useMapsLoader();
 
   useEffect(() => {
     if (initialLocation) {

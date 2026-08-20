@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useMemo, useCallback, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { GoogleMap, useJsApiLoader, Marker, Polyline } from "@react-google-maps/api";
+import { GoogleMap, Marker, Polyline } from "@react-google-maps/api";
 import {
   MapPin,
   Navigation,
@@ -15,8 +15,8 @@ import {
 import customerPin from "@/assets/customer-pin.png";
 import deliveryIcon from "@/assets/deliveryIcon.png";
 import storePin from "@/assets/store-pin.png";
+import { useMapsLoader } from "@core/maps/useMapsLoader";
 
-const libraries = ["geometry"];
 
 const containerStyle = {
   width: "100%",
@@ -67,11 +67,7 @@ const LiveTrackingMap = memo(({
 
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 
-  const { isLoaded, loadError } = useJsApiLoader({
-    id: "google-map-script",
-    googleMapsApiKey: apiKey,
-    libraries,
-  });
+  const { isLoaded, loadError } = useMapsLoader();
 
   const onMapLoad = useCallback((map) => {
     mapRef.current = map;

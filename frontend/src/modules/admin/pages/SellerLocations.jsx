@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   GoogleMap,
-  useJsApiLoader,
   Marker,
   Circle,
 } from "@react-google-maps/api";
@@ -20,6 +19,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { adminApi } from "../services/adminApi";
+import { useMapsLoader } from "@core/maps/useMapsLoader";
 
 const MAP_LIBRARIES = ["geometry"];
 const DEFAULT_CENTER = { lat: 20.5937, lng: 78.9629 };
@@ -114,11 +114,7 @@ const ActiveSellerMap = ({
   getCircleOptions,
 }) => {
   const mapRef = useRef(null);
-  const { isLoaded: mapLoaded, loadError: mapLoadError } = useJsApiLoader({
-    id: "google-map-script",
-    googleMapsApiKey: googleMapApiKey,
-    libraries: MAP_LIBRARIES,
-  });
+  const { isLoaded: mapLoaded, loadError: mapLoadError } = useMapsLoader();
 
   useEffect(() => {
     if (!mapLoaded || !mapRef.current || !window.google) return;

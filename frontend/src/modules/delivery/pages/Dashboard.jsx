@@ -432,11 +432,33 @@ const Dashboard = () => {
           </Card>
         )}
 
+        {!assignedCityParcel && openCityJobs.length === 0 && isOnline && (
+          <button
+            type="button"
+            onClick={() => navigate("/delivery/city-parcel-jobs")}
+            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm"
+          >
+            <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+              City Deliveries
+            </p>
+            <p className="text-sm font-bold text-slate-900">Browse open jobs</p>
+          </button>
+        )}
+
         {!assignedCityParcel && openCityJobs.length > 0 && (
           <Card className="bg-white border border-emerald-100 shadow-sm">
-            <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">
-              City Deliveries Nearby
-            </p>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">
+                City Deliveries Nearby
+              </p>
+              <button
+                type="button"
+                onClick={() => navigate("/delivery/city-parcel-jobs")}
+                className="text-[11px] font-black uppercase tracking-wider text-slate-500 underline underline-offset-2"
+              >
+                See all
+              </button>
+            </div>
             <div className="mt-3 space-y-2">
               {openCityJobs.slice(0, 3).map((job) => (
                 <div

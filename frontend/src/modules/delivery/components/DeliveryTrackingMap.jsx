@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
-import { GoogleMap, useJsApiLoader, Marker } from "@react-google-maps/api";
+import { GoogleMap, Marker } from "@react-google-maps/api";
 import { Loader2 } from "lucide-react";
 import customerPin from "@/assets/customer-pin.png";
 import { deliveryApi } from "../services/deliveryApi";
@@ -9,6 +9,7 @@ import {
   getCachedDeliveryPartnerLocation,
   saveDeliveryPartnerLocation,
 } from "../utils/deliveryLastLocation";
+import { useMapsLoader } from "@core/maps/useMapsLoader";
 
 const libraries = ["geometry"];
 const ROUTE_REFRESH_THRESHOLD_M = 150;
@@ -126,11 +127,7 @@ const DeliveryTrackingMapComponent = ({
 
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 
-  const { isLoaded, loadError } = useJsApiLoader({
-    id: "google-map-script",
-    googleMapsApiKey: apiKey,
-    libraries,
-  });
+  const { isLoaded, loadError } = useMapsLoader();
 
   useEffect(() => {
     if (!navigator.geolocation) return undefined;

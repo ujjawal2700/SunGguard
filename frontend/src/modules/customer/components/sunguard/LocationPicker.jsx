@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { GoogleMap, Marker, Autocomplete, useJsApiLoader } from "@react-google-maps/api";
+import { GoogleMap, Marker, Autocomplete } from "@react-google-maps/api";
 import { Crosshair, Loader2, Search, MapPin, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Label } from "./kit";
 import { lookupAddress } from "../../hooks/useCurrentLocation";
+import { useMapsLoader } from "@core/maps/useMapsLoader";
 
 /**
  * Inline map for picking a pickup or drop point.
@@ -17,7 +18,6 @@ import { lookupAddress } from "../../hooks/useCurrentLocation";
  * detect them.
  */
 
-const LIBRARIES = ["places"];
 const INDIA = { lat: 20.5937, lng: 78.9629 };
 
 const LocationPicker = ({
@@ -30,11 +30,7 @@ const LocationPicker = ({
   searchPlaceholder = "Search for an area, building or landmark",
 }) => {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-  const { isLoaded, loadError } = useJsApiLoader({
-    id: "sunguard-maps",
-    googleMapsApiKey: apiKey || "",
-    libraries: LIBRARIES,
-  });
+  const { isLoaded, loadError } = useMapsLoader();
 
   const [resolving, setResolving] = useState(false);
   const autocompleteRef = useRef(null);

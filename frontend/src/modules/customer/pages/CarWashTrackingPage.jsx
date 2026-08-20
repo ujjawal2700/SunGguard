@@ -17,16 +17,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { carWashApi } from "../services/carWashApi";
-import { GoogleMap, Marker, useJsApiLoader } from "@react-google-maps/api";
+import { GoogleMap, Marker } from "@react-google-maps/api";
+import { useMapsLoader } from "@core/maps/useMapsLoader";
 
 const libraries = ["places"];
 
 const TrackingMap = ({ address, partner }) => {
-  const { isLoaded } = useJsApiLoader({
-    id: "google-map-script",
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "",
-    libraries,
-  });
+  const { isLoaded } = useMapsLoader();
 
   if (!isLoaded) {
     return (
