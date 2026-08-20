@@ -28,6 +28,7 @@ import { deliveryApi } from "../services/deliveryApi";
 import { useAuth } from "@core/context/AuthContext";
 import { useSettings } from "@core/context/SettingsContext";
 import { toast } from "sonner";
+import { compressImage } from "@shared/utils/compressImage";
 
 const VEHICLE_TYPES = [
   { value: "bike", label: "Bike" },
@@ -244,9 +245,12 @@ const DeliveryAuth = () => {
    * shadow was enough — and left applicants with no way past the step.
    * Admin review already covers this properly.
    */
-  const handleDLUpload = (file) => setDlFile(file || null);
-  const handlePanUpload = (file) => setPanFile(file || null);
-  const handleAadharUpload = (file) => setAadharFile(file || null);
+  const handleDLUpload = async (file) =>
+    setDlFile(file ? await compressImage(file) : null);
+  const handlePanUpload = async (file) =>
+    setPanFile(file ? await compressImage(file) : null);
+  const handleAadharUpload = async (file) =>
+    setAadharFile(file ? await compressImage(file) : null);
 
   const handleSendOtp = async () => {
     try {
@@ -311,7 +315,23 @@ const DeliveryAuth = () => {
       setStep("otp");
     } catch (error) {
       console.error(error);
-      toast.error(error.response?.data?.message || "Failed to send OTP");
+
+      /**
+       * "Failed to send OTP" was shown for everything, including the case
+       * where no response arrived at all — so a timeout on a slow upload, a
+       * dropped connection, and a real server rejection were indistinguishable
+       * to the person waiting, and to anyone trying to debug it.
+       */
+      const server = error.response?.data?.message;
+      if (server) {
+        toast.error(server);
+      } else if (error.code === "ECONNABORTED" || /timeout/i.test(error.message || "")) {
+        toast.error("That took too long — check your connection and try again.");
+      } else if (!error.response) {
+        toast.error("Couldn't reach the server. Check your connection and try again.");
+      } else {
+        toast.error(`Something went wrong (${error.response.status}). Please try again.`);
+      }
     } finally {
       setLoading(false);
     }

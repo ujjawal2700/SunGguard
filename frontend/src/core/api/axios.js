@@ -44,6 +44,16 @@ function tokenForRequestUrl(url) {
 
 const axiosInstance = axios.create({
     baseURL: resolveApiBaseUrl(),
+    /**
+     * Without a timeout a stalled request hangs until the browser or the host
+     * gives up, and the app receives no response at all — which is
+     * indistinguishable from a server error and gets reported as a generic
+     * failure nobody can act on.
+     *
+     * 45s is generous enough for a multi-photo upload on mobile data while
+     * still failing in a human timeframe. Individual calls can override it.
+     */
+    timeout: Number(import.meta.env.VITE_API_TIMEOUT_MS) || 45000,
 });
 
 axiosInstance.interceptors.request.use(
