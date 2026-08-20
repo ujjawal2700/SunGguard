@@ -116,27 +116,30 @@ export async function issueCustomerOtp({
     "+otpHash +otpExpiresAt +otpFailedAttempts +otpLockedUntil +otpLastSentAt +otpSessionVersion +otp +otpExpiry",
   );
 
-  if (flow === "login" && (!customer || !customer.isVerified)) {
-    if (useRealSMS()) {
-      otpAuditLog("customer_otp_login_generic_response", {
-        phone: maskPhone(phone),
-        ipAddress,
-        accountExists: !!customer,
-      });
-      return { sent: true, phone };
-    }
-
-    // In mock/dev mode, allow login OTP issuance so local testing works end-to-end.
-    if (!customer) {
-      customer = await Customer.create({
-        name: name || "Customer",
-        phone,
-        isVerified: false,
-      });
-      customer = await Customer.findById(customer._id).select(
-        "+otpHash +otpExpiresAt +otpFailedAttempts +otpLockedUntil +otpLastSentAt +otpSessionVersion +otp +otpExpiry",
-      );
-    }
+  /**
+   * Logging in requires an account to log in to.
+   *
+   * This previously auto-created a customer in mock mode "so local testing
+   * works end-to-end", which meant any number at all could sign in — the
+   * account was created by the act of trying to log in. In real-SMS mode it
+   * instead returned a silent success, so an unregistered caller sat waiting
+   * for an OTP that was never sent.
+   *
+   * Both are now a clear NOT_REGISTERED, which the app turns into an offer to
+   * sign up. The trade-off is account enumeration: a caller can learn which
+   * numbers are registered. That is what the per-phone and per-IP rate limits
+   * on this route are for, and it is the behaviour consumer apps here expect —
+   * being told to sign up beats staring at an OTP box forever.
+   */
+  if (flow === "login" && !customer) {
+    otpAuditLog("customer_otp_login_unregistered", {
+      phone: maskPhone(phone),
+      ipAddress,
+    });
+    const err = new Error("This number is not registered");
+    err.statusCode = 404;
+    err.code = "NOT_REGISTERED";
+    throw err;
   }
 
   if (!customer) {

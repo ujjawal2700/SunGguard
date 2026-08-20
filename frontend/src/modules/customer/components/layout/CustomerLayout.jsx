@@ -89,18 +89,41 @@ const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = fal
 
     // If props are passed, use them. Otherwise, use route-based logic.
     const isParcelSearchPage = path.startsWith('/parcel/search');
+
+    /**
+     * Both City Parcel screens draw their own header — Back, title, and either
+     * Cancel or a status chip — so the layout must not add a second one.
+     */
+    const isCityParcelFlow =
+        path === '/parcel/local' || path.startsWith('/parcel/local/');
+
+    /**
+     * Only booking loses the bottom nav. It pins its own action bar to the
+     * bottom edge, and the floating nav sits at z-500 — so the Continue button
+     * rendered underneath it. Checkout is excluded for the same reason: a
+     * focused, multi-step task owns its full screen, and tapping away
+     * mid-booking loses the draft.
+     *
+     * Tracking keeps the nav. It has no bottom bar to collide with, and it is
+     * a screen people sit on and then navigate away from.
+     */
+    const isCityParcelBooking = path === '/parcel/local';
     const isParcelPage = path === '/parcel' || path.startsWith('/parcel/');
     const showHeader = showHeaderProp !== undefined
         ? showHeaderProp
-        : (!hideHeaderRoutes.includes(path) &&
+        : (!isCityParcelFlow &&
+            !hideHeaderRoutes.includes(path) &&
             !path.startsWith('/category') &&
             !path.startsWith('/orders') &&
             // CAR WASH DISABLED — !path.startsWith('/car-wash') &&
             !path.startsWith('/parcel') &&
-            !isParcelSearchPage);
+            !isParcelSearchPage &&
+            !isCityParcelBooking);
     const showBottomNav = showBottomNavProp !== undefined
         ? showBottomNavProp
-        : (!hideBottomNavRoutes.includes(path) && !isParcelSearchPage);
+        : (!hideBottomNavRoutes.includes(path) &&
+            !isParcelSearchPage &&
+            !isCityParcelBooking);
     const showCart = showCartProp !== undefined
         ? showCartProp
         : (!hideCartRoutes.includes(path) && !path.startsWith('/orders') && !isParcelPage);

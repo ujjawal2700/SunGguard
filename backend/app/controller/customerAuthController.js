@@ -7,6 +7,7 @@ import {
     issueCustomerOtp,
     sanitizeCustomer,
     verifyCustomerOtpCode,
+    normalizeAndValidatePhone,
 } from "../services/otpAuthService.js";
 import {
     sendLoginOtpSchema,
@@ -53,6 +54,19 @@ export const signupCustomer = async (req, res) => {
     try {
         const payload = validateSchema(sendSignupOtpSchema, req.body || {});
 
+        // The mirror of the login case: signing up on a number that already
+        // has an account should send someone to log in, not quietly hand them
+        // an OTP that signs them into the account they forgot they had.
+        const existing = await Customer.findOne({
+            phone: normalizeAndValidatePhone(payload.phone),
+        }).select("isVerified").lean();
+
+        if (existing?.isVerified) {
+            return handleResponse(res, 409, "This number is already registered", {
+                code: "ALREADY_REGISTERED",
+            });
+        }
+
         await issueCustomerOtp({
             name: payload.name,
             rawPhone: payload.phone,
@@ -60,9 +74,11 @@ export const signupCustomer = async (req, res) => {
             ipAddress: req.ip,
         });
 
-        return handleResponse(res, 200, "If the number is eligible, OTP has been sent");
+        return handleResponse(res, 200, "OTP sent", { otpSent: true });
     } catch (error) {
-        return handleResponse(res, error.statusCode || 500, error.message);
+        return handleResponse(res, error.statusCode || 500, error.message, {
+            code: error.code || undefined,
+        });
     }
 };
 
@@ -79,9 +95,14 @@ export const loginCustomer = async (req, res) => {
             ipAddress: req.ip,
         });
 
-        return handleResponse(res, 200, "If the number is eligible, OTP has been sent");
+        return handleResponse(res, 200, "OTP sent", { otpSent: true });
     } catch (error) {
-        return handleResponse(res, error.statusCode || 500, error.message);
+        // The app needs to tell "no account here" apart from every other
+        // failure, so it can offer to sign the person up instead of showing
+        // them an OTP box that will never be filled.
+        return handleResponse(res, error.statusCode || 500, error.message, {
+            code: error.code || undefined,
+        });
     }
 };
 

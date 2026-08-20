@@ -350,7 +350,11 @@ const CityParcelTracking = () => {
     .includes(parcel.status);
 
   return (
-    <div className="min-h-screen bg-sg-bg pb-28">
+    <div
+      className="min-h-screen bg-sg-bg"
+      // Clears the floating nav, which this screen keeps.
+      style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 7rem)" }}
+    >
       <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-sg-line bg-sg-surface px-5 py-4">
         <button type="button" onClick={() => navigate("/")} aria-label="Back">
           <ArrowLeft className="h-5 w-5 text-sg-ink" />

@@ -303,7 +303,10 @@ const CityParcelBooking = () => {
   const back = () => (step === 0 ? navigate("/") : setStep((s) => s - 1));
 
   return (
-    <div className="min-h-screen bg-sg-bg pb-32">
+    <div
+      className="min-h-screen bg-sg-bg"
+      style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 8.5rem)" }}
+    >
       <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-sg-line bg-sg-surface px-5 py-4">
         <button type="button" onClick={back} aria-label="Back">
           <ArrowLeft className="h-5 w-5 text-sg-ink" />
@@ -521,7 +524,13 @@ const CityParcelBooking = () => {
       </div>
 
       {/* ---- sticky action ---- */}
-      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-sg-line bg-sg-surface px-5 pb-6 pt-4">
+      {/* Sits above everything on the page and clears the home indicator on
+          phones that have one. The floating nav is hidden for this flow, so
+          nothing competes for the bottom edge. */}
+      <div
+        className="fixed inset-x-0 bottom-0 z-[600] border-t border-sg-line bg-sg-surface px-5 pt-4"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1.25rem)" }}
+      >
         <div className="mx-auto w-full max-w-lg">
           {step < 3 ? (
             <PrimaryButton

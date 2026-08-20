@@ -68,6 +68,12 @@ const CustomerAuth = () => {
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [code, setCode] = useState('');
+    /**
+     * Shown when the number does not match the mode: logging in with an
+     * unregistered number, or signing up with one that already has an
+     * account. Offers the other mode rather than leaving someone stuck.
+     */
+    const [wrongMode, setWrongMode] = useState(null);
 
     const isLogin = mode === 'login';
     const phoneReady = phone.length === PHONE_LENGTH;
@@ -122,10 +128,33 @@ const CustomerAuth = () => {
             setTimer(RESEND_SECONDS);
             toast.success(`Code sent to +91 ${formatPhone(phone)}`);
         } catch (error) {
+            const code = error?.response?.data?.result?.code;
+
+            // Not an error the customer can fix by retrying — they are on the
+            // wrong side of the toggle. Offer the other one.
+            if (code === 'NOT_REGISTERED') {
+                setWrongMode('signup');
+                return;
+            }
+            if (code === 'ALREADY_REGISTERED') {
+                setWrongMode('login');
+                return;
+            }
+
             toast.error(error?.response?.data?.message || "Couldn't send the code. Try again.");
         } finally {
             setBusy(false);
         }
+    };
+
+    /** Carry the number across so it never has to be typed twice. */
+    const acceptWrongMode = () => {
+        const next = wrongMode;
+        setWrongMode(null);
+        setMode(next);
+        setStep('identity');
+        setCodeError('');
+        if (next === 'login') setName('');
     };
 
     const verifyCode = async (event) => {
@@ -374,6 +403,81 @@ const CustomerAuth = () => {
                     </div>
                 </div>
             </ConsignmentNote>
+
+            {/* ── Wrong side of the toggle ─────────────────────────────────
+                A number with no account, or one that already has one. Both
+                are dead ends on the current mode, so this offers the other
+                one and carries the number over. */}
+            <AnimatePresence>
+                {wrongMode ? (
+                    <motion.div
+                        initial={reduce ? false : { opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={reduce ? undefined : { opacity: 0 }}
+                        className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 px-6"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="wrong-mode-title"
+                        onClick={() => setWrongMode(null)}
+                    >
+                        <motion.div
+                            initial={reduce ? false : { opacity: 0, y: 12, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={reduce ? undefined : { opacity: 0, y: 8, scale: 0.98 }}
+                            transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"
+                        >
+                            <h2
+                                id="wrong-mode-title"
+                                className="text-[19px] font-extrabold tracking-tight text-slate-900"
+                            >
+                                {wrongMode === 'signup'
+                                    ? 'This number is not registered'
+                                    : 'This number already has an account'}
+                            </h2>
+
+                            <p className="mt-2 text-[14px] leading-relaxed text-slate-600">
+                                {wrongMode === 'signup' ? (
+                                    <>
+                                        We have no account for{' '}
+                                        <span className="font-semibold text-slate-900">
+                                            +91 {formatPhone(phone)}
+                                        </span>
+                                        . Open one and you can send your first parcel in a
+                                        minute.
+                                    </>
+                                ) : (
+                                    <>
+                                        <span className="font-semibold text-slate-900">
+                                            +91 {formatPhone(phone)}
+                                        </span>{' '}
+                                        is already registered. Sign in instead — we will keep
+                                        your number.
+                                    </>
+                                )}
+                            </p>
+
+                            <div className="mt-6 space-y-2">
+                                <button
+                                    type="button"
+                                    onClick={acceptWrongMode}
+                                    className="w-full rounded-xl bg-slate-900 py-3.5 text-[14px] font-bold text-white transition active:scale-[0.99]"
+                                >
+                                    {wrongMode === 'signup' ? 'Create an account' : 'Sign in'}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setWrongMode(null)}
+                                    className="w-full rounded-xl py-3 text-[13px] font-semibold text-slate-500"
+                                >
+                                    Use a different number
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                ) : null}
+            </AnimatePresence>
         </DepotGround>
     );
 };
