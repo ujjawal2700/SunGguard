@@ -191,17 +191,37 @@ export const signupDelivery = async (req, res) => {
         let dlUrl = delivery?.documents?.drivingLicense || "";
         let profileImageUrl = delivery?.profileImage || "";
 
-        // Handle File Uploads via Multer
-        for (const file of getUploadedFiles(req)) {
-            if (file.fieldname === "profileImage") {
-                profileImageUrl = await uploadToCloudinary(file.buffer, "delivery/profiles");
-            } else if (file.fieldname === "aadhar") {
-                aadharUrl = await uploadToCloudinary(file.buffer, "delivery/documents");
-            } else if (file.fieldname === "pan") {
-                panUrl = await uploadToCloudinary(file.buffer, "delivery/documents");
-            } else if (file.fieldname === "dl") {
-                dlUrl = await uploadToCloudinary(file.buffer, "delivery/documents");
+        /**
+         * Image hosting is a third party and it can be down, out of quota, or
+         * suspended. When it is, the failure used to arrive as a 500 carrying
+         * the provider's own words — an applicant would reach the end of a
+         * multi-step form and be told "cloud_name is disabled", which means
+         * nothing to them and suggests they did something wrong.
+         *
+         * The provider's message is logged for whoever can act on it; the
+         * applicant gets a sentence about the service, and a 503 so the app
+         * can tell "try again shortly" apart from "your details are wrong".
+         */
+        try {
+            for (const file of getUploadedFiles(req)) {
+                if (file.fieldname === "profileImage") {
+                    profileImageUrl = await uploadToCloudinary(file.buffer, "delivery/profiles");
+                } else if (file.fieldname === "aadhar") {
+                    aadharUrl = await uploadToCloudinary(file.buffer, "delivery/documents");
+                } else if (file.fieldname === "pan") {
+                    panUrl = await uploadToCloudinary(file.buffer, "delivery/documents");
+                } else if (file.fieldname === "dl") {
+                    dlUrl = await uploadToCloudinary(file.buffer, "delivery/documents");
+                }
             }
+        } catch (uploadError) {
+            console.error("[deliverySignup] document upload failed:", uploadError?.message);
+            return handleResponse(
+                res,
+                503,
+                "We can't accept photo uploads right now. Please try again in a few minutes.",
+                { code: "UPLOAD_UNAVAILABLE" },
+            );
         }
 
         const normalizedAadhar = pickBodyString(body, ["aadharUrl"]);
