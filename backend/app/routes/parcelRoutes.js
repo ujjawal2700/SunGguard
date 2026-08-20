@@ -1,4 +1,5 @@
 import express from "express";
+import mongoose from "mongoose";
 import { verifyToken, allowRoles } from "../middleware/authMiddleware.js";
 import {
   calculateFare,
@@ -49,6 +50,28 @@ import {
 } from "../controller/parcelReviewController.js";
 
 const router = express.Router();
+
+/**
+ * Reject a malformed parcel id before Mongoose sees it.
+ *
+ * Without this, an id like "not-an-id" throws a CastError that surfaces as a
+ * 500 carrying the internal model name and field path — an error the caller
+ * cannot act on and should not be shown. A bad id in the URL is the caller's
+ * mistake and belongs in the 400 range.
+ *
+ * Registered as a param handler so every route taking :parcelId is covered,
+ * including any added later.
+ */
+router.param("parcelId", (req, res, next, value) => {
+  if (!mongoose.Types.ObjectId.isValid(String(value))) {
+    return res.status(400).json({
+      success: false,
+      error: true,
+      message: "That parcel reference is not valid",
+    });
+  }
+  return next();
+});
 
 /* ==========================================================================
    CUSTOMER API ROUTES

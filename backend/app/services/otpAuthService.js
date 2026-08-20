@@ -183,13 +183,37 @@ export async function issueCustomerOtp({
   await customer.save();
 
   if (useRealSMS()) {
-    await dispatchCustomerOtpSms({ phone, otp });
-    otpAuditLog("customer_otp_sms_dispatched", {
-      phone: maskPhone(phone),
-      flow,
-      ipAddress,
-      mode: "real",
-    });
+    /**
+     * The account and its OTP are already saved by this point, so a courier
+     * that is down or out of credit does not mean the request failed. Letting
+     * the throw escape reported it as a 500 and told the customer to start
+     * over, when a resend was all that was needed.
+     *
+     * The provider's message goes to the audit log; the caller is told the
+     * code could not be delivered and that retrying is the fix.
+     */
+    try {
+      await dispatchCustomerOtpSms({ phone, otp });
+      otpAuditLog("customer_otp_sms_dispatched", {
+        phone: maskPhone(phone),
+        flow,
+        ipAddress,
+        mode: "real",
+      });
+    } catch (smsError) {
+      otpAuditLog("customer_otp_sms_failed", {
+        phone: maskPhone(phone),
+        flow,
+        ipAddress,
+        error: smsError?.message,
+      });
+      const err = new Error(
+        "We couldn't send your code just now. Please try again in a moment.",
+      );
+      err.statusCode = 502;
+      err.code = "OTP_SMS_FAILED";
+      throw err;
+    }
   } else {
     otpAuditLog("customer_otp_mock_mode", {
       phone: maskPhone(phone),

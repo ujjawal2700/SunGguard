@@ -545,6 +545,53 @@ async function generateSignedUploadURL(options) {
   });
 }
 
+/**
+ * Upload an image, falling back to an inline data URL when the host refuses.
+ *
+ * Image hosting is a third party that can be down, out of quota, or — as
+ * happened here — have the whole account suspended. Without a fallback that
+ * takes the entire signup with it: an applicant fills a multi-step form,
+ * uploads their documents, and cannot register at all because a bucket
+ * somewhere else is unavailable.
+ *
+ * The document fields are plain strings and every consumer renders them with
+ * an <img src>, which treats a data URL exactly like a hosted one. So the
+ * image is stored inline instead, the application completes, and an admin can
+ * still review it.
+ *
+ * Deliberately capped. Mongo documents have a hard 16 MB ceiling and inlining
+ * unbounded images would eventually fail in a much more confusing way than a
+ * clear rejection here.
+ */
+const INLINE_FALLBACK_MAX_BYTES = parseInt(
+  process.env.MEDIA_INLINE_FALLBACK_MAX_BYTES || `${1_500_000}`,
+  10,
+);
+
+async function uploadImageWithFallback(buffer, folder, options = {}) {
+  try {
+    return await uploadToCloudinary(buffer, folder, options);
+  } catch (error) {
+    const size = buffer?.length || 0;
+
+    if (size > INLINE_FALLBACK_MAX_BYTES) {
+      const err = new Error(
+        "That image is too large to accept while our image host is unavailable. Try a smaller photo.",
+      );
+      err.statusCode = 413;
+      err.code = "IMAGE_TOO_LARGE_FOR_FALLBACK";
+      throw err;
+    }
+
+    console.warn(
+      `[mediaService] image host unavailable (${error?.message}); storing inline (${size} bytes)`,
+    );
+
+    const mime = String(options.mimeType || "image/jpeg");
+    return `data:${mime};base64,${buffer.toString("base64")}`;
+  }
+}
+
 export {
   createUploadIntent,
   generateSignedUploadURL,
@@ -552,6 +599,7 @@ export {
   getMediaURL,
   deleteMedia,
   uploadToCloudinary,
+  uploadImageWithFallback,
   isSignedUploadsEnabled,
 };
 

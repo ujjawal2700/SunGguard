@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 import handleResponse from "../utils/helper.js";
 import { sendSmsIndiaHubOtp } from "../services/smsIndiaHubService.js";
 import { generateOTP, useRealSMS } from "../utils/otp.js";
-import { uploadToCloudinary } from "../services/mediaService.js";
+import { uploadImageWithFallback } from "../services/mediaService.js";
 import { clearRiderPresence } from "../services/firebaseService.js";
 import { syncDeliveryPartnerBusyFlag } from "../services/deliveryBusyService.js";
 
@@ -130,6 +130,29 @@ const resolveServiceFlags = (body) => {
     return { error: "Service preference is required (parcel, quick-orders, or both)." };
 };
 
+/**
+ * Send the OTP without letting a courier failure undo the work.
+ *
+ * By the time this runs the account and its OTP are already saved, so an SMS
+ * provider that is down, misconfigured, or out of credit does not mean the
+ * registration failed — but an uncaught throw here reported it as a 500 and
+ * left the applicant believing they had to start over. Worse, retrying then
+ * hit "already exists".
+ *
+ * The provider's own message goes to the logs, where someone can act on it.
+ * The applicant gets told their details are safe and to try the resend.
+ */
+const deliverOtpSms = async (phone, otp) => {
+    if (!useRealSMS()) return { sent: true, mocked: true };
+    try {
+        await sendSmsIndiaHubOtp({ phone, otp });
+        return { sent: true, mocked: false };
+    } catch (error) {
+        console.error("[deliveryAuth] OTP SMS failed:", error?.message);
+        return { sent: false, error: error?.message };
+    }
+};
+
 /* ===============================
    SIGNUP – Send OTP
 ================================ */
@@ -202,25 +225,34 @@ export const signupDelivery = async (req, res) => {
          * applicant gets a sentence about the service, and a 503 so the app
          * can tell "try again shortly" apart from "your details are wrong".
          */
+        /**
+         * Uploads fall back to inline storage when the image host is
+         * unavailable, so a suspended bucket somewhere else cannot stop
+         * someone registering. The only failure left is an image too large to
+         * inline, which the applicant can act on.
+         */
         try {
             for (const file of getUploadedFiles(req)) {
+                const opts = { mimeType: file.mimetype };
                 if (file.fieldname === "profileImage") {
-                    profileImageUrl = await uploadToCloudinary(file.buffer, "delivery/profiles");
+                    profileImageUrl = await uploadImageWithFallback(file.buffer, "delivery/profiles", opts);
                 } else if (file.fieldname === "aadhar") {
-                    aadharUrl = await uploadToCloudinary(file.buffer, "delivery/documents");
+                    aadharUrl = await uploadImageWithFallback(file.buffer, "delivery/documents", opts);
                 } else if (file.fieldname === "pan") {
-                    panUrl = await uploadToCloudinary(file.buffer, "delivery/documents");
+                    panUrl = await uploadImageWithFallback(file.buffer, "delivery/documents", opts);
                 } else if (file.fieldname === "dl") {
-                    dlUrl = await uploadToCloudinary(file.buffer, "delivery/documents");
+                    dlUrl = await uploadImageWithFallback(file.buffer, "delivery/documents", opts);
                 }
             }
         } catch (uploadError) {
             console.error("[deliverySignup] document upload failed:", uploadError?.message);
             return handleResponse(
                 res,
-                503,
-                "We can't accept photo uploads right now. Please try again in a few minutes.",
-                { code: "UPLOAD_UNAVAILABLE" },
+                uploadError?.statusCode || 503,
+                uploadError?.statusCode === 413
+                    ? uploadError.message
+                    : "We couldn't save your photos. Please try again in a few minutes.",
+                { code: uploadError?.code || "UPLOAD_UNAVAILABLE" },
             );
         }
 
@@ -277,8 +309,14 @@ export const signupDelivery = async (req, res) => {
             await delivery.save();
         }
 
-        if (useRealSMS()) {
-            await sendSmsIndiaHubOtp({ phone, otp });
+        const delivery_sms = await deliverOtpSms(phone, otp);
+        if (!delivery_sms.sent) {
+            return handleResponse(
+                res,
+                502,
+                "We couldn't send your code just now. Your details are saved — tap resend in a moment.",
+                { code: "OTP_SMS_FAILED", canResend: true },
+            );
         }
 
         return handleResponse(res, 200, "OTP sent successfully");
@@ -314,8 +352,14 @@ export const loginDelivery = async (req, res) => {
         delivery.otpExpiry = Date.now() + 5 * 60 * 1000;
         await delivery.save();
 
-        if (useRealSMS()) {
-            await sendSmsIndiaHubOtp({ phone, otp });
+        const delivery_sms = await deliverOtpSms(phone, otp);
+        if (!delivery_sms.sent) {
+            return handleResponse(
+                res,
+                502,
+                "We couldn't send your code just now. Your details are saved — tap resend in a moment.",
+                { code: "OTP_SMS_FAILED", canResend: true },
+            );
         }
 
         return handleResponse(res, 200, "OTP sent successfully");
