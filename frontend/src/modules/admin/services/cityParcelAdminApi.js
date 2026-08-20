@@ -23,6 +23,10 @@ export const cityParcelAdminApi = {
   assignRider: (id, deliveryPartnerId) =>
     axiosInstance.put(`/city-parcel/admin/${id}/assign`, { deliveryPartnerId }),
 
+  /** Cancel on the customer's behalf. Refused once a rider holds the parcel. */
+  cancel: (id, reason) =>
+    axiosInstance.put(`/city-parcel/admin/${id}/cancel`, { reason }),
+
   /** Clear or reject a delivery completed past the proximity gate. */
   reviewOverride: (id, body) =>
     axiosInstance.put(`/city-parcel/admin/${id}/review-override`, body),

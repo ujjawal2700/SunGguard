@@ -939,19 +939,48 @@ export async function confirmPickupAtomic(deliveryId, orderId, lat, lng) {
     throw err;
   }
 
-  const order = await Order.findOne({
-    orderId,
-    deliveryBoy: deliveryId,
-    workflowVersion: { $gte: 2 },
-  });
+  /**
+   * One lookup, then each reason reported separately.
+   *
+   * This used to be a single query with three conditions folded in, so a
+   * missing order, an order belonging to another rider, a legacy v1 order,
+   * and a genuinely wrong status all surfaced as the same "Invalid state for
+   * pickup confirmation" — a message that tells the rider nothing and gives
+   * support nothing to go on.
+   */
+  const order = await Order.findOne({ orderId });
+
+  if (!order) {
+    const err = new Error("That order no longer exists");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (String(order.deliveryBoy) !== String(deliveryId)) {
+    const err = new Error("This order is not assigned to you");
+    err.statusCode = 403;
+    throw err;
+  }
+  if (!(order.workflowVersion >= 2)) {
+    const err = new Error(
+      "This is an older order — confirm the pickup from the order screen instead.",
+    );
+    err.statusCode = 409;
+    err.code = "LEGACY_ORDER";
+    throw err;
+  }
 
   const prePickup = new Set([
     WORKFLOW_STATUS.DELIVERY_ASSIGNED,
     WORKFLOW_STATUS.PICKUP_READY,
   ]);
-  if (!order || !prePickup.has(order.workflowStatus)) {
-    const err = new Error("Invalid state for pickup confirmation");
+  if (!prePickup.has(order.workflowStatus)) {
+    const err = new Error(
+      order.workflowStatus === WORKFLOW_STATUS.OUT_FOR_DELIVERY
+        ? "You've already picked this up."
+        : `This order is ${String(order.workflowStatus).replace(/_/g, " ").toLowerCase()} — it can't be picked up now.`,
+    );
     err.statusCode = 409;
+    err.code = "WRONG_STATE";
     throw err;
   }
 

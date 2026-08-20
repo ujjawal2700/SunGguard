@@ -258,6 +258,34 @@ const CityParcelAdmin = () => {
     }
   };
 
+  /**
+   * Cancel on the customer's behalf — wrong address, duplicate booking, a
+   * customer who rang to call it off. Refused server-side once a rider is
+   * holding the parcel, since something physical then has to get back.
+   */
+  const cancelParcel = async (parcel) => {
+    const reason = window.prompt(
+      `Cancel ${parcel.referenceId}?\n\nThe customer is told this reason:`,
+      "",
+    );
+    if (reason === null) return;
+    if (!reason.trim()) {
+      toast.error("Give a reason so the customer can be told why");
+      return;
+    }
+
+    setBusyId(parcel._id);
+    try {
+      await cityParcelAdminApi.cancel(parcel._id, reason.trim());
+      toast.success("Parcel cancelled");
+      await load();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Couldn't cancel this parcel");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const saveConfig = async () => {
     setSavingConfig(true);
     try {
@@ -673,12 +701,13 @@ const CityParcelAdmin = () => {
                 <th className="px-4 py-3">Rider</th>
                 <th className="px-4 py-3">Fare</th>
                 <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3"></th>
               </tr>
             </thead>
             <tbody>
               {parcels.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
                     No city parcels yet.
                   </td>
                 </tr>
@@ -713,6 +742,22 @@ const CityParcelAdmin = () => {
                     </td>
                     <td className="px-4 py-3">
                       <Chip status={p.status} />
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {["DELIVERED", "RETURNED", "CANCELLED"].includes(p.status) ? null : (
+                        <button
+                          type="button"
+                          disabled={busyId === p._id}
+                          onClick={(e) => {
+                            // The row itself opens the detail drawer.
+                            e.stopPropagation();
+                            cancelParcel(p);
+                          }}
+                          className="rounded-lg border border-rose-200 px-3 py-1.5 text-[12px] font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))

@@ -31,6 +31,10 @@ export const cityParcelApi = {
   skip: (cityParcelId) =>
     axiosInstance.post(`/city-parcel/rider/${cityParcelId}/skip`),
 
+  /** Hand an accepted job back to the pool. Only before pickup. */
+  release: (cityParcelId, reason) =>
+    axiosInstance.post(`/city-parcel/rider/${cityParcelId}/release`, { reason }),
+
   updateStatus: (cityParcelId, body) =>
     axiosInstance.put(`/city-parcel/rider/${cityParcelId}/status`, body),
 

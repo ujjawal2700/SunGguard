@@ -44,6 +44,7 @@ const CityParcelTaskPage = () => {
   const [pickupOtp, setPickupOtp] = useState("");
   const [pickupProof, setPickupProof] = useState("");
   const [verifyingPickup, setVerifyingPickup] = useState(false);
+  const [releasing, setReleasing] = useState(false);
 
   /* ---------------- location ---------------- */
 
@@ -129,6 +130,33 @@ const CityParcelTaskPage = () => {
       toast.error(err?.response?.data?.message || "Could not confirm pickup");
     } finally {
       setVerifyingPickup(false);
+    }
+  };
+
+  /**
+   * Give the job back so someone else can take it.
+   *
+   * A rider who cannot finish — unreachable customer, breakdown, end of shift
+   * — had no way out, and the job stayed locked to them where nobody else
+   * could see it. Only offered before pickup: once they hold the parcel it
+   * has to be physically returned, which is a different flow.
+   */
+  const release = async () => {
+    const reason = window.prompt(
+      "Why are you giving this job back?\n\nThe customer will be matched with another rider.",
+      "",
+    );
+    if (reason === null) return;
+
+    setReleasing(true);
+    try {
+      await cityParcelApi.release(cityParcelId, reason.trim());
+      toast.success("Job released — we'll find another rider");
+      navigate("/delivery/dashboard");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Couldn't release this job");
+    } finally {
+      setReleasing(false);
     }
   };
 
@@ -316,6 +344,19 @@ const CityParcelTaskPage = () => {
           {advancing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           {step.label}
           <ChevronRight className="h-4 w-4" />
+        </button>
+      ) : null}
+
+      {!parcel.pickedUpAt &&
+      ["ACCEPTED", "RIDER_ASSIGNED", "PICKUP_REACHED"].includes(parcel.status) ? (
+        <button
+          type="button"
+          onClick={release}
+          disabled={releasing}
+          className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 py-2.5 text-[13px] font-semibold text-rose-700 disabled:opacity-50"
+        >
+          {releasing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+          Can't do this job — give it back
         </button>
       ) : null}
 

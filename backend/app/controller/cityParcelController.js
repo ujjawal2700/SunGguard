@@ -15,6 +15,7 @@ import {
   fetchAvailableForRider,
   acceptAtomic,
   skipJob,
+  releaseJob,
 } from "../services/cityParcelWorkflowService.js";
 import {
   issueOtp,
@@ -597,6 +598,27 @@ export const riderSkip = async (req, res) => {
 };
 
 /** Movement between milestones that need no verification. */
+/**
+ * A rider handing an accepted job back so someone else can take it.
+ *
+ * Only before they have the parcel — after that it is a return, not a
+ * release, because the parcel has to physically get back to the customer.
+ */
+export const riderReleaseJob = async (req, res) => {
+  try {
+    const parcel = await releaseJob({
+      deliveryId: req.user.id,
+      cityParcelId: req.params.cityParcelId,
+      reason: String(req.body?.reason || "").trim(),
+    });
+    return handleResponse(res, 200, "Job released — another rider can take it", {
+      parcel,
+    });
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
 export const riderUpdateStatus = async (req, res) => {
   try {
     const { cityParcelId } = req.params;
@@ -1310,6 +1332,95 @@ export const adminAssignRider = async (req, res) => {
     notifyCustomerOfStatus(assigned, { riderName: rider.name });
 
     return handleResponse(res, 200, `Assigned to ${rider.name}`, { parcel: assigned });
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
+/**
+ * Cancel a parcel on the customer's behalf.
+ *
+ * Support gets asked for this constantly — wrong address, duplicate booking,
+ * a customer who changed their mind after a rider was assigned. Until now the
+ * only cancel was the customer's own, and it refused once a rider had the
+ * parcel, so those calls had nowhere to go.
+ *
+ * Still refuses once the parcel is physically in a rider's hands: cancelling
+ * then would leave a real object with nobody responsible for it. That case
+ * needs a return, which has its own flow.
+ */
+export const adminCancelParcel = async (req, res) => {
+  try {
+    const { cityParcelId } = req.params;
+    const reason = String(req.body?.reason || "").trim();
+
+    if (!reason) {
+      return handleResponse(res, 400, "Give a reason so the customer can be told why");
+    }
+
+    const parcel = await CityParcel.findById(cityParcelId);
+    if (!parcel) return handleResponse(res, 404, "Parcel not found");
+
+    if ([S.DELIVERED, S.RETURNED, S.CANCELLED].includes(parcel.status)) {
+      return handleResponse(
+        res,
+        409,
+        `This parcel is already ${parcel.status.toLowerCase()}`,
+      );
+    }
+
+    if (parcel.isInRiderCustody()) {
+      return handleResponse(
+        res,
+        409,
+        "The rider is holding this parcel. Send it back to the customer instead of cancelling.",
+        { code: "IN_CUSTODY" },
+      );
+    }
+
+    const previousRider = parcel.deliveryPartnerId;
+
+    const cancelled = await transition({
+      cityParcelId,
+      to: S.CANCELLED,
+      set: {
+        cancelledAt: new Date(),
+        cancelReason: reason,
+        deliveryPartnerId: null,
+      },
+      unset: { searchExpiresAt: 1 },
+      actor: CITY_PARCEL_EVENT_ACTOR.ADMIN,
+      actorId: req.user.id,
+      note: `Cancelled by an admin: ${reason}`,
+      meta: { reason, hadRider: Boolean(previousRider) },
+    });
+
+    // Free the rider it was taken from, and stop it flashing on their phone.
+    if (previousRider) {
+      emitToDelivery(previousRider, {
+        event: "cityparcel:cancelled",
+        payload: { cityParcelId: String(cancelled._id), reason },
+      });
+      await syncDeliveryPartnerBusyFlag(previousRider);
+    }
+
+    emitToCustomer(cancelled.customerId, {
+      event: "cityparcel:status:update",
+      payload: {
+        cityParcelId: String(cancelled._id),
+        status: S.CANCELLED,
+        parcel: cancelled,
+        message: `Your booking was cancelled: ${reason}`,
+      },
+    });
+    emitToAdmins("cityparcel:status:update", cancelled);
+
+    logger.info("City parcel cancelled by admin", {
+      referenceId: cancelled.referenceId,
+      reason,
+    });
+
+    return handleResponse(res, 200, "Parcel cancelled", { parcel: cancelled });
   } catch (error) {
     return fail(res, error);
   }

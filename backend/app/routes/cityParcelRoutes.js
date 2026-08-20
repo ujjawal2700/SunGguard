@@ -33,6 +33,7 @@ import {
   riderGetAssigned,
   riderAccept,
   riderSkip,
+  riderReleaseJob,
   riderUpdateStatus,
   riderVerifyPickup,
   riderSendDeliveryOtp,
@@ -45,6 +46,7 @@ import {
   adminGetOne,
   adminReviewOverride,
   adminAssignRider,
+  adminCancelParcel,
   adminListAvailableRiders,
   adminGetStats,
   adminGetConfig,
@@ -128,6 +130,14 @@ router.post(
   riderAccept,
 );
 router.post("/rider/:cityParcelId/skip", verifyToken, allowRoles("delivery"), riderSkip);
+// Hand an accepted job back to the pool. Refused once the rider has the
+// parcel — that is a return, not a release.
+router.post(
+  "/rider/:cityParcelId/release",
+  verifyToken,
+  allowRoles("delivery"),
+  riderReleaseJob,
+);
 router.put(
   "/rider/:cityParcelId/status",
   verifyToken,
@@ -214,6 +224,12 @@ router.put(
   allowRoles("admin", "parcel_admin"),
   validate(adminAssignRiderSchema),
   adminAssignRider,
+);
+router.put(
+  "/admin/:cityParcelId/cancel",
+  verifyToken,
+  allowRoles("admin", "parcel_admin"),
+  adminCancelParcel,
 );
 router.put(
   "/admin/:cityParcelId/review-override",

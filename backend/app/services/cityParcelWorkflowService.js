@@ -5,7 +5,11 @@ import Delivery from "../models/delivery.js";
 import { distanceMeters } from "../utils/geoUtils.js";
 import { getParcelRiderIdsNearPickup } from "./deliveryNearbyService.js";
 import { emitToDelivery, emitToCustomer, emitToAdmins } from "./orderSocketEmitter.js";
-import { deliveryPartnerHasActiveJob, markDeliveryPartnerBusy } from "./deliveryBusyService.js";
+import {
+  deliveryPartnerHasActiveJob,
+  markDeliveryPartnerBusy,
+  syncDeliveryPartnerBusyFlag,
+} from "./deliveryBusyService.js";
 import { transition, recordEvent } from "./cityParcelStateMachine.js";
 import { computeRiderEarning } from "./cityParcelFareService.js";
 import { getRedisClient } from "../config/redis.js";
@@ -531,6 +535,113 @@ export async function acceptAtomic({ deliveryId, cityParcelId, idempotencyKey = 
   }
 
   return { parcel: claimed, duplicate: false };
+}
+
+/**
+ * Hand an accepted job back to the pool.
+ *
+ * A rider who cannot finish — the customer will not answer, their bike has
+ * broken down, they have to stop for the day — previously had no way out.
+ * The job stayed assigned to them and nobody else could take it, which is
+ * worse for the customer than an honest release.
+ *
+ * Only allowed before custody transfers. Once the rider is physically holding
+ * the parcel, walking away is not release, it is a return: a different flow
+ * with its own verification, because someone has to hand the parcel back.
+ *
+ * The releasing rider is added to `skippedBy` so the broadcast does not
+ * immediately offer it back to them.
+ */
+export async function releaseJob({ deliveryId, cityParcelId, reason = "" }) {
+  const oid = toOid(deliveryId);
+  if (!oid) {
+    const err = new Error("Invalid delivery account");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const parcel = await CityParcel.findById(cityParcelId)
+    .select("status deliveryPartnerId referenceId")
+    .lean();
+
+  if (!parcel) {
+    const err = new Error("That job no longer exists");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (String(parcel.deliveryPartnerId) !== String(oid)) {
+    const err = new Error("This is not your job");
+    err.statusCode = 403;
+    throw err;
+  }
+
+  const RELEASABLE = [S.ACCEPTED, S.RIDER_ASSIGNED, S.PICKUP_REACHED];
+  if (!RELEASABLE.includes(parcel.status)) {
+    const err = new Error(
+      parcel.status === S.PICKED_UP || parcel.status === S.OUT_FOR_DELIVERY
+        ? "You already have the parcel. Report a failed delivery instead so it can be returned."
+        : `A job that is ${String(parcel.status).replace(/_/g, " ").toLowerCase()} can't be released.`,
+    );
+    err.statusCode = 409;
+    err.code = "NOT_RELEASABLE";
+    throw err;
+  }
+
+  const config = await CityParcelConfig.getConfig();
+  const now = new Date();
+
+  // Guarded on both id and rider so two taps cannot release it twice.
+  const released = await CityParcel.findOneAndUpdate(
+    { _id: cityParcelId, deliveryPartnerId: oid, status: { $in: RELEASABLE } },
+    {
+      $set: {
+        status: S.SEARCHING,
+        deliveryPartnerId: null,
+        acceptedAt: null,
+        searchExpiresAt: new Date(now.getTime() + CITY_PARCEL_SEARCH_TIMEOUT_MS()),
+        searchMeta: { radiusKm: config.baseSearchRadiusKm, attempt: 1, lastBroadcastAt: now },
+      },
+      $addToSet: { skippedBy: oid },
+    },
+    { new: true },
+  );
+
+  if (!released) {
+    const err = new Error("This job changed while you were releasing it");
+    err.statusCode = 409;
+    throw err;
+  }
+
+  await recordEvent({
+    cityParcelId: released._id,
+    status: S.SEARCHING,
+    previousStatus: parcel.status,
+    actor: CITY_PARCEL_EVENT_ACTOR.RIDER,
+    actorId: oid,
+    note: reason ? `Rider released the job: ${reason}` : "Rider released the job",
+    meta: { released: true, reason },
+  });
+
+  // Freed for their next job, and the parcel goes back in front of everyone.
+  await syncDeliveryPartnerBusyFlag(oid);
+  await fanOutToNearbyRiders(released, config.baseSearchRadiusKm);
+
+  emitToCustomer(released.customerId, {
+    event: "cityparcel:status:update",
+    payload: {
+      cityParcelId: String(released._id),
+      status: S.SEARCHING,
+      message: "We're finding you another delivery partner.",
+    },
+  });
+  emitToAdmins("cityparcel:status:update", released);
+
+  logger.info("City parcel released by rider", {
+    referenceId: released.referenceId,
+    reason,
+  });
+
+  return released;
 }
 
 /** A rider passing on a job — they stop seeing it, everyone else still does. */
