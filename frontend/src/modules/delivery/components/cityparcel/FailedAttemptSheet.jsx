@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import ParcelProofCapture from "../ParcelProofCapture";
 import { cityParcelApi } from "../../services/cityParcelApi";
+import { unwrap } from "@core/api/unwrap";
 
 /**
  * Reporting that a handover could not happen.
@@ -62,7 +63,7 @@ const FailedAttemptSheet = ({ parcel, riderLocation, minWaitMinutes = 5, onDone,
         waitedMinutes,
         location: riderLocation,
       });
-      const payload = data?.data || data;
+      const payload = unwrap({ data });
       toast.success(
         payload?.isLastAttempt
           ? "Logged. We've asked the customer where to return it."

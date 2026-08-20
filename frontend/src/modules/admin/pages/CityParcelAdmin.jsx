@@ -6,6 +6,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { cityParcelAdminApi } from "../services/cityParcelAdminApi";
+import { unwrap, unwrapList } from "@core/api/unwrap";
 
 /**
  * City Parcel operations console.
@@ -56,7 +57,7 @@ const AssignModal = ({ parcel, onClose, onAssigned }) => {
   useEffect(() => {
     cityParcelAdminApi
       .listRiders()
-      .then((res) => setRiders(res?.data?.data?.riders || res?.data?.riders || []))
+      .then((res) => setRiders(unwrapList(res, "riders")))
       .catch(() => toast.error("Couldn't load riders"))
       .finally(() => setLoading(false));
   }, []);
@@ -180,7 +181,7 @@ const CityParcelAdmin = () => {
     setLoading(true);
     try {
       const res = await cityParcelAdminApi.list({ limit: 200 });
-      setParcels(res?.data?.data?.parcels || res?.data?.parcels || []);
+      setParcels(unwrapList(res, "parcels"));
     } catch (err) {
       toast.error(err?.response?.data?.message || "Couldn't load parcels");
     } finally {
@@ -192,7 +193,7 @@ const CityParcelAdmin = () => {
     load();
     cityParcelAdminApi
       .getConfig()
-      .then((res) => setConfig(res?.data?.data?.config || res?.data?.config))
+      .then((res) => setConfig(unwrap(res)?.config))
       .catch(() => {});
   }, [load]);
 

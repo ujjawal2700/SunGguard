@@ -7,6 +7,7 @@ import { parcelApi } from "../services/parcelApi";
 import {
   Card, Label, Data, Barcode, StatusChip, EmptyNote, PrimaryButton,
 } from "../components/sunguard/kit";
+import { unwrapList } from "@core/api/unwrap";
 
 /**
  * Every waybill the customer has, across both services.
@@ -135,7 +136,7 @@ const WaybillHistory = () => {
 
     if (city.status === "fulfilled") {
       const d = city.value?.data;
-      for (const p of d?.data?.parcels || d?.parcels || []) {
+      for (const p of unwrapList({ data: d }, "parcels")) {
         out.push({
           kind: "local",
           id: p._id,
@@ -151,7 +152,7 @@ const WaybillHistory = () => {
 
     if (legacy.status === "fulfilled") {
       const d = legacy.value?.data;
-      const list = d?.data?.parcels || d?.parcels || d?.data || [];
+      const list = unwrapList({ data: d }, "parcels");
       for (const p of Array.isArray(list) ? list : []) {
         out.push({
           kind: "outstation",

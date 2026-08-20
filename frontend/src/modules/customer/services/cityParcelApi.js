@@ -8,8 +8,13 @@ import { getWithDedupe } from "@core/api/dedupe";
  * touches those endpoints.
  */
 export const cityParcelApi = {
-  getBookingConfig: () =>
-    getWithDedupe("/city-parcel/booking-config", {}, { ttl: 30000 }),
+  // forceRefresh matters for the retry button: without it a failed first load
+  // would be served the cached failure and the button would do nothing.
+  getBookingConfig: (options = {}) =>
+    getWithDedupe("/city-parcel/booking-config", {}, {
+      ttl: options.ttl ?? 30000,
+      forceRefresh: options.forceRefresh ?? false,
+    }),
 
   getServiceability: (params) =>
     axiosInstance.get("/city-parcel/serviceability", { params }),

@@ -15,6 +15,7 @@ import {
   getCurrentPositionWithCache,
   saveDeliveryPartnerLocation,
 } from "../utils/deliveryLastLocation";
+import { unwrapList } from "@core/api/unwrap";
 
 /**
  * A rider's whole job on one screen: ride to A, collect, ride to B, hand over.
@@ -73,7 +74,7 @@ const CityParcelTaskPage = () => {
   const load = useCallback(async () => {
     try {
       const { data } = await cityParcelApi.getAssigned({ forceRefresh: true });
-      const list = data?.data?.parcels || data?.parcels || [];
+      const list = unwrapList({ data }, "parcels");
       const found = list.find((p) => String(p._id) === String(cityParcelId));
       if (!found) {
         toast.error("This job is no longer assigned to you");

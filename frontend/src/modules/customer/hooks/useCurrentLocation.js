@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import axiosInstance from "@core/api/axios";
+import { unwrap } from "@core/api/unwrap";
 
 /**
  * Find where the customer is and turn it into an address.
@@ -51,7 +52,7 @@ export async function lookupAddress(lat, lng) {
   const { data } = await axiosInstance.get("/maps/reverse-geocode", {
     params: { lat, lng },
   });
-  const payload = data?.result || data?.data || {};
+  const payload = unwrap({ data }) || {};
   return {
     formattedAddress: payload.formattedAddress || "",
     components: payload.components || {},

@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import ParcelProofCapture from "../ParcelProofCapture";
 import ProximityBanner from "./ProximityBanner";
 import { cityParcelApi } from "../../services/cityParcelApi";
+import { unwrap } from "@core/api/unwrap";
 
 /**
  * The handover at point B.
@@ -53,7 +54,7 @@ const DeliveryVerifySheet = ({ parcel, riderLocation, onDone, onFailedAttempt })
         lng: riderLocation?.lng,
         accuracyM: riderLocation?.accuracyM,
       });
-      const result = data?.data || data;
+      const result = unwrap({ data });
       const stateByReason = {
         OK: "ok",
         TOO_FAR: "far",
@@ -85,7 +86,7 @@ const DeliveryVerifySheet = ({ parcel, riderLocation, onDone, onFailedAttempt })
       setSendingOtp(true);
       try {
         const { data } = await cityParcelApi.sendDeliveryOtp(cityParcelId, { resend });
-        const payload = data?.data || data;
+        const payload = unwrap({ data });
         toast.success(
           resend ? "New code sent to the receiver" : "Code sent to the receiver",
         );
@@ -141,7 +142,7 @@ const DeliveryVerifySheet = ({ parcel, riderLocation, onDone, onFailedAttempt })
         overrideReason: proximityBlocking ? overrideReason.trim() : "",
       });
 
-      const payload = data?.data || data;
+      const payload = unwrap({ data });
       if (payload?.payoutWithheld) {
         toast.warning(
           "Delivered. Your payment is on hold until support reviews the location.",

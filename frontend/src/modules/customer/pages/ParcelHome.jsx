@@ -18,6 +18,7 @@ import {
   Card, Label, Data, Barcode, StatusChip, ServiceToggle, PrimaryButton,
   EmptyNote,
 } from "../components/sunguard/kit";
+import { unwrapList } from "@core/api/unwrap";
 
 const getCustomerToken = createSocketTokenReader(STORAGE_KEYS.AUTH_CUSTOMER);
 
@@ -177,11 +178,11 @@ const ParcelHome = () => {
 
     if (city.status === "fulfilled") {
       const d = city.value?.data;
-      setCityParcels(d?.data?.parcels || d?.parcels || []);
+      setCityParcels(unwrapList({ data: d }, "parcels"));
     }
     if (legacy.status === "fulfilled") {
       const d = legacy.value?.data;
-      setOutstation(d?.data?.parcels || d?.parcels || d?.data || []);
+      setOutstation(unwrapList({ data: d }, "parcels"));
     }
     setLoading(false);
   }, []);

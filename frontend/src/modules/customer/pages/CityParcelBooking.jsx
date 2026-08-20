@@ -15,6 +15,7 @@ import {
   Card, Label, Data, Barcode, StepTracker, Field, inputClass,
   PrimaryButton, GhostButton,
 } from "../components/sunguard/kit";
+import { unwrap } from "@core/api/unwrap";
 
 /**
  * Local delivery booking: FROM → TO → WHAT → PAY.
@@ -29,20 +30,31 @@ const STEPS = ["From", "To", "What", "Pay"];
 
 const emptyAddress = {
   lat: null, lng: null,
-  // Filled by the reverse lookup; kept beside the typed parts, not instead.
+  // Filled by the reverse lookup — this is where the street, area, city and
+  // state come from. None of it is typed.
   formattedAddress: "",
-  line: "", landmark: "", city: "", state: "",
+  // The two things a map pin cannot tell us.
+  line: "", landmark: "",
 };
 
 /** The API wants one address string; the form collects it in readable parts. */
+/**
+ * Build the address a rider will actually read.
+ *
+ * City and state are never asked for: this is a same-city delivery, so both
+ * are already implied, and the map pin plus its reverse lookup supplies the
+ * street, area and city more accurately than anyone types them.
+ *
+ * What the pin cannot know is the door — the flat, the floor, the landmark —
+ * so those are typed and lead the string, followed by the geocoded location.
+ */
 const composeAddress = (addr) => {
-  const typed = [addr.line, addr.landmark, addr.city, addr.state]
+  const door = [addr.line, addr.landmark]
     .map((part) => String(part || "").trim())
-    .filter(Boolean)
-    .join(", ");
-  // What the customer wrote wins; the geocoded string is the safety net so a
-  // parcel is never sent with an address the rider cannot read.
-  return typed || String(addr.formattedAddress || "").trim();
+    .filter(Boolean);
+  const located = String(addr.formattedAddress || "").trim();
+
+  return [...door, located].filter(Boolean).join(", ");
 };
 
 const AddressStep = ({
@@ -112,25 +124,6 @@ const AddressStep = ({
           className={inputClass}
         />
       </Field>
-
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="City">
-          <input
-            value={value.city}
-            onChange={(e) => onChange({ ...value, city: e.target.value })}
-            placeholder="City"
-            className={inputClass}
-          />
-        </Field>
-        <Field label="State">
-          <input
-            value={value.state}
-            onChange={(e) => onChange({ ...value, state: e.target.value })}
-            placeholder="State"
-            className={inputClass}
-          />
-        </Field>
-      </div>
     </Card>
   </div>
 );
@@ -155,18 +148,25 @@ const CityParcelBooking = () => {
   const [quoting, setQuoting] = useState(false);
   const [placing, setPlacing] = useState(false);
 
-  useEffect(() => {
-    cityParcelApi
-      .getBookingConfig()
-      .then((res) => {
-        const d = res?.data?.data || res?.data;
-        setConfig(d);
-        if (d?.packageTypes?.length) {
-          setPkg((p) => ({ ...p, packageType: p.packageType || d.packageTypes[0].value }));
-        }
-      })
-      .catch(() => toast.error("Couldn't load booking options"));
+  const loadConfig = useCallback(async () => {
+    try {
+      const res = await cityParcelApi.getBookingConfig({ forceRefresh: true });
+      const d = unwrap(res);
+      setConfig(d);
+      // Preselect the first type so the customer only has to change it if the
+      // guess is wrong, rather than pick from cold.
+      if (d?.packageTypes?.length) {
+        setPkg((p) => ({ ...p, packageType: p.packageType || d.packageTypes[0].value }));
+      }
+    } catch {
+      setConfig({ packageTypes: [] });
+      toast.error("Couldn't load booking options");
+    }
   }, []);
+
+  useEffect(() => {
+    loadConfig();
+  }, [loadConfig]);
 
   useEffect(() => {
     if (user) {
@@ -180,19 +180,19 @@ const CityParcelBooking = () => {
   /**
    * Fold a detected or searched location into the address being edited.
    *
-   * The reverse lookup fills city and state, but never overwrites what the
-   * customer has already typed — someone who corrected the city should not
-   * see it revert because the pin nudged.
+   * Suggestions never overwrite what the customer has already typed — a door
+   * detail they corrected should not revert because the pin nudged.
    */
   const applyLocation = useCallback((current, found) => ({
     ...current,
     lat: found.lat,
     lng: found.lng,
+    // The geocoded string carries street, area, city and state, so none of
+    // those are ever asked for.
     formattedAddress: found.formattedAddress || current.formattedAddress || "",
+    // Only suggested — never overwrites a door detail already typed.
     line: current.line || found.components?.line || "",
     landmark: current.landmark || found.components?.locality || "",
-    city: current.city || found.components?.city || "",
-    state: current.state || found.components?.state || "",
   }), []);
 
   const detectInto = useCallback(
@@ -252,7 +252,7 @@ const CityParcelBooking = () => {
     setQuoting(true);
     try {
       const { data } = await cityParcelApi.calculateFare(buildPayload());
-      setQuote(data?.data || data);
+      setQuote(unwrap({ data }));
     } catch (err) {
       setQuote(null);
       toast.error(err?.response?.data?.message || "Couldn't price this trip");
@@ -277,7 +277,7 @@ const CityParcelBooking = () => {
         },
         paymentMethod: payment,
       });
-      const payload = data?.data || data;
+      const payload = unwrap({ data });
       const parcel = payload?.parcel;
 
       if (payload?.requiresPayment) {
@@ -383,6 +383,31 @@ const CityParcelBooking = () => {
               <h1 className="sg-display text-[26px] text-sg-ink">What are we carrying?</h1>
               <Card className="space-y-4 p-4">
                 <Field label="Package type">
+                  {/* An empty grid here is a dead end: no type can be picked,
+                      so Continue never enables and nothing says why. */}
+                  {!config ? (
+                    <div className="grid grid-cols-3 gap-2">
+                      {[0, 1, 2, 3, 4, 5].map((i) => (
+                        <div
+                          key={i}
+                          className="h-[46px] animate-pulse rounded-[var(--sg-r)] bg-sg-surface-2"
+                        />
+                      ))}
+                    </div>
+                  ) : !(config.packageTypes || []).length ? (
+                    <div className="rounded-[var(--sg-r)] border border-dashed border-sg-line px-4 py-4 text-center">
+                      <p className="text-[13px] text-sg-ink-2">
+                        We couldn't load the package options.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={loadConfig}
+                        className="sg-label mt-2 text-sg-accent underline underline-offset-4"
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  ) : (
                   <div className="grid grid-cols-3 gap-2">
                     {(config?.packageTypes || []).map((type) => (
                       <button
@@ -400,11 +425,16 @@ const CityParcelBooking = () => {
                       </button>
                     ))}
                   </div>
+                  )}
                 </Field>
 
                 <Field
                   label="Weight (kg)"
-                  hint={config ? `Up to ${config.maxWeightKg} kg on this service.` : undefined}
+                  hint={
+                    Number.isFinite(config?.maxWeightKg)
+                      ? `Up to ${config.maxWeightKg} kg on this service.`
+                      : undefined
+                  }
                 >
                   <input
                     inputMode="decimal"

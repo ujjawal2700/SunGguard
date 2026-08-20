@@ -18,6 +18,7 @@ import {
   Card, Label, Data, Barcode, StatusChip, Perforation,
   PrimaryButton, GhostButton,
 } from "../components/sunguard/kit";
+import { unwrap } from "@core/api/unwrap";
 
 const getCustomerToken = createSocketTokenReader(STORAGE_KEYS.AUTH_CUSTOMER);
 
@@ -76,7 +77,7 @@ const ConsignmentNote = ({ parcel, phone }) => {
     setBusy(true);
     try {
       const { data } = await cityParcelApi.requestMyCode(parcel._id);
-      const payload = data?.data || data;
+      const payload = unwrap({ data });
       setCode(payload?.devCode || null);
       setCooldown(15);
       toast.success(`Code sent to ${payload?.sentToPhone || "your phone"}`);
@@ -286,7 +287,7 @@ const CityParcelTracking = () => {
   const load = useCallback(async () => {
     try {
       const { data } = await cityParcelApi.track(cityParcelId);
-      const payload = data?.data || data;
+      const payload = unwrap({ data });
       setParcel(payload?.parcel);
       setTimeline(payload?.timeline || []);
     } catch (err) {
