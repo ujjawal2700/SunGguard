@@ -494,10 +494,28 @@ export const cancelCityParcel = async (req, res) => {
    RIDER
    ========================================================================== */
 
+/** Rider-facing explanations for an empty list. */
+const NO_JOBS_MESSAGE = {
+  OFFLINE: "You're offline. Go online to receive city deliveries.",
+  NOT_APPROVED: "Your account is still pending approval.",
+  PARCEL_DISABLED: "Parcel delivery isn't enabled on your account.",
+  NO_LOCATION: "We can't read your location. Turn GPS on to see jobs near you.",
+  ON_A_JOB: "Finish your current job to take another.",
+  NONE_NEARBY: "No city deliveries waiting near you right now.",
+  INVALID_RIDER: "We couldn't load your account.",
+};
+
 export const riderGetAvailable = async (req, res) => {
   try {
-    const parcels = await fetchAvailableForRider(req.user.id);
-    return handleResponse(res, 200, "Available jobs", { parcels });
+    const { parcels, reason, canAccept } = await fetchAvailableForRider(req.user.id);
+
+    return handleResponse(res, 200, "Available jobs", {
+      parcels,
+      reason,
+      canAccept: canAccept !== false,
+      // So the app never has to guess why the list is empty.
+      hint: reason === "OK" ? "" : NO_JOBS_MESSAGE[reason] || "",
+    });
   } catch (error) {
     return fail(res, error);
   }

@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { unwrapList } from "@core/api/unwrap";
+import { unwrap } from "@core/api/unwrap";
 import { cityParcelApi } from "../services/cityParcelApi";
 import {
   getOrderSocket,
@@ -31,12 +31,19 @@ const CityParcelJobs = () => {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [acceptingId, setAcceptingId] = useState(null);
+  // Why the list is empty, straight from the server. An unexplained blank
+  // screen is indistinguishable from a broken one.
+  const [hint, setHint] = useState("");
+  const [canAccept, setCanAccept] = useState(true);
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
       const res = await cityParcelApi.getAvailable({ forceRefresh: true });
-      setJobs(unwrapList(res, "parcels"));
+      const payload = unwrap(res) || {};
+      setJobs(payload.parcels || []);
+      setHint(payload.hint || "");
+      setCanAccept(payload.canAccept !== false);
     } catch (err) {
       if (!quiet) toast.error(err?.response?.data?.message || "Couldn't load jobs");
     } finally {
@@ -128,11 +135,16 @@ const CityParcelJobs = () => {
             No open deliveries
           </p>
           <p className="mt-1 text-[13px] leading-relaxed text-slate-500">
-            New bookings near you appear here straight away. Stay online to get them.
+            {hint || "New bookings near you appear here straight away."}
           </p>
         </div>
       ) : (
         <div className="space-y-3">
+          {!canAccept && hint ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-[13px] font-semibold text-amber-900">{hint}</p>
+            </div>
+          ) : null}
           {jobs.map((job) => {
             const isCod = String(job.paymentMethod).toUpperCase() === "COD";
             const busy = acceptingId === job._id;
@@ -191,7 +203,7 @@ const CityParcelJobs = () => {
 
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || !canAccept}
                   onClick={() => accept(job)}
                   className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 py-3.5 text-[14px] font-bold text-white transition active:scale-[0.99] disabled:opacity-50"
                 >
@@ -200,7 +212,11 @@ const CityParcelJobs = () => {
                   ) : (
                     <Bike className="h-4 w-4" />
                   )}
-                  {busy ? "Accepting…" : "Accept this job"}
+                  {busy
+                    ? "Accepting…"
+                    : canAccept
+                      ? "Accept this job"
+                      : "Finish your current job first"}
                 </button>
               </article>
             );

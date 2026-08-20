@@ -233,21 +233,39 @@ export async function sweepExpiredSearches({ limit = 50 } = {}) {
 /** Open jobs this rider could take right now. */
 export async function fetchAvailableForRider(deliveryId) {
   const oid = toOid(deliveryId);
-  if (!oid) return [];
+  if (!oid) return { parcels: [], reason: "INVALID_RIDER" };
 
   const rider = await Delivery.findById(oid)
     .select("location isParcelService isVerified isOnline")
     .lean();
 
-  if (!rider?.isParcelService || !rider.isVerified || !rider.isOnline) return [];
-
-  // A rider already carrying something must not be offered another job.
-  if (await deliveryPartnerHasActiveJob(oid)) return [];
+  /**
+   * Every one of these used to return a bare empty array, so five very
+   * different situations — offline, unapproved, no GPS, already on a job,
+   * genuinely nothing nearby — were indistinguishable to the rider and to
+   * anyone debugging it. The reason travels with the result now.
+   */
+  if (!rider) return { parcels: [], reason: "INVALID_RIDER" };
+  if (!rider.isVerified) return { parcels: [], reason: "NOT_APPROVED" };
+  if (!rider.isParcelService) return { parcels: [], reason: "PARCEL_DISABLED" };
+  if (!rider.isOnline) return { parcels: [], reason: "OFFLINE" };
 
   const coords = rider.location?.coordinates;
-  if (!Array.isArray(coords) || coords.length < 2) return [];
+  if (!Array.isArray(coords) || coords.length < 2) {
+    return { parcels: [], reason: "NO_LOCATION" };
+  }
   const [lng, lat] = coords.map(Number);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return [];
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return { parcels: [], reason: "NO_LOCATION" };
+  }
+
+  /**
+   * A rider already carrying something still SEES what is waiting — the
+   * pickup-service list does, and hiding it made city jobs look broken while
+   * outstation jobs kept appearing. They just cannot take one until they are
+   * free, which `acceptAtomic` enforces anyway.
+   */
+  const busy = await deliveryPartnerHasActiveJob(oid);
 
   const config = await CityParcelConfig.getConfig();
   const baseRadiusM = config.baseSearchRadiusKm * 1000;
@@ -279,7 +297,7 @@ export async function fetchAvailableForRider(deliveryId) {
 
   const now = Date.now();
 
-  return open
+  const matched = open
     .filter((parcel) => {
       const pLat = Number(parcel.pickupAddress?.lat);
       const pLng = Number(parcel.pickupAddress?.lng);
@@ -305,6 +323,13 @@ export async function fetchAvailableForRider(deliveryId) {
       ...parcel,
       riderEarning: computeRiderEarning(parcel.fareBreakdown, config),
     }));
+
+  return {
+    parcels: matched,
+    // Why the list looks the way it does — the app turns this into a sentence.
+    reason: busy ? "ON_A_JOB" : matched.length ? "OK" : "NONE_NEARBY",
+    canAccept: !busy,
+  };
 }
 
 /**

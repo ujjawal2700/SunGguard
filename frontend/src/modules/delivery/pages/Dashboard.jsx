@@ -28,7 +28,7 @@ import { useAuth } from "@core/context/AuthContext";
 import { deliveryApi } from "../services/deliveryApi";
 import { parcelApi } from "../../customer/services/parcelApi";
 import { cityParcelApi } from "../services/cityParcelApi";
-import { unwrapList } from "@core/api/unwrap";
+import { unwrap, unwrapList } from "@core/api/unwrap";
 import {
   getOrderSocket,
   onCityParcelBroadcast,
@@ -153,7 +153,9 @@ const Dashboard = () => {
         setAssignedCityParcel(list[0] || null);
       }
       if (available.status === "fulfilled") {
-        setOpenCityJobs(unwrapList(available.value, "parcels"));
+        // The endpoint now answers with { parcels, reason, hint }, so read the
+        // collection out of the payload rather than the payload itself.
+        setOpenCityJobs(unwrap(available.value)?.parcels || []);
       }
     } catch {
       /* a failed poll should never blank the dashboard */
