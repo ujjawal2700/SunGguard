@@ -46,6 +46,7 @@ import {
   adminReviewOverride,
   adminAssignRider,
   adminListAvailableRiders,
+  adminGetStats,
   adminGetConfig,
   adminUpdateConfig,
 } from "../controller/cityParcelController.js";
@@ -195,6 +196,12 @@ router.put(
   adminUpdateConfig,
 );
 router.get("/admin/all", verifyToken, allowRoles("admin", "parcel_admin"), adminList);
+router.get(
+  "/admin/stats",
+  verifyToken,
+  allowRoles("admin", "parcel_admin"),
+  adminGetStats,
+);
 router.get(
   "/admin/riders",
   verifyToken,

@@ -955,23 +955,146 @@ export const riderReportCustomerUnreachable = async (req, res) => {
    ADMIN
    ========================================================================== */
 
+/**
+ * Build the query for the admin parcel list.
+ *
+ * Kept separate from the handler so the stats endpoint below counts exactly
+ * what the list shows — a total that disagrees with the rows underneath it is
+ * worse than no total.
+ */
+function buildAdminParcelFilter(query = {}) {
+  const filter = {};
+
+  if (query.status) filter.status = query.status;
+  if (query.withheld === "true") filter.payoutWithheld = true;
+  if (query.stuck === "true") filter["returnLeg.status"] = R.CUSTOMER_UNREACHABLE;
+  if (query.paymentMethod) {
+    filter.paymentMethod = String(query.paymentMethod).toUpperCase();
+  }
+
+  // Booked between two dates. `to` covers the whole day, not the instant
+  // midnight begins, or a same-day filter returns nothing.
+  const from = query.from ? new Date(query.from) : null;
+  const to = query.to ? new Date(query.to) : null;
+  if ((from && !Number.isNaN(from.getTime())) || (to && !Number.isNaN(to.getTime()))) {
+    filter.createdAt = {};
+    if (from && !Number.isNaN(from.getTime())) filter.createdAt.$gte = from;
+    if (to && !Number.isNaN(to.getTime())) {
+      to.setHours(23, 59, 59, 999);
+      filter.createdAt.$lte = to;
+    }
+  }
+
+  // One box that searches the things support actually gets given on a call:
+  // a waybill number, or somebody's phone.
+  const search = String(query.search || "").trim();
+  if (search) {
+    const safe = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const rx = new RegExp(safe, "i");
+    filter.$or = [
+      { referenceId: rx },
+      { "receiver.name": rx },
+      { "receiver.phone": rx },
+      { "pickupAddress.fullAddress": rx },
+      { "dropAddress.fullAddress": rx },
+    ];
+  }
+
+  return filter;
+}
+
 export const adminList = async (req, res) => {
   try {
-    const filter = {};
-    if (req.query.status) filter.status = req.query.status;
-    if (req.query.withheld === "true") filter.payoutWithheld = true;
-    if (req.query.stuck === "true") {
-      filter["returnLeg.status"] = R.CUSTOMER_UNREACHABLE;
-    }
+    const filter = buildAdminParcelFilter(req.query);
 
-    const parcels = await CityParcel.find(filter)
-      .sort({ createdAt: -1 })
-      .limit(Number(req.query.limit) || 100)
-      .populate("customerId", "name phone")
-      .populate("deliveryPartnerId", "name phone")
-      .lean();
+    // Capped regardless of what is asked for: an admin screen that tries to
+    // render every parcel ever booked will hang the browser.
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+    const page = Math.max(Number(req.query.page) || 1, 1);
 
-    return handleResponse(res, 200, "City parcels", { parcels });
+    const [parcels, total] = await Promise.all([
+      CityParcel.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .populate("customerId", "name phone")
+        .populate("deliveryPartnerId", "name phone")
+        .lean(),
+      CityParcel.countDocuments(filter),
+    ]);
+
+    return handleResponse(res, 200, "City parcels", {
+      parcels,
+      page,
+      limit,
+      total,
+      pages: Math.max(1, Math.ceil(total / limit)),
+    });
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
+/**
+ * Headline numbers for the console.
+ *
+ * Counts run against the same filter as the list, so the summary always
+ * describes the rows on screen rather than the whole collection.
+ */
+export const adminGetStats = async (req, res) => {
+  try {
+    const filter = buildAdminParcelFilter(req.query);
+
+    const [byStatus, money, needsAttention] = await Promise.all([
+      CityParcel.aggregate([
+        { $match: filter },
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ]),
+      CityParcel.aggregate([
+        { $match: { ...filter, status: S.DELIVERED } },
+        {
+          $group: {
+            _id: null,
+            delivered: { $sum: 1 },
+            revenue: { $sum: "$fare" },
+            riderPay: { $sum: "$riderEarning" },
+            distanceKm: { $sum: "$distanceKm" },
+          },
+        },
+      ]),
+      Promise.all([
+        CityParcel.countDocuments({ ...filter, payoutWithheld: true }),
+        CityParcel.countDocuments({
+          ...filter,
+          deliveryPartnerId: null,
+          status: { $in: [S.REQUESTED, S.SEARCHING] },
+        }),
+        CityParcel.countDocuments({
+          ...filter,
+          "returnLeg.status": R.CUSTOMER_UNREACHABLE,
+        }),
+        CityParcel.countDocuments({ ...filter, status: S.DELIVERY_FAILED }),
+      ]),
+    ]);
+
+    const statusCounts = byStatus.reduce((acc, row) => {
+      acc[row._id] = row.count;
+      return acc;
+    }, {});
+    const totals = money[0] || {};
+    const [withheld, unassigned, stuck, failed] = needsAttention;
+
+    return handleResponse(res, 200, "Stats", {
+      total: byStatus.reduce((n, r) => n + r.count, 0),
+      statusCounts,
+      delivered: totals.delivered || 0,
+      revenue: Math.round((totals.revenue || 0) * 100) / 100,
+      riderPay: Math.round((totals.riderPay || 0) * 100) / 100,
+      // What the platform keeps once riders are paid.
+      margin: Math.round(((totals.revenue || 0) - (totals.riderPay || 0)) * 100) / 100,
+      distanceKm: Math.round((totals.distanceKm || 0) * 10) / 10,
+      needsAttention: { withheld, unassigned, stuck, failed },
+    });
   } catch (error) {
     return fail(res, error);
   }

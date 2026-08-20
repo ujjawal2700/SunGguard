@@ -28,6 +28,17 @@ import { useAuth } from "@core/context/AuthContext";
 import { deliveryApi } from "../services/deliveryApi";
 import { parcelApi } from "../../customer/services/parcelApi";
 import { cityParcelApi } from "../services/cityParcelApi";
+import { unwrapList } from "@core/api/unwrap";
+import {
+  getOrderSocket,
+  onCityParcelBroadcast,
+  onCityParcelRetract,
+  onCityParcelAssigned,
+} from "@core/services/orderSocket";
+import { createSocketTokenReader } from "@core/utils/authStorage";
+import { STORAGE_KEYS } from "@core/utils/storage";
+
+const getDeliveryToken = createSocketTokenReader(STORAGE_KEYS.AUTH_DELIVERY);
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -138,13 +149,11 @@ const Dashboard = () => {
       ]);
 
       if (assigned.status === "fulfilled") {
-        const d = assigned.value?.data;
-        const list = d?.data?.parcels || d?.parcels || [];
+        const list = unwrapList(assigned.value, "parcels");
         setAssignedCityParcel(list[0] || null);
       }
       if (available.status === "fulfilled") {
-        const d = available.value?.data;
-        setOpenCityJobs(d?.data?.parcels || d?.parcels || []);
+        setOpenCityJobs(unwrapList(available.value, "parcels"));
       }
     } catch {
       /* a failed poll should never blank the dashboard */
@@ -153,6 +162,43 @@ const Dashboard = () => {
       cityParcelRequestRef.current.lastFetchedAt = Date.now();
     }
   }, []);
+
+
+  /**
+   * City Parcel offers arrive over their own socket channel, separate from
+   * the pickup-service `parcel:*` events the layout listens to.
+   *
+   * The 30-second poll below is the fallback for a dropped connection; without
+   * these listeners a rider would sit staring at an empty dashboard for up to
+   * half a minute after a booking landed nearby.
+   */
+  useEffect(() => {
+    if (!isOnline) return undefined;
+    const getToken = getDeliveryToken;
+    getOrderSocket(getToken);
+
+    const offBroadcast = onCityParcelBroadcast(getToken, () => {
+      fetchCityParcels(true);
+    });
+
+    // Someone else took it — drop it from the list rather than leaving a job
+    // on screen that will fail the moment it is tapped.
+    const offRetract = onCityParcelRetract(getToken, (payload) => {
+      const id = payload?.cityParcelId;
+      if (!id) return;
+      setOpenCityJobs((jobs) => jobs.filter((j) => String(j._id) !== String(id)));
+    });
+
+    const offAssigned = onCityParcelAssigned(getToken, () => {
+      fetchCityParcels(true);
+    });
+
+    return () => {
+      offBroadcast();
+      offRetract();
+      offAssigned();
+    };
+  }, [isOnline, fetchCityParcels]);
 
   useEffect(() => {
     fetchStats();

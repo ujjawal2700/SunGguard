@@ -6,7 +6,13 @@ import axiosInstance from "@core/api/axios";
  * The pickup-service admin endpoints under /parcel/admin are untouched.
  */
 export const cityParcelAdminApi = {
+  /** Supports status, search, from/to, paymentMethod, withheld, stuck, page, limit. */
   list: (params = {}) => axiosInstance.get("/city-parcel/admin/all", { params }),
+
+  /** Headline counts and money, filtered the same way as the list. */
+  stats: (params = {}) => axiosInstance.get("/city-parcel/admin/stats", { params }),
+
+  /** One parcel plus its full event log. */
   getOne: (id) => axiosInstance.get(`/city-parcel/admin/${id}`),
 
   getConfig: () => axiosInstance.get("/city-parcel/admin/config"),

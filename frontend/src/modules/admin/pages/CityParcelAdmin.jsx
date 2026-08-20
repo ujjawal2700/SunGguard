@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Loader2, ShieldAlert, UserPlus, RefreshCw, Save, MapPin, X, Check,
-  AlertTriangle, IndianRupee,
+  AlertTriangle, IndianRupee, Search, ChevronLeft, ChevronRight, Package,
+  TrendingUp,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { cityParcelAdminApi } from "../services/cityParcelAdminApi";
+import ParcelDetailDrawer from "./cityparcel/ParcelDetailDrawer";
 import { unwrap, unwrapList } from "@core/api/unwrap";
 
 /**
@@ -176,17 +178,51 @@ const CityParcelAdmin = () => {
   const [savingConfig, setSavingConfig] = useState(false);
   const [assignTarget, setAssignTarget] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const [detailId, setDetailId] = useState(null);
+
+  // Filters for the booking history. Kept in one object so a change to any of
+  // them can reset the page in a single place — changing a filter while on
+  // page 4 otherwise lands you on an empty page.
+  const [filters, setFilters] = useState({
+    search: "", status: "", paymentMethod: "", from: "", to: "",
+  });
+  const [page, setPage] = useState(1);
+  const [pageInfo, setPageInfo] = useState({ total: 0, pages: 1 });
+  const [stats, setStats] = useState(null);
+
+  /** Only the filters the server actually understands, and only if set. */
+  const queryParams = useMemo(() => {
+    const q = { page, limit: 50 };
+    for (const [k, v] of Object.entries(filters)) {
+      if (String(v || "").trim()) q[k] = v;
+    }
+    return q;
+  }, [filters, page]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await cityParcelAdminApi.list({ limit: 200 });
-      setParcels(unwrapList(res, "parcels"));
+      // Stats and rows are fetched with the same filters, so the summary
+      // always describes what is on screen.
+      const [listRes, statsRes] = await Promise.all([
+        cityParcelAdminApi.list(queryParams),
+        cityParcelAdminApi.stats(queryParams).catch(() => null),
+      ]);
+      const payload = unwrap(listRes) || {};
+      setParcels(payload.parcels || []);
+      setPageInfo({ total: payload.total || 0, pages: payload.pages || 1 });
+      if (statsRes) setStats(unwrap(statsRes));
     } catch (err) {
       toast.error(err?.response?.data?.message || "Couldn't load parcels");
     } finally {
       setLoading(false);
     }
+  }, [queryParams]);
+
+  /** Any filter change starts again from page one. */
+  const setFilter = useCallback((patch) => {
+    setFilters((f) => ({ ...f, ...patch }));
+    setPage(1);
   }, []);
 
   useEffect(() => {
@@ -492,13 +528,22 @@ const CityParcelAdmin = () => {
                           {new Date(p.createdAt).toLocaleString("en-IN")}
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setAssignTarget(p)}
-                        className="shrink-0 rounded-lg bg-slate-900 px-3.5 py-2 text-[13px] font-semibold text-white"
-                      >
-                        Assign rider
-                      </button>
+                      <div className="flex shrink-0 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setDetailId(p._id)}
+                          className="rounded-lg border border-slate-300 px-3.5 py-2 text-[13px] font-semibold text-slate-700"
+                        >
+                          View log
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAssignTarget(p)}
+                          className="rounded-lg bg-slate-900 px-3.5 py-2 text-[13px] font-semibold text-white"
+                        >
+                          Assign rider
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -533,6 +578,91 @@ const CityParcelAdmin = () => {
           ) : null}
         </div>
       ) : (
+        <div className="space-y-4">
+          {/* Headline numbers, filtered the same way as the rows below. */}
+          {stats ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              {[
+                { label: "Bookings", value: stats.total, icon: Package },
+                { label: "Delivered", value: stats.delivered, icon: Check },
+                { label: "Revenue", value: money(stats.revenue), icon: IndianRupee },
+                { label: "Rider pay", value: money(stats.riderPay), icon: UserPlus },
+                { label: "Margin", value: money(stats.margin), icon: TrendingUp },
+              ].map((card) => (
+                <div key={card.label} className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      {card.label}
+                    </p>
+                    <card.icon className="h-3.5 w-3.5 text-slate-400" />
+                  </div>
+                  <p className="mt-1 text-[22px] font-bold tabular-nums text-slate-900">
+                    {card.value}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {/* One search box for the things support is given on a call. */}
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3">
+            <div className="relative min-w-[240px] flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                value={filters.search}
+                onChange={(e) => setFilter({ search: e.target.value })}
+                placeholder="Waybill, receiver name, phone or address"
+                className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-slate-400"
+              />
+            </div>
+
+            <select
+              value={filters.status}
+              onChange={(e) => setFilter({ status: e.target.value })}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+            >
+              <option value="">Any status</option>
+              {["REQUESTED","SEARCHING","ACCEPTED","RIDER_ASSIGNED","PICKUP_REACHED","PICKED_UP","OUT_FOR_DELIVERY","DROP_REACHED","DELIVERED","DELIVERY_FAILED","RETURN_IN_TRANSIT","RETURNED","CANCELLED"].map((st) => (
+                <option key={st} value={st}>{st.replace(/_/g, " ")}</option>
+              ))}
+            </select>
+
+            <select
+              value={filters.paymentMethod}
+              onChange={(e) => setFilter({ paymentMethod: e.target.value })}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+            >
+              <option value="">Any payment</option>
+              {["COD", "UPI", "CARD", "WALLET"].map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+
+            <input
+              type="date"
+              value={filters.from}
+              onChange={(e) => setFilter({ from: e.target.value })}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+            />
+            <input
+              type="date"
+              value={filters.to}
+              onChange={(e) => setFilter({ to: e.target.value })}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+            />
+
+            {Object.values(filters).some(Boolean) ? (
+              <button
+                type="button"
+                onClick={() => { setFilters({ search: "", status: "", paymentMethod: "", from: "", to: "" }); setPage(1); }}
+                className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-slate-500 hover:bg-slate-50"
+              >
+                <X className="h-3.5 w-3.5" />
+                Clear
+              </button>
+            ) : null}
+          </div>
+
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
           <table className="w-full min-w-[880px] text-sm">
             <thead className="bg-slate-50 text-left text-[11px] uppercase tracking-wider text-slate-500">
@@ -554,7 +684,11 @@ const CityParcelAdmin = () => {
                 </tr>
               ) : (
                 parcels.map((p) => (
-                  <tr key={p._id} className="border-t border-slate-100">
+                  <tr
+                    key={p._id}
+                    onClick={() => setDetailId(p._id)}
+                    className="cursor-pointer border-t border-slate-100 transition hover:bg-slate-50"
+                  >
                     <td className="px-4 py-3 font-mono text-[12px] font-semibold text-slate-900">
                       {p.referenceId}
                     </td>
@@ -586,7 +720,42 @@ const CityParcelAdmin = () => {
             </tbody>
           </table>
         </div>
+
+          {/* Pagination. Without it the console silently shows the first page
+              and nothing hints that older bookings exist. */}
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[13px] text-slate-500">
+              {pageInfo.total === 0
+                ? "No bookings match these filters"
+                : `Showing ${parcels.length} of ${pageInfo.total} · page ${page} of ${pageInfo.pages}`}
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={page <= 1}
+                onClick={() => setPage((n) => Math.max(1, n - 1))}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 disabled:opacity-40"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+                Previous
+              </button>
+              <button
+                type="button"
+                disabled={page >= pageInfo.pages}
+                onClick={() => setPage((n) => Math.min(pageInfo.pages, n + 1))}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 disabled:opacity-40"
+              >
+                Next
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
       )}
+
+      {detailId ? (
+        <ParcelDetailDrawer cityParcelId={detailId} onClose={() => setDetailId(null)} />
+      ) : null}
 
       {assignTarget ? (
         <AssignModal

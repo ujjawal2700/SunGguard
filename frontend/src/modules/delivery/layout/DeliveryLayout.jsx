@@ -15,8 +15,11 @@ import {
   onParcelBroadcast,
   onParcelBroadcastWithdrawn,
   onDeliveryOtpValidated,
+  onCityParcelBroadcast,
+  onCityParcelRetract,
 } from "@/core/services/orderSocket";
 import { parcelApi } from "../../customer/services/parcelApi";
+import { cityParcelApi } from "../services/cityParcelApi";
 import {
   loadHandledIncomingOrderIds,
   markIncomingOrderHandled,
@@ -295,6 +298,52 @@ const DeliveryLayout = () => {
       riderSharePercent: Number(p.riderSharePercent) || Math.round(share * 100),
       weight: p.weight,
       distance: p.distance,
+      deliverySpeed: p.deliverySpeed === "express" ? "express" : "normal",
+      paymentMethod: String(p.paymentMethod || "").toUpperCase() || "COD",
+      collectAmount: Number(p.collectAmount) || 0,
+      expiresAt: payload.searchExpiresAt || null,
+      isBroadcast: true,
+    });
+    return true;
+  }, []);
+
+  /**
+   * A City Parcel offer, shown through the same modal as a pickup-service one.
+   *
+   * The two are separate modules with separate collections, so the offer is
+   * tagged `isCityParcel` — accept has to call a different endpoint and land
+   * the rider on a different screen. Everything else about the presentation is
+   * identical, and a rider should not have to learn two different alerts.
+   */
+  const applyFromCityParcelBroadcast = useCallback((payload) => {
+    const id = payload?.cityParcelId;
+    if (!id) return false;
+
+    // One offer at a time. A second alert over a live one is how riders end
+    // up accepting the job they did not mean to.
+    if (activeOrderRef.current || activeParcelOfferRef.current) return true;
+    if (shownParcelIdsRef.current.has(id)) return true;
+
+    const p = payload.preview;
+    if (!p || typeof p.pickup !== "string" || typeof p.drop !== "string") return false;
+
+    const exp = payload.searchExpiresAt;
+    if (exp && secondsLeftUntilParcelExpiry(exp) <= 0) return false;
+
+    shownParcelIdsRef.current = new Set(shownParcelIdsRef.current).add(id);
+
+    setActiveParcelOffer({
+      parcelId: id,
+      isCityParcel: true,
+      pickup: p.pickup,
+      drop: p.drop,
+      // City parcels quote the rider their own take directly, rather than a
+      // fare with a share applied to it.
+      fare: Number(p.earnings) || 0,
+      earnings: Number(p.earnings) || 0,
+      riderSharePercent: 100,
+      weight: p.weightKg,
+      distance: p.distanceKm,
       deliverySpeed: p.deliverySpeed === "express" ? "express" : "normal",
       paymentMethod: String(p.paymentMethod || "").toUpperCase() || "COD",
       collectAmount: Number(p.collectAmount) || 0,
@@ -779,6 +828,45 @@ const DeliveryLayout = () => {
     shouldBlockParcelOffers,
   ]);
 
+  /**
+   * City Parcel offers. Same eligibility and same modal as above, on their own
+   * socket channel so the two modules cannot receive each other's traffic.
+   *
+   * Listening here rather than on the dashboard means a rider is alerted
+   * wherever they are in the app — a rider on the earnings screen would
+   * otherwise never learn a job had appeared.
+   */
+  useEffect(() => {
+    if (!canReceiveParcelBroadcast) return undefined;
+    const getToken = getDeliveryToken;
+    return onCityParcelBroadcast(getToken, (payload) => {
+      if (shouldBlockParcelOffers()) return;
+      applyFromCityParcelBroadcast(payload);
+    });
+  }, [
+    canReceiveParcelBroadcast,
+    applyFromCityParcelBroadcast,
+    shouldBlockParcelOffers,
+  ]);
+
+  /**
+   * Someone else took it. Close the alert rather than leaving a rider looking
+   * at a job that will fail the moment they tap accept.
+   */
+  useEffect(() => {
+    if (!canReceiveParcelBroadcast) return undefined;
+    const getToken = getDeliveryToken;
+    return onCityParcelRetract(getToken, (payload) => {
+      const id = payload?.cityParcelId;
+      if (!id) return;
+      setActiveParcelOffer((current) =>
+        current?.isCityParcel && String(current.parcelId) === String(id)
+          ? null
+          : current,
+      );
+    });
+  }, [canReceiveParcelBroadcast]);
+
   useEffect(() => {
     if (!canReceiveOrders) return undefined;
     const getToken = getDeliveryToken;
@@ -1086,12 +1174,20 @@ const DeliveryLayout = () => {
         typeof crypto !== "undefined" && crypto.randomUUID
           ? crypto.randomUUID()
           : `${Date.now()}`;
-      await parcelApi.riderAcceptParcel(parcelId, idem);
+      if (offer.isCityParcel) {
+        await cityParcelApi.accept(parcelId, idem);
+      } else {
+        await parcelApi.riderAcceptParcel(parcelId, idem);
+      }
       shownParcelIdsRef.current = new Set(shownParcelIdsRef.current).add(parcelId);
       riderOnJobRef.current = true;
       await refreshUser();
       stopOrderRingtone();
-      navigate(`/delivery/parcel-task/${parcelId}`);
+      navigate(
+        offer.isCityParcel
+          ? `/delivery/city-parcel/${parcelId}`
+          : `/delivery/parcel-task/${parcelId}`,
+      );
     } catch (error) {
       const msg =
         error.response?.data?.message ||
