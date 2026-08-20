@@ -28,7 +28,6 @@ import { deliveryApi } from "../services/deliveryApi";
 import { useAuth } from "@core/context/AuthContext";
 import { useSettings } from "@core/context/SettingsContext";
 import { toast } from "sonner";
-import Tesseract from "tesseract.js";
 
 const VEHICLE_TYPES = [
   { value: "bike", label: "Bike" },
@@ -227,12 +226,6 @@ const DeliveryAuth = () => {
   const [loading, setLoading] = useState(false);
   const [timer, setTimer] = useState(30);
 
-  // OCR States
-  const [isScanning, setIsScanning] = useState(false);
-  const [ocrProgress, setOcrProgress] = useState(0);
-  const [dlVerified, setDlVerified] = useState(null);
-  const [panVerified, setPanVerified] = useState(null);
-  const [aadharVerified, setAadharVerified] = useState(null);
 
   useEffect(() => {
     let interval;
@@ -242,134 +235,18 @@ const DeliveryAuth = () => {
     return () => clearInterval(interval);
   }, [step, timer]);
 
-  const performOCR = async (file, type) => {
-    setIsScanning(true);
-    setOcrProgress(0);
-
-    // Reset specific verification state
-    if (type === "dl") setDlVerified(null);
-    if (type === "pan") setPanVerified(null);
-    if (type === "aadhar") setAadharVerified(null);
-
-    try {
-      const result = await Tesseract.recognize(file, 'eng', {
-        logger: (m) => {
-          if (m.status === 'recognizing text') {
-            setOcrProgress(Math.round(m.progress * 100));
-          }
-        },
-      });
-
-      const rawText = result.data.text.toLowerCase();
-      const cleanText = rawText.replace(/[^a-z0-9]/g, "");
-
-      // Handle common OCR character substitutions for more robust matching
-      // e.g., '0' read as 'o', '5' as 's', '1' as 'i' or 'l'
-      const normalize = (str) => str.replace(/o/g, "0").replace(/s/g, "5").replace(/[il]/g, "1");
-      const normalizedCleanText = normalize(cleanText);
-
-      console.log(`OCR Raw [${type}]:`, rawText);
-      console.log(`OCR Cleaned [${type}]:`, cleanText);
-
-      let isMatch = false;
-      let targetNumber = "";
-
-      if (type === "dl") {
-        targetNumber = signupDLNumber.toLowerCase().replace(/[^a-z0-9]/g, "");
-        const normalizedTarget = normalize(targetNumber);
-
-        // Match either exact cleaned text or normalized text (handles 0/O, 5/S etc)
-        isMatch = (targetNumber && cleanText.includes(targetNumber)) ||
-          (normalizedTarget && normalizedCleanText.includes(normalizedTarget));
-
-        const dlKeywords = ["driving", "licence", "license", "india", "union", "government", "transport", "validity", "form", "rj"];
-        const hasDlKeywords = dlKeywords.some(k => rawText.includes(k));
-
-        if (isMatch) {
-          setDlVerified(true);
-          setDlFile(file);
-          toast.success("Driving License Verified!");
-        } else {
-          setDlVerified(false);
-          setDlFile(null);
-          toast.error("DL Number mismatch. Make sure you typed the exact number from the photo.");
-        }
-      } else if (type === "pan") {
-        const extractedPan = extractPanFromText(rawText);
-        const enteredPan = signupPanNumber.toUpperCase().replace(/[^A-Z0-9]/g, "");
-        const effectivePan = enteredPan.length === 10 ? enteredPan : extractedPan;
-        if (effectivePan.length === 10 && enteredPan.length !== 10) {
-          setSignupPanNumber(effectivePan);
-        }
-
-        targetNumber = effectivePan.toLowerCase();
-        const normalizedTarget = normalize(targetNumber);
-
-        const panKeywords = ["permanent", "account", "income", "tax", "department", "india", "signature", "card", "govt"];
-        const hasPanKeywords = panKeywords.some(k => rawText.includes(k));
-
-        isMatch = (targetNumber && cleanText.includes(targetNumber)) ||
-          (normalizedTarget && normalizedCleanText.includes(normalizedTarget));
-
-        if (isMatch || (hasPanKeywords && isMatch)) {
-          setPanVerified(true);
-          setPanFile(file);
-          toast.success("PAN Card Verified!");
-        } else {
-          setPanVerified(false);
-          setPanFile(null);
-          toast.error("PAN mismatch. Photo must be clear and show the PAN number.");
-        }
-      } else if (type === "aadhar") {
-        const extractedAadhar = extractAadharDigits(rawText);
-        const enteredAadhar = signupAadharNumber.replace(/\D/g, "");
-        const effectiveAadhar =
-          enteredAadhar.length === 12 ? enteredAadhar : extractedAadhar;
-        if (effectiveAadhar.length === 12 && enteredAadhar.length !== 12) {
-          setSignupAadharNumber(effectiveAadhar);
-        }
-
-        targetNumber = effectiveAadhar.toLowerCase();
-        const normalizedTarget = normalize(targetNumber);
-
-        const aadharKeywords = ["government", "india", "male", "female", "unique", "identification", "authority", "enrollment", "birth", "dob", "address", "आधार", "भारत"];
-        const hasAadharKeywords = aadharKeywords.some(k => rawText.includes(k));
-
-        isMatch = (targetNumber && cleanText.includes(targetNumber)) ||
-          (normalizedTarget && normalizedCleanText.includes(normalizedTarget));
-
-        if (isMatch || (hasAadharKeywords && isMatch)) {
-          setAadharVerified(true);
-          setAadharFile(file);
-          toast.success("Aadhar Card Verified!");
-        } else {
-          setAadharVerified(false);
-          setAadharFile(null);
-          toast.error("Aadhar mismatch. 12-digit number should be clearly visible.");
-        }
-      }
-    } catch (error) {
-      console.error("OCR Error:", error);
-      toast.error("Failed to scan document. Please try again.");
-    } finally {
-      setIsScanning(false);
-    }
-  };
-
-  const handleDLUpload = (file) => {
-    if (file) performOCR(file, "dl");
-    else { setDlFile(null); setDlVerified(null); }
-  };
-
-  const handlePanUpload = (file) => {
-    if (file) performOCR(file, "pan");
-    else { setPanFile(null); setPanVerified(null); }
-  };
-
-  const handleAadharUpload = (file) => {
-    if (file) performOCR(file, "aadhar");
-    else { setAadharFile(null); setAadharVerified(null); }
-  };
+  /**
+   * Documents are accepted as uploaded and checked by a human at approval.
+   *
+   * These previously ran the image through in-browser OCR and refused the
+   * file when the text did not match what the rider had typed. It rejected
+   * too many genuine documents — a slight angle, a worn card, or a plain
+   * shadow was enough — and left applicants with no way past the step.
+   * Admin review already covers this properly.
+   */
+  const handleDLUpload = (file) => setDlFile(file || null);
+  const handlePanUpload = (file) => setPanFile(file || null);
+  const handleAadharUpload = (file) => setAadharFile(file || null);
 
   const handleSendOtp = async () => {
     try {
