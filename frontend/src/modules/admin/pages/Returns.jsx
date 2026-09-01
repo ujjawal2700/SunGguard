@@ -1,26 +1,38 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Card from "@shared/components/ui/Card";
+import PageHeader from "@shared/components/ui/PageHeader";
+import StatCard from "@shared/components/ui/StatCard";
 import Badge from "@shared/components/ui/Badge";
 import Button from "@shared/components/ui/Button";
+import StatusBadge from "@shared/components/ui/StatusBadge";
+import EmptyState from "@shared/components/ui/EmptyState";
 import { adminApi } from "../services/adminApi";
 import { useToast } from "@shared/components/ui/Toast";
 import {
-  HiOutlineArrowPath,
-  HiOutlineInboxStack,
-  HiOutlineEye,
-  HiOutlineCalendarDays,
-  HiOutlineTruck,
-} from "react-icons/hi2";
-import { BlurFade } from "@/components/ui/blur-fade";
-import { MagicCard } from "@/components/ui/magic-card";
+  RotateCcw,
+  Inbox,
+  Eye,
+  Calendar,
+  Truck,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  Package,
+  RotateCw,
+  X,
+  Loader2,
+  FileText,
+  User,
+  Store
+} from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { Loader2, X } from "lucide-react";
 
 const Returns = () => {
   const { showToast } = useToast();
   const [returns, setReturns] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState("All");
   const [activeQcTab, setActiveQcTab] = useState("QC Requested");
   const [selectedReturn, setSelectedReturn] = useState(null);
@@ -69,33 +81,10 @@ const Returns = () => {
     }
   };
 
-  const getStatusVariant = (status) => {
-    switch (status) {
-      case "return_requested":
-        return "warning";
-      case "return_approved":
-        return "info";
-      case "return_rejected":
-        return "error";
-      case "return_pickup_assigned":
-      case "return_in_transit":
-      case "return_drop_pending":
-        return "secondary";
-      case "returned":
-      case "qc_passed":
-        return "success";
-      case "qc_failed":
-        return "error";
-      case "refund_completed":
-        return "success";
-      default:
-        return "secondary";
-    }
-  };
-
-  const fetchReturns = async () => {
+  const fetchReturns = async (isManual = false) => {
+    if (isManual) setIsRefreshing(true);
     try {
-      setLoading(true);
+      if (!isManual) setLoading(true);
       const res = await adminApi.getReturns();
       const payload = res.data.result || {};
       const items = Array.isArray(payload.items)
@@ -107,26 +96,13 @@ const Returns = () => {
       showToast("Failed to fetch return requests", "error");
     } finally {
       setLoading(false);
+      if (isManual) setIsRefreshing(false);
     }
   };
 
   useEffect(() => {
     fetchReturns();
   }, []);
-
-  useEffect(() => {
-    if (isDetailsOpen || actionModal.open) {
-      document.body.style.overflow = "hidden";
-      document.documentElement.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "unset";
-      document.documentElement.style.overflow = "unset";
-    }
-    return () => {
-      document.body.style.overflow = "unset";
-      document.documentElement.style.overflow = "unset";
-    };
-  }, [isDetailsOpen, actionModal.open]);
 
   const filteredReturns = useMemo(() => {
     if (activeTab === "All") return returns;
@@ -149,6 +125,7 @@ const Returns = () => {
       await adminApi.approveReturn(orderId, {});
       showToast("Return approved", "success");
       await fetchReturns();
+      setIsDetailsOpen(false);
     } catch (error) {
       console.error("Failed to approve return", error);
       showToast(
@@ -237,540 +214,328 @@ const Returns = () => {
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6 pb-20 sm:pb-16">
-      <BlurFade delay={0.1}>
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-4">
-          <div className="min-w-0">
-            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 flex flex-wrap items-center gap-2">
-              Return Requests
-              <Badge
-                variant="secondary"
-                className="text-[10px] px-1.5 py-0 font-bold tracking-widest uppercase"
-              >
-                Admin
-              </Badge>
-            </h1>
-            <p className="text-slate-600 text-sm sm:text-base mt-0.5 font-medium">
-              Review, approve, and QC customer returns.
-            </p>
-          </div>
-          <div className="flex gap-2 flex-shrink-0">
-            <Button
-              onClick={fetchReturns}
-              variant="outline"
-              className="flex items-center space-x-1.5 sm:space-x-2 px-3 py-2 sm:px-5 sm:py-2.5 rounded-lg text-xs sm:text-sm font-bold text-slate-600 bg-white hover:bg-slate-50 border-slate-200"
-            >
-              <HiOutlineArrowPath className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-              <span className="hidden sm:inline">REFRESH</span>
-            </Button>
-          </div>
-        </div>
-      </BlurFade>
+    <div className="space-y-6 md:space-y-8">
+      <PageHeader
+        title="Return Requests"
+        description="Review customer return requests, trigger pickups, verify QC, and process refunds."
+        icon={RotateCcw}
+        badge={
+          <Badge variant="primary">
+            {returns.length} Total
+          </Badge>
+        }
+        actions={
+          <button
+            onClick={() => fetchReturns(true)}
+            className="ds-btn ds-btn-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 shadow-sm"
+          >
+            <RotateCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin text-primary")} />
+            <span>Refresh</span>
+          </button>
+        }
+      />
 
-      {loading ? (
-        <div className="min-h-[320px] flex flex-col items-center justify-center bg-white rounded-3xl border border-slate-100 shadow-sm">
-          <Loader2 className="h-10 w-10 text-primary animate-spin" />
-          <p className="text-slate-600 font-bold mt-4 uppercase tracking-widest text-xs">
-            Loading Return Requests...
-          </p>
-        </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            {["Requested", "Approved", "QC Requested", "Completed"].map((label, i) => {
-              const count = returns.filter(
-                (r) => mapReturnStatusLabel(r.returnStatus) === label,
-              ).length;
+      {/* Summary KPI Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: "Requested", icon: AlertCircle, color: "text-amber-600", bg: "bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800" },
+          { label: "Approved", icon: CheckCircle2, color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800" },
+          { label: "QC Requested", icon: Inbox, color: "text-purple-600", bg: "bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800" },
+          { label: "Completed", icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800" },
+        ].map((card) => {
+          const count = returns.filter(
+            (r) => mapReturnStatusLabel(r.returnStatus) === card.label,
+          ).length;
+          return (
+            <StatCard
+              key={card.label}
+              label={card.label}
+              value={count}
+              icon={card.icon}
+              color={card.color}
+              bg={card.bg}
+              description={`Items currently in ${card.label.toLowerCase()}`}
+            />
+          );
+        })}
+      </div>
+
+      {/* Tabbed Returns Container */}
+      <Card className="p-0 overflow-hidden">
+        {/* Main Tab Bar */}
+        <div className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 overflow-x-auto">
+          <div className="flex px-4 md:px-6 items-center min-w-max gap-1">
+            {tabs.map((tab) => {
+              const tabCount = tab === 'All' ? returns.length : returns.filter(r => mapReturnStatusLabel(r.returnStatus) === tab).length;
               return (
-                <BlurFade key={label} delay={0.1 + i * 0.05}>
-                  <MagicCard
-                    className="border-none shadow-sm ring-1 ring-slate-100 p-0 overflow-hidden group bg-white"
-                    gradientColor="#eef2ff"
-                  >
-                    <div className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 relative z-10">
-                      <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-lg flex items-center justify-center bg-slate-900 text-white shadow-sm shrink-0">
-                        <HiOutlineInboxStack className="h-5 w-5 sm:h-6 sm:w-6" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[10px] sm:text-xs font-bold text-slate-600 uppercase tracking-widest truncate">
-                          {label}
-                        </p>
-                        <h4 className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight">
-                          {count}
-                        </h4>
-                      </div>
-                    </div>
-                  </MagicCard>
-                </BlurFade>
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={cn(
+                    "relative py-3.5 px-3.5 text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5",
+                    activeTab === tab
+                      ? "text-primary font-bold"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                  )}
+                >
+                  <span>{tab}</span>
+                  {tabCount > 0 && (
+                    <span className={cn(
+                      "px-1.5 py-0.2 rounded-full text-[10px] font-mono",
+                      activeTab === tab ? "bg-primary text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                    )}>
+                      {tabCount}
+                    </span>
+                  )}
+                  {activeTab === tab && (
+                    <motion.div
+                      layoutId="returns-tab-active-indicator"
+                      className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full"
+                    />
+                  )}
+                </button>
               );
             })}
           </div>
+        </div>
 
-          <BlurFade delay={0.2}>
-            <Card className="border-none shadow-xl ring-1 ring-slate-100 rounded-lg bg-white overflow-hidden">
-              <div className="border-b border-slate-100 bg-slate-50/30 overflow-x-auto scrollbar-hide">
-                <div className="flex px-3 sm:px-6 items-center min-w-max">
-                  {tabs.map((tab) => (
-                    <button
-                      key={tab}
-                      onClick={() => setActiveTab(tab)}
-                      className={cn(
-                        "relative py-3 sm:py-4 px-2.5 sm:px-4 text-xs sm:text-sm font-bold whitespace-nowrap transition-all duration-300",
-                        activeTab === tab
-                          ? "text-primary scale-105"
-                          : "text-slate-600 hover:text-slate-700",
-                      )}
-                    >
-                      {tab}
-                      {activeTab === tab && (
-                        <motion.div
-                          layoutId="returns-admin-tab-underline"
-                          className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full mx-2 sm:mx-4"
-                        />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {activeTab === "Quality Check" && (
-                <div className="border-b border-slate-100 bg-slate-50/10 overflow-x-auto scrollbar-hide">
-                  <div className="flex px-3 sm:px-6 items-center min-w-max">
-                    {qcTabs.map((tab) => (
-                      <button
-                        key={`qc-${tab}`}
-                        onClick={() => setActiveQcTab(tab)}
-                        className={cn(
-                          "relative py-2 sm:py-3 px-3 sm:px-4 text-xs font-bold whitespace-nowrap transition-all duration-300 rounded-t-lg",
-                          activeQcTab === tab
-                            ? "text-primary bg-primary/5"
-                            : "text-slate-500 hover:text-slate-700 hover:bg-slate-50/50"
-                        )}
-                      >
-                        {tab}
-                        {activeQcTab === tab && (
-                          <motion.div
-                            layoutId="returns-qc-tab-underline"
-                            className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary mx-2"
-                          />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="p-3 sm:p-4">
-                {filteredReturns.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 px-4">
-                    <div className="h-14 w-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 mb-3">
-                      <HiOutlineInboxStack className="h-7 w-7" />
-                    </div>
-                    <h3 className="text-sm font-bold text-slate-900">
-                      No return requests found
-                    </h3>
-                    <p className="text-xs text-slate-600 font-medium text-center mt-1">
-                      You will see customer return requests here.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {filteredReturns.map((ret) => (
-                      <div
-                        key={ret._id}
-                        className="bg-white border border-slate-100 rounded-xl p-4 shadow-sm hover:bg-slate-50/40 transition-colors flex items-start justify-between gap-3"
-                      >
-                        <div
-                          className="min-w-0 flex-1 cursor-pointer"
-                          onClick={() => openDetails(ret)}
-                        >
-                          <p className="text-xs font-black text-slate-900 truncate">
-                            #{ret.orderId}
-                          </p>
-                          <p className="text-xs font-semibold text-slate-600 mt-0.5 flex items-center gap-1">
-                            <HiOutlineCalendarDays className="h-3 w-3 shrink-0" />
-                            {ret.returnRequestedAt
-                              ? new Date(ret.returnRequestedAt).toLocaleString("en-IN", {
-                                day: "2-digit",
-                                month: "short",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })
-                              : "N/A"}
-                          </p>
-                          <p className="text-xs font-bold text-slate-800 mt-1">
-                            {ret.customer?.name || "Customer"}
-                          </p>
-                          <p className="text-xs text-slate-500 mt-1 line-clamp-2">
-                            {ret.returnReason || "No reason provided"}
-                          </p>
-                          {/* Proper Data: Rider tracking for in-transit */}
-                          {(ret.returnStatus === "return_in_transit" || ret.returnStatus === "return_drop_pending" || ret.returnStatus === "return_pickup_assigned") && ret.returnDeliveryBoy && (
-                            <div className="mt-2 flex items-center gap-1.5 px-2 py-1 bg-brand-50 rounded-lg border border-brand-100 w-fit">
-                              <HiOutlineTruck className="h-3 w-3 text-brand-600" />
-                              <span className="text-[10px] font-bold text-brand-700">Rider: {ret.returnDeliveryBoy.name}</span>
-                            </div>
-                          )}
-                          {/* Proper Data: QC Note for passed/failed */}
-                          {(ret.returnStatus === "qc_passed" || ret.returnStatus === "qc_failed") && ret.returnQcNote && (
-                            <div className="mt-2 flex items-start gap-1.5 px-2 py-1 bg-slate-50 rounded-lg border border-slate-100 w-fit max-w-[200px]">
-                              <HiOutlineInboxStack className="h-3 w-3 text-slate-500 mt-0.5" />
-                              <span className="text-[10px] font-medium text-slate-600 italic line-clamp-2">QC: {ret.returnQcNote}</span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex flex-col items-end gap-2 shrink-0">
-                          <Badge
-                            variant={getStatusVariant(ret.returnStatus)}
-                            className="text-[10px] font-black uppercase px-2 py-0"
-                          >
-                            {mapReturnStatusLabel(ret.returnStatus)}
-                          </Badge>
-                          <p className="text-xs font-black text-slate-900">
-                            {"\u20B9"}{ret.returnRefundAmount || ret.pricing?.subtotal || 0}
-                          </p>
-                          <button
-                            onClick={() => openDetails(ret)}
-                            className="p-2 hover:bg-slate-100 rounded-lg text-slate-600"
-                          >
-                            <HiOutlineEye className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+        {/* Quality Check Sub-tabs if active */}
+        {activeTab === "Quality Check" && (
+          <div className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/30 px-6 py-2 flex items-center gap-2">
+            {qcTabs.map((tab) => (
+              <button
+                key={`qc-${tab}`}
+                onClick={() => setActiveQcTab(tab)}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+                  activeQcTab === tab
+                    ? "bg-primary/10 text-primary"
+                    : "text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800"
                 )}
-              </div>
-            </Card>
-          </BlurFade>
-        </>
-      )}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+        )}
 
+        {/* Return Items List */}
+        <div className="p-4 md:p-6">
+          {loading ? (
+            <div className="py-16 text-center">
+              <Loader2 className="h-8 w-8 text-primary animate-spin mx-auto mb-2" />
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Loading Return Requests...</p>
+            </div>
+          ) : filteredReturns.length === 0 ? (
+            <EmptyState
+              icon={Inbox}
+              title="No Return Requests Found"
+              description={`There are currently no return requests under '${activeTab}'.`}
+            />
+          ) : (
+            <div className="space-y-3">
+              {filteredReturns.map((ret) => (
+                <div
+                  key={ret._id}
+                  className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-4 md:p-5 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer"
+                  onClick={() => openDetails(ret)}
+                >
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <span className="text-xs md:text-sm font-bold text-slate-900 dark:text-white font-mono hover:text-primary transition-colors">
+                        Order #{ret.orderId}
+                      </span>
+                      <StatusBadge status={ret.returnStatus} />
+                    </div>
+
+                    <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">{ret.customer?.name || "Customer"}</span>
+                      <span>•</span>
+                      <span className="flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        {ret.returnRequestedAt
+                          ? new Date(ret.returnRequestedAt).toLocaleDateString("en-IN", {
+                              day: "2-digit",
+                              month: "short",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : "N/A"}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2 italic">
+                      Reason: "{ret.returnReason || "No reason provided"}"
+                    </p>
+
+                    {/* Driver Tag */}
+                    {(ret.returnStatus === "return_in_transit" || ret.returnStatus === "return_pickup_assigned") && ret.returnDeliveryBoy && (
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-xs font-semibold">
+                        <Truck className="h-3 w-3" />
+                        <span>Rider: {ret.returnDeliveryBoy.name}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center md:flex-col items-end justify-between md:justify-center gap-2 shrink-0 border-t md:border-t-0 pt-3 md:pt-0 border-slate-100 dark:border-slate-800">
+                    <div className="text-right">
+                      <span className="text-xs text-slate-400 uppercase tracking-wider block font-semibold text-[10px]">Refund Value</span>
+                      <span className="text-sm md:text-base font-bold text-slate-900 dark:text-white font-mono">
+                        ₹{Number(ret.returnRefundAmount || ret.pricing?.subtotal || 0).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openDetails(ret);
+                      }}
+                      className="ds-btn ds-btn-sm bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-primary hover:text-white"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      <span>Review</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* Return Details Review Modal */}
       <AnimatePresence>
         {isDetailsOpen && selectedReturn && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 lg:p-8 overflow-hidden overscroll-none pointer-events-auto">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
               onClick={() => setIsDetailsOpen(false)}
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="w-full max-w-2xl relative z-10 bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col"
-              style={{ maxHeight: 'calc(100vh - 2rem)' }}
+              className="w-full max-w-2xl relative z-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <div className="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-100 shrink-0">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
                 <div>
-                  <h3 className="text-base font-black text-slate-900">
-                    Return for Order #{selectedReturn.orderId}
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    Return Request: #{selectedReturn.orderId}
                   </h3>
-                  <div className="flex items-center space-x-2 mt-0.5">
-                    <Badge
-                      variant={getStatusVariant(selectedReturn.returnStatus)}
-                      className="text-[10px] font-black uppercase tracking-widest px-1.5 py-0"
-                    >
-                      {mapReturnStatusLabel(selectedReturn.returnStatus)}
-                    </Badge>
+                  <div className="flex items-center gap-2 mt-1">
+                    <StatusBadge status={selectedReturn.returnStatus} />
+                    <span className="text-xs text-slate-400">
+                      Amount: ₹{selectedReturn.returnRefundAmount || selectedReturn.pricing?.subtotal || 0}
+                    </span>
                   </div>
                 </div>
                 <button
                   onClick={() => setIsDetailsOpen(false)}
-                  className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-600"
+                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-700"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
 
-              <div className="px-4 py-4 sm:px-6 sm:py-5 overflow-y-auto overscroll-contain flex-1 min-h-0 space-y-4">
-                <div className="space-y-2">
-                  <p className="text-xs font-bold text-slate-600 uppercase tracking-widest">
-                    Customer
-                  </p>
-                  <p className="text-sm font-bold text-slate-900">
-                    {selectedReturn.customer?.name || "Customer"}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {selectedReturn.customer?.phone || ""}
-                  </p>
+              <div className="p-6 overflow-y-auto space-y-4 text-xs">
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 space-y-1">
+                  <p className="font-semibold text-slate-500 uppercase tracking-wider text-[10px]">Customer & Reason</p>
+                  <p className="text-sm font-bold text-slate-900 dark:text-white">{selectedReturn.customer?.name || "Customer"}</p>
+                  <p className="text-slate-500">{selectedReturn.customer?.phone}</p>
+                  <p className="text-slate-700 dark:text-slate-300 italic pt-1">"{selectedReturn.returnReason || "No details"}"</p>
                 </div>
 
-                <div className="space-y-2">
-                  <p className="text-xs font-bold text-slate-600 uppercase tracking-widest">
-                    Return Details
-                  </p>
-                  <div className="bg-slate-50 rounded-2xl p-3 border border-slate-100 space-y-2">
-                    <p className="text-sm font-bold text-slate-800">
-                      Reason: <span className="font-medium text-slate-600">{selectedReturn.returnReason || "N/A"}</span>
-                    </p>
-                    {selectedReturn.returnReasonDetail && (
-                      <p className="text-sm text-slate-700 italic border-l-2 border-slate-300 pl-2">
-                        {selectedReturn.returnReasonDetail}
-                      </p>
-                    )}
-                    {selectedReturn.returnConditionAssurance !== undefined && (
-                      <div className="flex items-start gap-1.5 pt-1">
-                        <div className={`mt-1 h-2 w-2 shrink-0 rounded-full ${selectedReturn.returnConditionAssurance ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                        <p className="text-xs font-semibold text-slate-600">
-                          {selectedReturn.returnConditionAssurance ? "Customer confirmed proper accessories & good condition." : "Customer did NOT confirm condition."}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {selectedReturn.returnImages?.length > 0 && (
-                    <div className="pt-2 space-y-2">
-                      <p className="text-xs font-bold text-slate-600 uppercase tracking-widest">
-                        Customer Photos ({selectedReturn.returnImages.length})
-                      </p>
-                      <div className="flex gap-2 overflow-x-auto pb-2">
-                        {selectedReturn.returnImages.map((img, idx) => (
-                          <div key={idx} className="relative aspect-square w-20 rounded-xl overflow-hidden border border-slate-200 shrink-0 cursor-pointer hover:border-slate-400" onClick={() => window.open(img, '_blank')}>
-                            <img src={img} alt={`Return ${idx}`} className="w-full h-full object-cover" />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {selectedReturn.returnRejectedReason && (
-                    <p className="text-xs text-rose-600 font-semibold">
-                      Rejection reason: {selectedReturn.returnRejectedReason}
-                    </p>
-                  )}
-                  {selectedReturn.returnQcNote && (
-                    <p className="text-xs text-slate-600 font-semibold">
-                      QC note: {selectedReturn.returnQcNote}
-                    </p>
-                  )}
-                </div>
-
-                {/* Tracking Info Section */}
-                {(selectedReturn.returnStatus === "return_pickup_assigned" ||
-                  selectedReturn.returnStatus === "return_in_transit" ||
-                  selectedReturn.returnStatus === "return_drop_pending") && selectedReturn.returnDeliveryBoy && (
-                    <div className="bg-brand-50 rounded-2xl p-4 border border-brand-100 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <div className="h-8 w-8 rounded-lg bg-black  flex items-center justify-center text-white">
-                          <HiOutlineTruck className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest leading-none mb-1">Rider Assigned</p>
-                          <p className="text-sm font-bold text-slate-900 leading-none">{selectedReturn.returnDeliveryBoy.name}</p>
-                        </div>
-                      </div>
-                      {selectedReturn.returnDeliveryBoy.phone && (
-                        <a
-                          href={`tel:${selectedReturn.returnDeliveryBoy.phone}`}
-                          className="inline-flex items-center gap-1.5 text-[11px] font-bold text-brand-700 bg-white px-3 py-1.5 rounded-lg border border-brand-200 shadow-sm hover:bg-brand-100 transition-colors"
-                        >
-                          📞 {selectedReturn.returnDeliveryBoy.phone}
-                        </a>
-                      )}
-                      {selectedReturn.returnStatus === "return_drop_pending" && (
-                        <p className="text-[10px] font-bold text-brand-800 italic mt-1 bg-white/50 p-2 rounded-lg">
-                          Rider is at the seller location. Sharing the OTP will confirm the drop.
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                {/* QC Info Section */}
-                {(selectedReturn.returnStatus === "qc_passed" || selectedReturn.returnStatus === "qc_failed") && (
-                  <div className={`rounded-2xl p-4 border space-y-2 ${selectedReturn.returnStatus === "qc_passed" ? "bg-emerald-50 border-emerald-100" : "bg-rose-50 border-rose-100"
-                    }`}>
-                    <div className="flex items-center gap-2">
-                      <div className={`h-8 w-8 rounded-lg flex items-center justify-center text-white ${selectedReturn.returnStatus === "qc_passed" ? "bg-emerald-600" : "bg-rose-600"
-                        }`}>
-                        <HiOutlineInboxStack className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <p className={`text-[10px] font-black uppercase tracking-widest leading-none mb-1 ${selectedReturn.returnStatus === "qc_passed" ? "text-emerald-600" : "text-rose-600"
-                          }`}>Quality Check Results</p>
-                        <p className="text-sm font-bold text-slate-900 leading-none">
-                          {selectedReturn.returnStatus === "qc_passed" ? "QC Passed" : "QC Failed"}
-                        </p>
-                      </div>
-                    </div>
-                    {selectedReturn.returnQcNote && (
-                      <div className="bg-white/60 p-3 rounded-xl border border-black/5">
-                        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1">QC Decision Note:</p>
-                        <p className="text-sm text-slate-800 italic leading-relaxed">
-                          "{selectedReturn.returnQcNote}"
-                        </p>
-                      </div>
-                    )}
-                    {selectedReturn.returnQcAt && (
-                      <p className="text-[10px] font-medium text-slate-500">
-                        Reviewed on: {new Date(selectedReturn.returnQcAt).toLocaleString()}
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* Quality Check Comparison (2-Way) */}
-                <div className="space-y-3 pt-2">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">
-                    Product Comparison (QC)
-                  </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    {/* 1. Original Listing Image */}
-                    <div className="space-y-1.5 flex flex-col h-full group">
-                      <div className="relative aspect-square rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shadow-inner group-hover:border-slate-300 transition-colors">
-                        <img
-                          src={selectedReturn.items?.[0]?.image || "https://placehold.co/400x400/f8fafc/64748b?text=Original"}
-                          alt="Original"
-                          className="h-full w-full object-cover"
-                        />
-                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-900/60 to-transparent p-2">
-                          <p className="text-[9px] font-black text-white uppercase leading-none">Listing</p>
-                        </div>
-                      </div>
-                    </div>
-
-
-                    {/* 3. Return Pickup Proof */}
-                    <div className="space-y-1.5 flex flex-col h-full group">
-                      <div className="relative aspect-square rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shadow-inner group-hover:border-slate-300 transition-colors flex items-center justify-center">
-                        {selectedReturn.returnPickupImages?.[0] ? (
-                          <img
-                            src={selectedReturn.returnPickupImages[0]}
-                            alt="Return Pickup"
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex flex-col items-center gap-1.5 text-slate-400 px-3 text-center">
-                            <HiOutlineInboxStack className="h-5 w-5" />
-                            <p className="text-[8px] font-bold leading-tight uppercase">Not Picked Yet</p>
-                          </div>
-                        )}
-                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-emerald-900/60 to-transparent p-2">
-                          <p className="text-[9px] font-black text-white uppercase leading-none">Return</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  {selectedReturn.returnPickupCondition && (
-                    <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl">
-                      <div className={`h-2 w-2 rounded-full ${selectedReturn.returnPickupCondition === 'good' ? 'bg-emerald-500' :
-                          selectedReturn.returnPickupCondition === 'damaged' ? 'bg-rose-500' : 'bg-amber-500'
-                        }`} />
-                      <p className="text-[11px] font-bold text-slate-600">
-                        Rider Condition Report: <span className="uppercase text-slate-900">{selectedReturn.returnPickupCondition}</span>
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <p className="text-xs font-bold text-slate-600 uppercase tracking-widest">
-                    Items
-                  </p>
+                {/* Return Items */}
+                <div>
+                  <p className="font-semibold text-slate-500 uppercase tracking-wider text-[10px] mb-2">Returned Items</p>
                   <div className="space-y-2">
-                    {(selectedReturn.returnItems || []).map((item, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100"
-                      >
-                        <div>
-                          <p className="text-xs font-bold text-slate-900">{item.name}</p>
-                          <p className="text-xs text-slate-500">Qty: {item.quantity}</p>
+                    {selectedReturn.items?.map((item, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-3 rounded-lg border border-slate-100 dark:border-slate-800">
+                        <div className="flex items-center gap-2.5">
+                          <div className="h-9 w-9 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                            <Package className="h-4 w-4 text-slate-400" />
+                          </div>
+                          <div>
+                            <p className="font-semibold text-slate-900 dark:text-white">{item.name}</p>
+                            <p className="text-[10px] text-slate-400 font-mono">Qty: {item.quantity}</p>
+                          </div>
                         </div>
-                        <p className="text-xs font-black text-slate-900">
-                          {"\u20B9"}{item.price * item.quantity}
-                        </p>
+                        <span className="font-bold text-slate-900 dark:text-white font-mono">₹{item.price * item.quantity}</span>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <p className="text-xs font-bold text-slate-600 uppercase tracking-widest">
-                    Payment Breakdown
-                  </p>
-                  <p className="text-xs text-slate-700">
-                    Product refund:{" "}
-                    <span className="font-black">
-                      {"\u20B9"}{selectedReturn.returnRefundAmount || selectedReturn.pricing?.subtotal || 0}
-                    </span>
-                  </p>
-                  <p className="text-xs text-slate-700">
-                    Return delivery commission:{" "}
-                    <span className="font-black">
-                      {"\u20B9"}{selectedReturn.returnDeliveryCommission || 0}
-                    </span>
-                  </p>
-                </div>
+                {/* Photos if any */}
+                {selectedReturn.returnPhotos?.length > 0 && (
+                  <div>
+                    <p className="font-semibold text-slate-500 uppercase tracking-wider text-[10px] mb-2">Proof Photos</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {selectedReturn.returnPhotos.map((photo, i) => (
+                        <div key={i} className="h-24 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700">
+                          <img src={photo} alt="Proof" className="w-full h-full object-cover" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div className="px-4 py-3 sm:px-6 sm:py-4 border-t border-slate-100 bg-slate-50 flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-center justify-end shrink-0">
-                <div className="flex gap-2 items-center flex-wrap">
-                  <button
-                    onClick={() => setIsDetailsOpen(false)}
-                    className="px-6 py-2.5 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-100 transition-all"
-                  >
-                    Close
-                  </button>
-
-                  {selectedReturn.returnStatus === "return_requested" && (
-                    <>
-                      <Button
-                        variant="outline"
-                        className="text-xs font-bold border-rose-200 text-rose-600 hover:bg-rose-50"
-                        onClick={() => setActionModal({ open: true, mode: "reject" })}
-                      >
-                        Reject Request
-                      </Button>
-                      <Button
-                        className="text-xs font-bold bg-slate-900"
-                        onClick={() => handleApprove(selectedReturn.orderId)}
-                      >
-                        Approve Return
-                      </Button>
-                    </>
-                  )}
-
-                  {selectedReturn.returnStatus === "return_approved" && (
-                    <Button
-                      className="text-xs font-bold bg-black  hover:bg-brand-700"
-                      disabled={assigningPickup}
-                      onClick={() => handleAssignPickup(selectedReturn.orderId)}
+              {/* Action Buttons Footer */}
+              <div className="p-4 bg-slate-50/50 dark:bg-slate-800/30 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2.5">
+                {selectedReturn.returnStatus === "return_requested" && (
+                  <>
+                    <button
+                      onClick={() => setActionModal({ open: true, mode: "reject" })}
+                      className="ds-btn ds-btn-sm bg-white dark:bg-slate-900 border border-rose-200 text-rose-600 hover:bg-rose-50"
                     >
-                      {assigningPickup ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      ) : (
-                        <HiOutlineInboxStack className="h-4 w-4 mr-2" />
-                      )}
-                      Assign Pickup
-                    </Button>
-                  )}
+                      Reject Return
+                    </button>
+                    <button
+                      onClick={() => handleApprove(selectedReturn.orderId)}
+                      className="ds-btn ds-btn-sm bg-primary text-white hover:bg-primary/90"
+                    >
+                      Approve Return
+                    </button>
+                  </>
+                )}
 
-                  {selectedReturn.returnStatus === "returned" && (
-                    <>
-                      <Button
-                        variant="outline"
-                        className="text-xs font-bold border-rose-200 text-rose-600 hover:bg-rose-50"
-                        onClick={() => setActionModal({ open: true, mode: "qc_fail" })}
-                      >
-                        QC Failed
-                      </Button>
-                      <Button
-                        className="text-xs font-bold bg-emerald-600 hover:bg-emerald-700"
-                        onClick={() => handleQcPass(selectedReturn.orderId)}
-                      >
-                        QC Passed
-                      </Button>
-                    </>
-                  )}
-                </div>
+                {selectedReturn.returnStatus === "return_approved" && (
+                  <button
+                    onClick={() => handleAssignPickup(selectedReturn.orderId)}
+                    disabled={assigningPickup}
+                    className="ds-btn ds-btn-sm bg-primary text-white"
+                  >
+                    {assigningPickup ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5" />}
+                    <span>Assign Return Pickup Rider</span>
+                  </button>
+                )}
+
+                {selectedReturn.returnStatus === "returned" && (
+                  <>
+                    <button
+                      onClick={() => setActionModal({ open: true, mode: "qc_fail" })}
+                      className="ds-btn ds-btn-sm bg-white dark:bg-slate-900 border border-rose-200 text-rose-600 hover:bg-rose-50"
+                    >
+                      QC Failed
+                    </button>
+                    <button
+                      onClick={() => handleQcPass(selectedReturn.orderId)}
+                      className="ds-btn ds-btn-sm bg-emerald-600 text-white hover:bg-emerald-700"
+                    >
+                      QC Passed → Process Refund
+                    </button>
+                  </>
+                )}
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
+      {/* Reject / QC Fail Note Modal */}
       <AnimatePresence>
         {actionModal.open && (
           <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
@@ -778,54 +543,42 @@ const Returns = () => {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-              onClick={() => !submittingAction && setActionModal({ open: false, mode: null })}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+              onClick={() => setActionModal({ open: false, mode: null })}
             />
             <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="w-full max-w-md relative z-10 bg-white rounded-3xl shadow-2xl p-6 space-y-4"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-md relative z-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-6 space-y-4"
             >
-              <h3 className="text-xl font-black text-slate-900">
-                {actionModal.mode === "qc_fail" ? "QC Failed" : "Reject Return"}
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                {actionModal.mode === "reject" ? "Reject Return Request" : "Record QC Failure"}
               </h3>
-              <p className="text-sm text-slate-600 font-medium">
-                {actionModal.mode === "qc_fail"
-                  ? "Add a note for QC failure. This will be visible to the customer."
-                  : "Please provide a reason for rejecting this return request."}
+              <p className="text-xs text-slate-500">
+                Please provide a mandatory reason explaining why this return or QC is rejected.
               </p>
-
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                  Note
-                </label>
-                <textarea
-                  className="w-full rounded-2xl border border-slate-200 p-4 text-sm font-medium focus:ring-2 focus:ring-slate-900/10 outline-none transition-all"
-                  rows={4}
-                  placeholder="e.g. Item damaged or mismatch with return request..."
-                  value={actionNote}
-                  onChange={(e) => setActionNote(e.target.value)}
-                />
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                <Button
-                  variant="outline"
-                  className="flex-1 font-bold"
+              <textarea
+                value={actionNote}
+                onChange={(e) => setActionNote(e.target.value)}
+                placeholder="Type explanation / failure reason here..."
+                className="ds-textarea w-full"
+                rows={3}
+              />
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
                   onClick={() => setActionModal({ open: false, mode: null })}
-                  disabled={submittingAction}
+                  className="ds-btn ds-btn-sm bg-white dark:bg-slate-900 border border-slate-200 text-slate-700"
                 >
                   Cancel
-                </Button>
-                <Button
-                  className="flex-1 font-bold bg-rose-600 hover:bg-rose-700"
-                  onClick={actionModal.mode === "qc_fail" ? handleQcFail : handleReject}
-                  isLoading={submittingAction}
-                  disabled={!actionNote.trim() || submittingAction}
+                </button>
+                <button
+                  onClick={actionModal.mode === "reject" ? handleReject : handleQcFail}
+                  disabled={submittingAction || !actionNote.trim()}
+                  className="ds-btn ds-btn-sm bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50"
                 >
-                  Submit
-                </Button>
+                  {submittingAction ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Confirm Rejection"}
+                </button>
               </div>
             </motion.div>
           </div>

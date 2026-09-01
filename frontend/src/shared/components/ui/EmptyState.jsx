@@ -1,41 +1,41 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 
-/**
- * EmptyState
- *
- * Render this when a list/table has no results. Designed to be wrapped
- * around any icon (lucide-react / heroicons) and an optional action button.
- *
- *   <EmptyState
- *     icon={<Inbox className="h-10 w-10 text-gray-400" />}
- *     title="No orders yet"
- *     description="Orders placed by customers will appear here."
- *     action={<Button onClick={...}>Refresh</Button>}
- *   />
- */
 const EmptyState = ({
-    icon,
+    icon: IconOrElement,
     title,
     description,
     action,
     className,
 }) => {
+    const renderIcon = () => {
+        if (!IconOrElement) return null;
+        if (React.isValidElement(IconOrElement)) {
+            return <div className="p-3.5 rounded-2xl bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500 mb-1">{IconOrElement}</div>;
+        }
+        const Icon = IconOrElement;
+        return (
+            <div className="p-3.5 rounded-2xl bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500 mb-1">
+                <Icon className="h-8 w-8" />
+            </div>
+        );
+    };
+
     return (
         <div
             className={cn(
-                'flex flex-col items-center justify-center gap-3 py-12 px-4 text-center',
+                'flex flex-col items-center justify-center gap-2.5 py-14 px-6 text-center',
                 className,
             )}
         >
-            {icon ? <div className="mb-1">{icon}</div> : null}
+            {renderIcon()}
             {title ? (
-                <h3 className="text-base font-semibold text-gray-900">{title}</h3>
+                <h3 className="text-base font-semibold text-slate-900 dark:text-white tracking-tight">{title}</h3>
             ) : null}
             {description ? (
-                <p className="text-sm text-gray-500 max-w-md">{description}</p>
+                <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 max-w-md font-medium leading-relaxed">{description}</p>
             ) : null}
-            {action ? <div className="mt-2">{action}</div> : null}
+            {action ? <div className="mt-3">{action}</div> : null}
         </div>
     );
 };

@@ -1,12 +1,17 @@
-import React from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@core/context/AuthContext';
 import {
-    HiOutlineLogout,
-    HiOutlineUserCircle,
-    HiOutlineBell,
-    HiOutlineSearch,
-    HiOutlineMenu
-} from 'react-icons/hi';
+    LogOut,
+    Bell,
+    Search,
+    Menu,
+    ExternalLink,
+    Shield,
+    Sparkles,
+    Command,
+    Clock,
+    User
+} from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { sellerApi } from '@/modules/seller/services/sellerApi';
@@ -14,7 +19,6 @@ import { adminApi } from '@/modules/admin/services/adminApi';
 import { AnimatePresence } from 'framer-motion';
 import NotificationPopup from './NotificationPopup';
 import { toast } from 'sonner';
-
 import { useSettings } from '@core/context/SettingsContext';
 import { onNotificationNew } from '@core/services/orderSocket';
 
@@ -24,14 +28,14 @@ const Topbar = ({ onMenuClick }) => {
     const navigate = useNavigate();
     const location = useLocation();
 
-    const appName = settings?.appName || 'App';
+    const appName = settings?.appName || 'SunGguard';
     const logoUrl = settings?.logoUrl || '';
 
-    const [searchQuery, setSearchQuery] = React.useState('');
-    const [notifications, setNotifications] = React.useState([]);
-    const [unreadCount, setUnreadCount] = React.useState(0);
-    const [showNotifications, setShowNotifications] = React.useState(false);
-    const notificationRef = React.useRef(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [notifications, setNotifications] = useState([]);
+    const [unreadCount, setUnreadCount] = useState(0);
+    const [showNotifications, setShowNotifications] = useState(false);
+    const notificationRef = useRef(null);
 
     const isSeller = location.pathname.startsWith('/seller');
     const isAdmin = location.pathname.startsWith('/admin');
@@ -42,17 +46,17 @@ const Topbar = ({ onMenuClick }) => {
         if (!q) return;
         if (isSeller) {
             navigate(`/seller/products?q=${encodeURIComponent(q)}`);
+        } else if (isAdmin) {
+            navigate(`/admin/products?search=${encodeURIComponent(q)}`);
         }
     };
 
-    // Stable refs so the socket / visibility listeners don't need to
-    // re-bind whenever React re-renders the topbar for unrelated reasons.
-    const isSellerRef = React.useRef(isSeller);
-    const isAdminRef = React.useRef(isAdmin);
-    React.useEffect(() => { isSellerRef.current = isSeller; }, [isSeller]);
-    React.useEffect(() => { isAdminRef.current = isAdmin; }, [isAdmin]);
+    const isSellerRef = useRef(isSeller);
+    const isAdminRef = useRef(isAdmin);
+    useEffect(() => { isSellerRef.current = isSeller; }, [isSeller]);
+    useEffect(() => { isAdminRef.current = isAdmin; }, [isAdmin]);
 
-    const fetchNotifications = React.useCallback(async () => {
+    const fetchNotifications = useCallback(async () => {
         try {
             const sellerMode = isSellerRef.current;
             const adminMode = isAdminRef.current;
@@ -61,21 +65,15 @@ const Topbar = ({ onMenuClick }) => {
                 ? await sellerApi.getNotifications()
                 : await adminApi.getNotifications();
             if (response.data.success) {
-                setNotifications(response.data.result.notifications);
-                setUnreadCount(response.data.result.unreadCount);
+                setNotifications(response.data.result?.notifications || []);
+                setUnreadCount(response.data.result?.unreadCount || 0);
             }
         } catch (error) {
             console.error("Notif Fetch Error:", error);
         }
     }, []);
 
-    // Event-driven refresh: subscribe to `notification:new` for the
-    // current admin/seller and refetch on any in-app delta. The 60s
-    // poll below is now a degraded safety net for environments where
-    // the socket can't connect (CSP, proxy, etc.) — primary path is
-    // the socket. Tab focus also triggers an immediate refresh so a
-    // user returning to a backgrounded tab sees a fresh badge.
-    React.useEffect(() => {
+    useEffect(() => {
         if (!isSeller && !isAdmin) return undefined;
         fetchNotifications();
 
@@ -83,8 +81,6 @@ const Topbar = ({ onMenuClick }) => {
         let scheduled = null;
         const refresh = () => {
             if (scheduled) return;
-            // Debounce: bursts of notifications (e.g. bulk order accept)
-            // shouldn't trigger N concurrent refetches.
             scheduled = setTimeout(() => {
                 scheduled = null;
                 fetchNotifications();
@@ -92,61 +88,35 @@ const Topbar = ({ onMenuClick }) => {
         };
 
         const offNotification = token ? onNotificationNew(getToken, refresh) : null;
-
-        // Degraded fallback: 60s poll. The socket is the primary
-        // path, this just covers offline-recovery / dropped connections.
-        const FALLBACK_POLL_MS = 60_000;
         const poll = setInterval(() => {
             if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
                 return;
             }
             fetchNotifications();
-        }, FALLBACK_POLL_MS);
-
-        const onVisibility = () => {
-            if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-                fetchNotifications();
-            }
-        };
-        if (typeof document !== 'undefined') {
-            document.addEventListener('visibilitychange', onVisibility);
-        }
+        }, 60000);
 
         return () => {
-            if (scheduled) clearTimeout(scheduled);
             clearInterval(poll);
-            if (typeof document !== 'undefined') {
-                document.removeEventListener('visibilitychange', onVisibility);
-            }
-            if (typeof offNotification === 'function') offNotification();
+            if (offNotification) offNotification();
         };
     }, [isSeller, isAdmin, token, fetchNotifications]);
 
-    // Handle Click Outside
-    React.useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (notificationRef.current && !notificationRef.current.contains(event.target)) {
-                setShowNotifications(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-
-    const handleMarkAsRead = async (id) => {
+    const handleMarkAsRead = async (notifId) => {
         try {
-            if (!id) return;
-            if (isSeller) await sellerApi.markNotificationRead(id);
-            if (isAdmin) await adminApi.markNotificationRead(id);
-            fetchNotifications();
+            if (isSeller) await sellerApi.markNotificationRead(notifId);
+            if (isAdmin) await adminApi.markNotificationRead(notifId);
+            setNotifications(prev =>
+                prev.map(n => n._id === notifId ? { ...n, isRead: true } : n)
+            );
+            setUnreadCount(prev => Math.max(0, prev - 1));
         } catch (error) {
-            toast.error("Failed to mark as read");
+            toast.error("Failed to update notification");
         }
     };
 
     const handleNotificationClick = (notif) => {
-        const link = notif?.data?.link;
-        const parcelId = notif?.data?.parcelId;
+        const link = notif?.data?.link || notif?.link;
+        const parcelId = notif?.data?.parcelId || notif?.parcelId;
         const eventType = notif?.type || notif?.data?.eventType;
 
         setShowNotifications(false);
@@ -173,69 +143,84 @@ const Topbar = ({ onMenuClick }) => {
             if (isSeller) await sellerApi.markAllNotificationsRead();
             if (isAdmin) await adminApi.markAllNotificationsRead();
             fetchNotifications();
-            toast.success("All caught up!");
+            toast.success("All notifications cleared");
         } catch (error) {
             toast.error("Failed to mark all as read");
         }
     };
 
-    const handleLogout = () => {
-        logout();
-    };
-
     return (
         <header className={cn(
-            "bg-white/70 backdrop-blur-xl border-b border-gray-100/50 flex items-center justify-between shadow-[0_4px_30px_rgba(0,0,0,0.02)] transition-all duration-300",
+            "bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between transition-all duration-300 z-40 shadow-sm",
             (role === 'admin' || role === 'seller')
-                ? "fixed top-0 left-0 right-0 z-[200] h-14 px-4 md:sticky md:top-0 md:h-16 md:px-6"
-                : "fixed top-0 left-72 right-0 h-16 px-6 z-40"
+                ? "fixed top-0 left-0 right-0 h-18 px-5 md:sticky md:top-0 md:px-8"
+                : "fixed top-0 left-72 right-0 h-18 px-8"
         )}>
-            <div className="flex items-center flex-1 mr-4 overflow-hidden">
+            {/* Left section: mobile hamburger & search */}
+            <div className="flex items-center flex-1 mr-6">
                 <button
                     onClick={onMenuClick}
-                    className="p-2.5 mr-3 bg-gray-100/80 hover:bg-white rounded-xl text-gray-600 hover:text-primary transition-all duration-300 md:hidden border border-transparent hover:border-primary/20 shadow-sm"
+                    className="p-2.5 mr-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-2xl text-slate-700 dark:text-slate-200 transition-colors md:hidden shadow-sm"
                 >
-                    <HiOutlineMenu className="h-5 w-5" />
+                    <Menu className="h-6 w-6" />
                 </button>
 
-                {/* Mobile Logo */}
-                <div className="flex items-center space-x-2 mr-4 md:hidden">
+                {/* Mobile App Logo */}
+                <div className="flex items-center space-x-2 mr-3 md:hidden">
                     {logoUrl ? (
-                        <div className="h-8 w-8 rounded-lg overflow-hidden shadow-md shadow-primary/10 border border-gray-100">
+                        <div className="h-9 w-9 rounded-2xl overflow-hidden shadow-sm ring-1 ring-slate-200">
                             <img src={logoUrl} alt={appName} className="h-full w-full object-cover" />
                         </div>
                     ) : (
-                        <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center text-white font-black text-sm shadow-md">
+                        <div className="h-9 w-9 rounded-2xl bg-primary flex items-center justify-center text-white font-black text-sm shadow-md">
                             {appName.charAt(0)}
                         </div>
                     )}
                 </div>
 
-                <form onSubmit={handleSearchSubmit} className="relative w-full md:w-[400px] group hidden md:block">
-                    <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 group-focus-within:text-primary transition-all duration-300" />
+                {/* Desktop Global Search Bar */}
+                <form onSubmit={handleSearchSubmit} className="relative w-full max-w-lg hidden md:block group">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-primary transition-colors" />
                     <input
                         type="text"
-                        placeholder={isSeller ? "Search products by name or SKU..." : "Search anything..."}
+                        placeholder={isSeller ? "Search products, inventory, orders..." : "Search orders, products, users, or coupons..."}
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSearchSubmit()}
-                        className="w-full pl-10 pr-4 py-2 bg-gray-100/50 border border-transparent rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-primary/10 focus:border-primary/20 transition-all duration-500 outline-none"
+                        className="w-full pl-11 pr-14 py-2.5 bg-slate-100/80 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/80 rounded-2xl text-sm font-medium text-slate-900 dark:text-white placeholder:text-slate-400 focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                     />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 pointer-events-none">
+                        <kbd className="px-2 py-0.5 text-xs font-mono font-bold text-slate-500 bg-slate-200/70 dark:bg-slate-700/70 rounded-lg border border-slate-300 dark:border-slate-600">⌘K</kbd>
+                    </div>
                 </form>
             </div>
 
-            <div className="flex items-center space-x-4">
+            {/* Right section: System telemetry, notifications & profile */}
+            <div className="flex items-center space-x-3 sm:space-x-5">
+                {/* Live Status Pill */}
+                <div className="hidden xl:flex items-center gap-2 px-3.5 py-2 rounded-full bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 shadow-sm">
+                    <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                    </span>
+                    <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300">Live Network Active</span>
+                </div>
+
+                {/* Notifications Trigger */}
                 <div className="relative" ref={notificationRef}>
                     <button
                         onClick={() => setShowNotifications(!showNotifications)}
                         className={cn(
-                            "p-2 hover:bg-primary/5 text-gray-500 hover:text-primary rounded-xl transition-all duration-300 relative group",
-                            showNotifications && "bg-primary/5 text-primary"
+                            "p-2.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-primary rounded-2xl transition-all relative shadow-sm border border-transparent hover:border-slate-200 dark:hover:border-slate-700",
+                            showNotifications && "bg-primary/10 text-primary border-primary/20"
                         )}
+                        aria-label="Notifications"
                     >
-                        <HiOutlineBell className="h-5 w-5" />
+                        <Bell className="h-5 w-5" />
                         {unreadCount > 0 && (
-                            <span className="absolute top-2 right-2 h-2 w-2 bg-rose-500 rounded-full ring-2 ring-white shadow-sm"></span>
+                            <span className="absolute top-2 right-2 flex h-2.5 w-2.5">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500 ring-2 ring-white dark:ring-slate-900"></span>
+                            </span>
                         )}
                     </button>
 
@@ -252,35 +237,38 @@ const Topbar = ({ onMenuClick }) => {
                     </AnimatePresence>
                 </div>
 
-                <div className="h-8 w-px bg-gray-100 mx-1"></div>
+                <div className="h-7 w-px bg-slate-200 dark:bg-slate-800" />
+
+                {/* Profile Widget */}
                 <button
                     onClick={() => {
                         if (location.pathname.startsWith('/admin')) {
                             navigate('/admin/profile');
                         } else if (location.pathname.startsWith('/seller')) {
                             navigate('/seller/profile');
-                        } else if (location.pathname.startsWith('/delivery')) {
-                            navigate('/delivery/profile');
                         } else {
                             navigate('/profile');
                         }
                     }}
-                    className="flex items-center space-x-2.5 p-1 pr-3 hover:bg-gray-50 rounded-xl transition-all duration-300 group ring-1 ring-transparent hover:ring-gray-100 shadow-sm hover:shadow-md"
+                    className="flex items-center space-x-3 p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-2xl transition-all group"
                 >
-                    <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center text-white font-bold text-xs shadow-md group-hover:scale-105 transition-transform">
+                    <div className="h-9 w-9 rounded-2xl bg-gradient-to-tr from-primary to-orange-500 flex items-center justify-center text-white font-black text-sm shadow-md">
                         {user?.name?.[0] || 'A'}
                     </div>
-                    <div>
-                        <p className="text-xs font-bold text-gray-900 leading-tight">{user?.name || 'Demo User'}</p>
-                        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">{user?.role || 'Member'}</p>
+                    <div className="hidden sm:block text-left">
+                        <p className="text-sm font-bold text-slate-900 dark:text-white leading-tight group-hover:text-primary transition-colors">{user?.name || 'Admin'}</p>
+                        <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">{user?.role || 'Admin'}</p>
                     </div>
                 </button>
+
+                {/* Sign Out Button */}
                 <button
-                    onClick={handleLogout}
-                    className="flex items-center space-x-1.5 px-3 py-2 text-rose-600 hover:bg-rose-50 rounded-xl transition-all duration-300 font-bold text-xs shadow-sm hover:shadow-rose-100/50"
+                    onClick={logout}
+                    className="flex items-center space-x-2 px-3.5 py-2.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-2xl transition-all font-bold text-xs shadow-sm border border-transparent hover:border-rose-200"
+                    title="Sign Out"
                 >
-                    <HiOutlineLogout className="h-4 w-4" />
-                    <span className="hidden lg:block">Sign Out</span>
+                    <LogOut className="h-4 w-4" />
+                    <span className="hidden lg:inline">Logout</span>
                 </button>
             </div>
         </header>
@@ -288,4 +276,3 @@ const Topbar = ({ onMenuClick }) => {
 };
 
 export default Topbar;
-

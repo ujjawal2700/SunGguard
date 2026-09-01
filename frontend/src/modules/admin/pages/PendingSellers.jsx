@@ -210,42 +210,42 @@ const PendingSellers = () => {
                                     </td>
                                 </tr>
                             ) : filteredSellers.length > 0 ? filteredSellers.map((s) => (
-                                <tr key={s.id} className="hover:bg-slate-50/30 transition-colors group">
-                                    <td className="px-6 py-5 align-middle">
+                                <tr key={s.id} className="hover:bg-slate-50/50 transition-colors group">
+                                    <td className="px-6 py-4.5 align-middle">
                                         <div
                                             className="flex items-center gap-4 cursor-pointer group/name"
                                             onClick={() => navigate(`/admin/sellers/active/${s.id}`)}
                                         >
-                                            <div className="h-10 w-10 rounded-xl overflow-hidden bg-slate-100 ring-2 ring-slate-100 group-hover:ring-primary/20 transition-all">
+                                            <div className="h-11 w-11 rounded-xl overflow-hidden bg-slate-100 ring-1 ring-slate-200 group-hover:ring-primary/40 transition-all shrink-0">
                                                 <div className="h-full w-full flex items-center justify-center bg-slate-100 text-slate-400">
                                                     <HiOutlineBuildingOffice2 className="h-5 w-5" />
                                                 </div>
                                             </div>
                                             <div>
-                                                <p className="text-sm font-bold text-slate-900 group-hover/name:text-primary transition-colors">{s.shopName}</p>
-                                                <p className="text-[10px] font-bold text-slate-400">{s.ownerName}</p>
+                                                <p className="text-base font-bold text-slate-900 group-hover/name:text-primary transition-colors">{s.shopName}</p>
+                                                <p className="text-xs text-slate-500 font-normal mt-0.5">{s.ownerName}</p>
                                             </div>
                                         </div>
                                     </td>
-                                    <td className="px-6 py-5 align-middle">
+                                    <td className="px-6 py-4.5 align-middle">
                                         <div className="flex flex-wrap gap-1.5 items-center">
                                             {(s.documents || []).map((doc, idx) => (
-                                                <span key={idx} className="px-2 py-0.5 bg-brand-50 text-brand-600 text-[8px] font-bold rounded-full ring-1 ring-brand-100 uppercase">{doc}</span>
+                                                <span key={idx} className="px-2.5 py-0.5 bg-blue-50 text-blue-700 text-xs font-semibold rounded-lg border border-blue-200 uppercase">{doc}</span>
                                             ))}
                                         </div>
                                     </td>
-                                    <td className="px-6 py-5 align-middle">
+                                    <td className="px-6 py-4.5 align-middle">
                                         <div className="flex flex-col justify-center">
-                                            <span className="text-xs font-bold text-slate-700">{s.applicationDate}</span>
-                                            <span className="text-[9px] font-medium text-slate-400">Received {s.receivedAt || 'Recently'}</span>
+                                            <span className="text-sm font-semibold text-slate-800">{s.applicationDate}</span>
+                                            <span className="text-xs font-normal text-slate-400 mt-0.5">Received {s.receivedAt || 'Recently'}</span>
                                         </div>
                                     </td>
-                                    <td className="px-6 py-5 text-right align-middle">
-                                        <div className="flex items-center justify-end gap-3 h-full">
+                                    <td className="px-6 py-4.5 text-right align-middle">
+                                        <div className="flex items-center justify-end gap-2.5 h-full">
                                             {s.documents && s.documents.length > 0 && (
                                                 <button
                                                     onClick={() => handleApprove(s.id)}
-                                                    className="h-8 w-8 flex items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white transition-all ring-1 ring-emerald-100"
+                                                    className="h-9 w-9 flex items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white transition-all border border-emerald-200"
                                                     title="Quick Approve"
                                                 >
                                                     <HiOutlineCheckCircle className="h-5 w-5" />
@@ -253,7 +253,7 @@ const PendingSellers = () => {
                                             )}
                                             <button
                                                 onClick={() => handleReject(s.id)}
-                                                className="h-8 w-8 flex items-center justify-center rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white transition-all ring-1 ring-rose-100"
+                                                className="h-9 w-9 flex items-center justify-center rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white transition-all border border-rose-200"
                                                 title="Quick Reject"
                                             >
                                                 <HiOutlineXCircle className="h-5 w-5" />

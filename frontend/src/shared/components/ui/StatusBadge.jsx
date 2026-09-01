@@ -1,21 +1,6 @@
 import React from 'react';
 import Badge from './Badge';
 
-/**
- * StatusBadge
- *
- * Single, shared mapping from domain status strings (order status, return
- * status, payment status, payout status) to badge colors. Eliminates the
- * scattered `getStatusColor()` helpers re-implemented in every page.
- *
- *   <StatusBadge status={order.status} />
- *   <StatusBadge status={payment.paymentStatus} kind="payment" />
- *
- * `kind` lets the same status string map to different colors when it has
- * different meaning across domains. If `kind` is unknown, falls through to
- * the default mapping. Unknown statuses render as `gray`.
- */
-
 const ORDER_STATUS_VARIANT = {
     pending: 'yellow',
     confirmed: 'blue',
@@ -29,6 +14,11 @@ const ORDER_STATUS_VARIANT = {
     return_rejected: 'red',
     return_pickup_assigned: 'blue',
     return_completed: 'green',
+    active: 'green',
+    inactive: 'gray',
+    verified: 'green',
+    rejected: 'red',
+    suspended: 'red',
 };
 
 const PAYMENT_STATUS_VARIANT = {
@@ -37,14 +27,28 @@ const PAYMENT_STATUS_VARIANT = {
     PENDING: 'yellow',
     CREATED: 'gray',
     FAILED: 'red',
-    REFUNDED: 'gray',
+    REFUNDED: 'purple',
 };
 
 const PAYOUT_STATUS_VARIANT = {
     pending: 'yellow',
     on_hold: 'yellow',
     released: 'green',
+    approved: 'green',
+    completed: 'green',
     failed: 'red',
+    rejected: 'red',
+};
+
+const PARCEL_STATUS_VARIANT = {
+    CREATED: 'gray',
+    ASSIGNED: 'blue',
+    ACCEPTED: 'blue',
+    PICKED_UP: 'blue',
+    IN_TRANSIT: 'blue',
+    DELIVERED: 'green',
+    CANCELLED: 'red',
+    RETURNED: 'red',
 };
 
 function pickVariant(status, kind) {
@@ -55,6 +59,8 @@ function pickVariant(status, kind) {
             return PAYMENT_STATUS_VARIANT[key.toUpperCase()] || 'gray';
         case 'payout':
             return PAYOUT_STATUS_VARIANT[key.toLowerCase()] || 'gray';
+        case 'parcel':
+            return PARCEL_STATUS_VARIANT[key.toUpperCase()] || ORDER_STATUS_VARIANT[key.toLowerCase()] || 'gray';
         case 'order':
         default:
             return ORDER_STATUS_VARIANT[key.toLowerCase()] || 'gray';
@@ -72,6 +78,7 @@ const StatusBadge = ({ status, kind = 'order', className }) => {
     const variant = pickVariant(status, kind);
     return (
         <Badge variant={variant} className={className}>
+            <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
             {formatLabel(status)}
         </Badge>
     );

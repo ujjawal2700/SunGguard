@@ -4,19 +4,24 @@ import { cn } from '@/lib/utils';
 
 const Badge = ({ children, variant = 'gray', className, ...props }) => {
     const variantStyles = {
-        primary: 'bg-primary-50 text-primary-700 border-primary-100 hover:bg-primary-100',
-        success: 'bg-brand-50 text-primary border-brand-100 hover:bg-brand-100',
-        warning: 'bg-yellow-50 text-yellow-700 border-yellow-100 hover:bg-yellow-100',
-        error: 'bg-red-50 text-red-700 border-red-100 hover:bg-red-100',
-        info: 'bg-brand-50 text-brand-700 border-brand-100 hover:bg-brand-100',
-        gray: 'bg-gray-50 text-gray-700 border-gray-100 hover:bg-gray-100',
+        primary: 'bg-primary/10 text-primary border-primary/20 hover:bg-primary/15',
+        success: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800',
+        green: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800',
+        warning: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800',
+        yellow: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800',
+        error: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800',
+        red: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800',
+        info: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800',
+        blue: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800',
+        purple: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800',
+        gray: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
     };
 
     return (
         <ShadcnBadge
             variant="outline"
             className={cn(
-                'text-[10px] font-medium transition-colors px-2 py-0.5',
+                'text-xs font-semibold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 border transition-colors',
                 variantStyles[variant] || variantStyles.gray,
                 className
             )}
@@ -28,4 +33,3 @@ const Badge = ({ children, variant = 'gray', className, ...props }) => {
 };
 
 export default Badge;
-

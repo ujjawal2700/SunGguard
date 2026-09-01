@@ -373,10 +373,10 @@ const ActiveSellers = () => {
                 </tr>
               ) : sellers.length > 0 ? (
                 sellers.map((seller) => (
-                  <tr key={seller.id} className="hover:bg-slate-50/30 transition-colors">
-                    <td className="px-6 py-4">
+                  <tr key={seller.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-6 py-4.5">
                       <div className="flex items-center gap-4">
-                        <div className="h-12 w-12 rounded-2xl overflow-hidden bg-slate-100 ring-2 ring-slate-100 flex items-center justify-center">
+                        <div className="h-12 w-12 rounded-2xl overflow-hidden bg-slate-100 ring-1 ring-slate-200 flex items-center justify-center shrink-0">
                           <img
                             src={seller.avatar}
                             alt={seller.shopName}
@@ -387,15 +387,15 @@ const ActiveSellers = () => {
                           />
                         </div>
                         <div>
-                          <p className="text-sm font-bold text-slate-900">
+                          <p className="text-base font-bold text-slate-900 dark:text-white">
                             {seller.shopName}
                           </p>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                            <span className="text-[10px] font-semibold text-slate-400">
+                            <span className="text-xs text-slate-500 font-normal">
                               {seller.ownerName}
                             </span>
                             <span className="h-1 w-1 rounded-full bg-slate-300" />
-                            <span className="text-[10px] font-bold text-primary uppercase tracking-widest">
+                            <span className="text-xs font-semibold text-primary uppercase tracking-wider">
                               {seller.category || "General"}
                             </span>
                           </div>
@@ -403,75 +403,75 @@ const ActiveSellers = () => {
                       </div>
                     </td>
 
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4.5">
                       <div className="space-y-1.5">
                         <div className="flex items-center gap-3">
-                          <span className="text-xs font-bold text-slate-900">
+                          <span className="text-sm font-bold text-slate-900 dark:text-white font-mono">
                             {(seller.totalOrders || 0).toLocaleString("en-IN")} Orders
                           </span>
-                          <span className="text-[10px] font-bold text-brand-600">
+                          <span className="text-sm font-bold text-emerald-600 font-mono">
                             {currency(seller.totalRevenue)}
                           </span>
                         </div>
                         <div className="w-32 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-brand-500 rounded-full"
+                            className="h-full bg-primary rounded-full"
                             style={{
                               width: `${Math.min(100, seller.fulfillmentRate || 0)}%`,
                             }}
                           />
                         </div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                        <p className="text-xs text-slate-400 font-medium">
                           {(seller.fulfillmentRate || 0)}% fulfillment
                         </p>
                       </div>
                     </td>
 
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4.5">
                       <div className="space-y-1.5">
-                        <div className="flex items-center gap-2 text-slate-700">
-                          <HiOutlineDocumentText className="h-3.5 w-3.5 text-slate-400" />
-                          <span className="text-[10px] font-bold">
+                        <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 text-xs font-medium">
+                          <HiOutlineDocumentText className="h-4 w-4 text-slate-400" />
+                          <span>
                             {(seller.productCount || 0).toLocaleString("en-IN")} products
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 text-slate-700">
-                          <HiOutlineMapPin className="h-3.5 w-3.5 text-slate-400" />
-                          <span className="text-[10px] font-bold truncate max-w-[260px]">
+                        <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 text-xs font-medium">
+                          <HiOutlineMapPin className="h-4 w-4 text-slate-400" />
+                          <span className="truncate max-w-[260px]">
                             {seller.location || "Location not set"}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 text-slate-400">
-                          <HiOutlineCalendarDays className="h-3.5 w-3.5" />
-                          <span className="text-[10px] font-bold">
+                        <div className="flex items-center gap-2 text-slate-400 text-xs">
+                          <HiOutlineCalendarDays className="h-4 w-4" />
+                          <span>
                             Joined {seller.joinedDate || "N/A"}
                           </span>
                         </div>
                       </div>
                     </td>
 
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col gap-2">
+                    <td className="px-6 py-4.5">
+                      <div className="flex flex-col gap-1.5">
                         <Badge
                           variant="success"
-                          className="w-fit text-[8px] font-black uppercase tracking-widest"
+                          className="w-fit text-xs font-semibold px-2.5 py-0.5"
                         >
                           Active
                         </Badge>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                        <span className="text-xs text-slate-400 font-normal">
                           Last order: {seller.lastOrderLabel || "No orders yet"}
                         </span>
                       </div>
                     </td>
 
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-6 py-4.5 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button
                           onClick={() => setSelectedSeller(seller)}
-                          className="px-4 py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-bold hover:bg-slate-800 transition-all shadow-lg flex items-center gap-2"
+                          className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
                         >
-                          <HiOutlineEye className="h-3.5 w-3.5" />
-                          VIEW PROFILE
+                          <HiOutlineEye className="h-4 w-4" />
+                          View Profile
                         </button>
                       </div>
                     </td>

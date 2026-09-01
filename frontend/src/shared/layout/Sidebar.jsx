@@ -5,39 +5,12 @@ import { useSettings } from "@core/context/SettingsContext";
 import { cn } from "@/lib/utils";
 import { HiChevronDown } from "react-icons/hi2";
 import { motion, AnimatePresence } from "framer-motion";
-import { X } from "lucide-react";
-
-const colorMap = {
-  indigo:
-    "text-brand-600 bg-brand-50 border-brand-100 group-hover:bg-brand-100/50",
-  rose: "text-rose-600 bg-rose-50 border-rose-100 group-hover:bg-rose-100/50",
-  amber:
-    "text-amber-600 bg-amber-50 border-amber-100 group-hover:bg-amber-100/50",
-  blue: "text-brand-600 bg-brand-50 border-brand-100 group-hover:bg-brand-100/50",
-  emerald:
-    "text-brand-600 bg-brand-50 border-brand-100 group-hover:bg-brand-100/50",
-  violet:
-    "text-violet-600 bg-violet-50 border-violet-100 group-hover:bg-violet-100/50",
-  cyan: "text-brand-600 bg-brand-50 border-brand-100 group-hover:bg-brand-100/50",
-  orange:
-    "text-orange-600 bg-orange-50 border-orange-100 group-hover:bg-orange-100/50",
-  green:
-    "text-brand-600 bg-brand-50 border-brand-100 group-hover:bg-brand-100/50",
-  sky: "text-brand-600 bg-brand-50 border-brand-100 group-hover:bg-brand-100/50",
-  pink: "text-pink-600 bg-pink-50 border-pink-100 group-hover:bg-pink-100/50",
-  fuchsia:
-    "text-fuchsia-600 bg-fuchsia-50 border-fuchsia-100 group-hover:bg-fuchsia-100/50",
-  red: "text-red-600 bg-red-50 border-red-100 group-hover:bg-red-100/50",
-  slate:
-    "text-slate-600 bg-slate-50 border-slate-100 group-hover:bg-slate-100/50",
-  dark: "text-gray-800 bg-gray-100 border-gray-200 group-hover:bg-gray-200/50",
-};
+import { X, Sparkles, Shield, LogOut } from "lucide-react";
 
 const SidebarItem = ({
   item,
   isOpen,
   onToggle,
-  isHovered,
   onMouseEnter,
   onMouseLeave,
 }) => {
@@ -52,101 +25,88 @@ const SidebarItem = ({
 
   if (hasChildren) {
     return (
-      <div className="space-y-1">
+      <div className="space-y-1 my-1.5">
         <button
           onClick={onToggle}
           onMouseEnter={onMouseEnter}
           onMouseLeave={onMouseLeave}
           className={cn(
-            "w-full flex items-center justify-between rounded-lg px-3 pr-12 py-2.5 transition-all duration-300 group relative overflow-hidden",
+            "w-full flex items-center justify-between rounded-2xl px-4 py-3 transition-all duration-200 group relative select-none",
             isChildActive || isOpen
-              ? "bg-white/10 text-white ring-1 ring-white/10"
-              : "text-gray-400 hover:text-white",
-          )}>
-          <AnimatePresence>
-            {isHovered && (
-              <motion.div
-                layoutId="hover-highlight"
-                className="absolute inset-0 bg-white/5 rounded-lg -z-10"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{
-                  type: "spring",
-                  stiffness: 400,
-                  damping: 30,
-                }}
-              />
-            )}
-          </AnimatePresence>
-
-          <div className="flex items-center space-x-2.5 z-10">
+              ? "bg-slate-800/90 text-white font-bold border border-slate-700/80 shadow-md"
+              : "text-slate-400 hover:text-white hover:bg-slate-800/50",
+          )}
+        >
+          <div className="flex items-center space-x-3.5 min-w-0">
             <div
               className={cn(
-                "p-1.5 rounded-lg transition-all duration-500 shadow-lg",
+                "p-2 rounded-xl transition-all duration-200 flex items-center justify-center shrink-0 shadow-sm",
                 isChildActive || isOpen
-                  ? "bg-primary text-primary-foreground ring-2 ring-primary/20"
-                  : "bg-white/5 text-gray-500 group-hover:bg-white/10 group-hover:text-gray-300",
-              )}>
-              {item.icon && <item.icon className="h-4 w-4" />}
+                  ? "bg-primary text-white shadow-primary/30"
+                  : "bg-slate-800/90 text-slate-400 group-hover:bg-slate-700 group-hover:text-slate-100",
+              )}
+            >
+              {item.icon && <item.icon className="h-5 w-5" />}
             </div>
-            <span
-              className={cn(
-                "text-xs tracking-tight transition-all duration-300",
-                isChildActive || isOpen ? "font-bold" : "font-semibold",
-              )}>
+            <span className="text-sm font-bold truncate tracking-tight">
               {item.label}
             </span>
           </div>
-          {badgeCount > 0 && !isOpen && (
-            <span className="pointer-events-none absolute top-2 right-3 min-w-5 h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center shadow-lg shadow-rose-500/30 ring-2 ring-[#0a0c10]">
-              {badgeLabel}
-            </span>
-          )}
-          <div
-            className={cn(
-              "transition-all duration-300 z-10",
-              isOpen
-                ? "rotate-180 text-primary"
-                : "rotate-0 text-gray-600 group-hover:text-gray-400",
-            )}>
-            <HiChevronDown className="h-4 w-4" />
+
+          <div className="flex items-center gap-2 shrink-0">
+            {badgeCount > 0 && !isOpen && (
+              <span className="min-w-5 h-5 px-1.5 rounded-full bg-rose-500 text-white text-[11px] font-black flex items-center justify-center shadow-md">
+                {badgeLabel}
+              </span>
+            )}
+            <div
+              className={cn(
+                "transition-transform duration-200 text-slate-400 group-hover:text-slate-200",
+                isOpen && "rotate-180 text-primary"
+              )}
+            >
+              <HiChevronDown className="h-4 w-4" />
+            </div>
           </div>
         </button>
+
         {isOpen && (
-          <div className="pl-9 pr-3 py-1 space-y-1 animate-in slide-in-from-top-2 fade-in duration-500">
+          <div className="pl-7 pr-2 py-1.5 space-y-1 relative before:absolute before:left-6 before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-800 animate-in slide-in-from-top-2 fade-in duration-200">
             {item.children.map((child) => {
               const showChildBadge =
                 badgeCount > 0 && String(child?.path || "") === "/admin/support-tickets";
 
               return (
-              <NavLink
-                key={child.path}
-                to={child.path}
-                end={child.end !== undefined ? child.end : false}
-                className={({ isActive }) =>
-                  cn(
-                    "block text-xs py-1.5 px-2.5 rounded-lg transition-all duration-300 relative",
-                    isActive
-                      ? "text-white font-bold bg-white/10 shadow-sm ring-1 ring-white/5"
-                      : "text-gray-500 hover:text-gray-300 hover:bg-white/5",
-                    showChildBadge && "pr-9",
-                  )
-                }>
-                {({ isActive }) => (
-                  <>
-                    {isActive && (
-                      <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-3 rounded-full bg-primary shadow-[0_0_10px_rgba(var(--primary),0.5)]" />
-                    )}
-                    {child.label}
-                    {showChildBadge && (
-                      <span className="pointer-events-none absolute top-1 right-2 min-w-5 h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center shadow-lg shadow-rose-500/30 ring-2 ring-[#0a0c10]">
-                        {badgeLabel}
-                      </span>
-                    )}
-                  </>
-                )}
-              </NavLink>
+                <NavLink
+                  key={child.path}
+                  to={child.path}
+                  end={child.end !== undefined ? child.end : false}
+                  className={({ isActive }) =>
+                    cn(
+                      "flex items-center justify-between text-sm py-2.5 px-3.5 rounded-xl transition-all duration-150 relative group",
+                      isActive
+                        ? "text-white font-bold bg-primary/20 text-primary border border-primary/30"
+                        : "text-slate-400 hover:text-slate-100 hover:bg-slate-800/50 font-medium",
+                    )
+                  }
+                >
+                  {({ isActive }) => (
+                    <>
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className={cn(
+                          "w-2 h-2 rounded-full transition-colors shrink-0",
+                          isActive ? "bg-primary" : "bg-slate-600 group-hover:bg-slate-400"
+                        )} />
+                        <span className="truncate">{child.label}</span>
+                      </div>
+                      {showChildBadge && (
+                        <span className="min-w-5 h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
+                          {badgeLabel}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </NavLink>
               );
             })}
           </div>
@@ -163,54 +123,35 @@ const SidebarItem = ({
       onMouseLeave={onMouseLeave}
       className={({ isActive }) =>
         cn(
-          "flex items-center space-x-2.5 rounded-lg px-3 py-2.5 transition-all duration-300 group relative overflow-hidden",
+          "flex items-center justify-between rounded-2xl px-4 py-3 my-1.5 transition-all duration-200 group relative select-none",
           isActive
-            ? "bg-primary text-primary-foreground"
-            : "text-gray-400 hover:text-white",
+            ? "bg-primary text-white font-bold shadow-md shadow-primary/25 border border-primary/30"
+            : "text-slate-400 hover:text-white hover:bg-slate-800/50",
         )
-      }>
+      }
+    >
       {({ isActive }) => (
         <>
-          <AnimatePresence>
-            {isHovered && !isActive && (
-              <motion.div
-                layoutId="hover-highlight"
-                className="absolute inset-0 bg-white/5 rounded-lg -z-10"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{
-                  type: "spring",
-                  stiffness: 400,
-                  damping: 30,
-                }}
-              />
-            )}
-          </AnimatePresence>
-
-          <div
-            className={cn(
-              "p-1.5 rounded-lg transition-all duration-500 shadow-md z-10",
-              isActive
-                ? "bg-white/20 text-white"
-                : "bg-white/5 text-gray-500 group-hover:bg-white/10 group-hover:text-gray-300",
-            )}>
-            {item.icon && <item.icon className="h-4 w-4" />}
+          <div className="flex items-center space-x-3.5 min-w-0">
+            <div
+              className={cn(
+                "p-2 rounded-xl transition-all duration-200 flex items-center justify-center shrink-0",
+                isActive
+                  ? "bg-white/25 text-white"
+                  : "bg-slate-800/90 text-slate-400 group-hover:bg-slate-700 group-hover:text-slate-100",
+              )}
+            >
+              {item.icon && <item.icon className="h-5 w-5" />}
+            </div>
+            <span className="text-sm font-bold truncate tracking-tight">
+              {item.label}
+            </span>
           </div>
-          <span
-            className={cn(
-              "text-xs tracking-tight transition-all duration-300 z-10",
-              isActive ? "font-bold" : "font-semibold",
-            )}>
-            {item.label}
-          </span>
+
           {badgeCount > 0 && (
-            <span className="pointer-events-none absolute top-2 right-3 min-w-5 h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center shadow-lg shadow-rose-500/30 ring-2 ring-[#0a0c10] z-10">
+            <span className="min-w-5 h-5 px-1.5 rounded-full bg-rose-500 text-white text-[11px] font-black flex items-center justify-center shadow-md">
               {badgeLabel}
             </span>
-          )}
-          {isActive && (
-            <div className="absolute right-0 top-0 bottom-0 w-1 bg-white/30 rounded-l-full animate-in slide-in-from-right-1" />
           )}
         </>
       )}
@@ -218,51 +159,52 @@ const SidebarItem = ({
   );
 };
 
-const SidebarContent = ({ items, title, onClose, openMenu, handleToggle, hoveredIdx, setHoveredIdx }) => {
+const SidebarContent = ({ items, title, onClose, openMenu, handleToggle }) => {
   const { settings } = useSettings();
-  const appName = settings?.appName || 'App';
+  const { user, logout } = useAuth();
+  const appName = settings?.appName || 'SunGguard';
 
   return (
-    <div className="flex flex-col h-full min-h-0">
-      <div className="flex-shrink-0 flex h-16 items-center justify-between px-5 border-b border-white/5 bg-gradient-to-b from-white/[0.02] to-transparent z-10">
-        <div className="flex items-center space-x-2.5">
-          {settings?.logoUrl ? (
-            <div className="h-9 w-9 rounded-xl overflow-hidden shadow-sm ring-1 ring-white/10 group-hover:scale-110 transition-all duration-500 ease-out">
-              <img src={settings.logoUrl} alt={appName} className="h-full w-full object-cover" />
-            </div>
-          ) : (
-            <div className="h-9 w-9 rounded-xl bg-primary flex items-center justify-center text-white shadow-sm transform -rotate-6 hover:rotate-0 transition-all duration-500 ease-out">
-              <span className="text-lg font-black italic">{appName.charAt(0)}</span>
-            </div>
-          )}
-          <div>
-            <h1 className="text-base font-black tracking-tight text-white leading-none">
+    <div className="flex flex-col h-full min-h-0 bg-[#0B0F19] text-slate-300">
+      {/* Brand Header */}
+      <div className="flex-shrink-0 flex h-20 items-center justify-between px-6 border-b border-slate-800/90 bg-slate-900/40">
+        <div className="flex items-center space-x-3.5 min-w-0">
+          <div className="h-11 w-11 rounded-2xl bg-gradient-to-tr from-primary to-orange-500 flex items-center justify-center text-white shadow-lg shadow-primary/25 shrink-0">
+            <Sparkles className="h-6 w-6" />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-base font-black tracking-tight text-white leading-tight truncate">
               {appName}
             </h1>
-            <span className="text-[9px] font-black text-primary uppercase tracking-[0.2em] mt-1 block">
-              {title}
-            </span>
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest truncate">
+                Admin Center
+              </span>
+            </div>
           </div>
         </div>
 
         {/* Mobile Close Button */}
         <button
           onClick={onClose}
-          className="p-2 md:hidden text-gray-500 hover:text-white transition-colors"
+          className="p-2 md:hidden text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors"
         >
-          <X className="h-5 w-5" />
+          <X className="h-6 w-6" />
         </button>
       </div>
 
+      {/* Navigation Links */}
       <nav
         data-lenis-prevent
-        onMouseLeave={() => setHoveredIdx(null)}
-        className="mt-4 px-3 space-y-1.5 flex-1 overflow-y-auto overscroll-contain custom-scrollbar-dark min-h-0 pb-6 relative z-20"
+        className="flex-1 px-4 py-5 space-y-1.5 overflow-y-auto overscroll-contain custom-scrollbar-dark min-h-0 relative z-20"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
-        <p className="px-3 text-[9px] font-black text-gray-600 uppercase tracking-[0.3em] mb-3">
-          Core Management
-        </p>
+        <div className="px-3 pb-2 pt-1 flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
+          <span>Main Navigation</span>
+          <span className="text-[10px] font-mono text-slate-600">v2.0</span>
+        </div>
+
         <AnimatePresence>
           {items.map((item, idx) => (
             <SidebarItem
@@ -270,41 +212,35 @@ const SidebarContent = ({ items, title, onClose, openMenu, handleToggle, hovered
               item={item}
               isOpen={openMenu === item.label}
               onToggle={() => handleToggle(item.label)}
-              isHovered={hoveredIdx === idx}
-              onMouseEnter={() => setHoveredIdx(idx)}
-              onMouseEnterWithClose={() => {
-                setHoveredIdx(idx);
-              }}
-              onMouseLeave={() => { }} // Handle in nav container
             />
           ))}
         </AnimatePresence>
       </nav>
 
-      <div className="p-4 border-t border-white/5 bg-gradient-to-t from-white/[0.02] to-transparent flex-shrink-0">
-        <div className="bg-white/5 rounded-lg p-3 shadow-sm border border-white/5 hover:bg-white/[0.08] hover:border-white/10 transition-all group cursor-pointer">
-          <div className="flex items-center space-x-2.5">
-            <div className="relative group">
-              {settings?.logoUrl ? (
-                <div className="h-8 w-8 rounded-lg overflow-hidden border border-white/10 shadow-lg group-hover:scale-110 transition-all duration-500">
-                  <img src={settings.logoUrl} alt={appName} className="h-full w-full object-cover" />
-                </div>
-              ) : (
-                <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-primary via-brand-500 to-violet-600 flex items-center justify-center text-white font-black text-xs shadow-lg group-hover:scale-110 transition-all duration-500">
-                  {appName.charAt(0)}
-                </div>
-              )}
-              <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 bg-brand-500 rounded-full border-2 border-[#0a0c10] shadow-sm animate-pulse"></div>
+      {/* Admin Profile Footer */}
+      <div className="p-4 border-t border-slate-800/90 bg-slate-900/60 flex-shrink-0">
+        <div className="bg-slate-800/80 rounded-2xl p-3.5 border border-slate-700/60 flex items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center space-x-3 min-w-0">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-primary/30 to-purple-500/30 border border-primary/50 flex items-center justify-center text-primary font-bold text-base shrink-0">
+              {user?.name?.[0] || 'A'}
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-bold text-white truncate group-hover:text-primary transition-colors">
-                {title?.toLowerCase().includes('seller') ? 'Seller Console' : 'Admin Console'}
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-white truncate">
+                {user?.name || "Admin"}
               </p>
-              <p className="text-[9px] text-gray-500 truncate font-black uppercase tracking-widest">
-                {title?.toLowerCase().includes('seller') ? 'Seller' : 'Super Admin'}
+              <p className="text-xs text-emerald-400 font-semibold truncate flex items-center gap-1.5 mt-0.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                Super Admin
               </p>
             </div>
           </div>
+          <button
+            onClick={logout}
+            className="p-2 rounded-xl bg-slate-700/60 text-slate-300 hover:text-rose-400 hover:bg-slate-700 transition-colors"
+            title="Logout"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
         </div>
       </div>
     </div>
@@ -314,7 +250,6 @@ const SidebarContent = ({ items, title, onClose, openMenu, handleToggle, hovered
 const Sidebar = ({ items, title, isOpen, onClose }) => {
   const { role } = useAuth();
   const [openMenu, setOpenMenu] = useState(null);
-  const [hoveredIdx, setHoveredIdx] = useState(null);
 
   const handleToggle = (label) => {
     setOpenMenu((prev) => (prev === label ? null : label));
@@ -326,15 +261,13 @@ const Sidebar = ({ items, title, isOpen, onClose }) => {
     onClose,
     openMenu,
     handleToggle,
-    hoveredIdx,
-    setHoveredIdx
   };
 
   return (
     <>
       {/* Desktop Sidebar */}
       <aside className={cn(
-        "fixed left-0 inset-y-0 w-72 bg-[#0a0c10] text-gray-400 border-r border-white/5 shadow-[20px_0_60px_rgba(0,0,0,0.4)] md:flex flex-col z-50 transition-all duration-300",
+        "fixed left-0 inset-y-0 w-72 bg-[#0B0F19] text-slate-300 border-r border-slate-800/90 shadow-2xl md:flex flex-col z-50 transition-all duration-300",
         (role === "admin" || role === "seller") ? "hidden md:flex" : "flex",
       )}>
         <SidebarContent {...commonProps} />
@@ -344,24 +277,20 @@ const Sidebar = ({ items, title, isOpen, onClose }) => {
       <AnimatePresence mode="wait">
         {isOpen && (
           <div className="fixed inset-0 z-[100] md:hidden">
-            {/* Backdrop Overlay */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={onClose}
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto"
+              className="absolute inset-0 bg-black/70 backdrop-blur-sm pointer-events-auto"
             />
-
-            {/* Outer Container (Fixed Shell - NO TRANSFORM) */}
             <div className="absolute left-0 inset-y-0 w-72 flex flex-col pointer-events-none">
-              {/* Inner Animation Wrapper (TRANSFORM APPLIED HERE) */}
               <motion.div
                 initial={{ x: "-100%" }}
                 animate={{ x: 0 }}
                 exit={{ x: "-100%" }}
                 transition={{ type: "spring", damping: 30, stiffness: 300, mass: 0.8 }}
-                className="flex-1 bg-[#0a0c10] shadow-2xl flex flex-col pointer-events-auto min-h-0"
+                className="flex-1 bg-[#0B0F19] shadow-2xl flex flex-col pointer-events-auto min-h-0"
               >
                 <SidebarContent {...commonProps} />
               </motion.div>

@@ -18,6 +18,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { adminApi } from "../../services/adminApi";
 import { toast } from "sonner";
 
+import PageHeader from "@shared/components/ui/PageHeader";
+
 const makeSlug = (value) =>
   String(value || "")
     .toLowerCase()
@@ -276,49 +278,52 @@ const Level2Categories = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">
-            Level 2 Categories
-          </h1>
-          <p className="text-gray-500 mt-1">
-            Manage secondary categories linked to headers
-          </p>
-        </div>
-        <button
-          onClick={openAddModal}
-          className="flex items-center gap-2 bg-black  text-primary-foreground px-4 py-2 rounded-lg hover:bg-brand-700 transition-colors">
-          <Plus className="w-5 h-5" />
-          Add New Category
-        </button>
-      </div>
+      <PageHeader
+        title="Main Categories (Level 2)"
+        description="Manage secondary product categories grouped under headers."
+        badge={
+          <Badge variant="primary" className="font-mono">
+            {categories.length} Categories
+          </Badge>
+        }
+        actions={
+          <button
+            onClick={openAddModal}
+            className="ds-btn ds-btn-md bg-primary text-white hover:bg-primary/90 shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Level 2 Category</span>
+          </button>
+        }
+      />
 
-      <Card className="border-none shadow-sm">
-        <div className="p-4 border-b border-gray-100 flex gap-4 items-center flex-wrap">
+      <Card className="p-0 overflow-hidden">
+        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex gap-3 items-center flex-wrap bg-slate-50/50 dark:bg-slate-800/20">
           {selectedItems.length > 0 && (
             <button
               onClick={handleBulkDelete}
-              className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors text-sm font-medium">
-              <Trash2 className="w-4 h-4" />
-              Delete ({selectedItems.length})
+              className="flex items-center gap-2 px-3.5 py-2 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl hover:bg-rose-100 transition-colors text-xs font-semibold"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete ({selectedItems.length})</span>
             </button>
           )}
           <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
             <input
               type="text"
               placeholder="Search categories..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+              className="ds-input w-full pl-9"
             />
           </div>
           <div className="flex items-center gap-2 min-w-[200px]">
-            <Filter className="text-gray-400 w-5 h-5" />
             <select
               value={filterHeader}
               onChange={(e) => setFilterHeader(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500">
+              className="ds-select w-full"
+            >
               <option value="all">All Header Categories</option>
               {headerCategories.map((h) => (
                 <option key={h._id || h.id} value={h._id || h.id}>
@@ -396,16 +401,16 @@ const Level2Categories = () => {
                   <tr
                     key={cat._id || cat.id}
                     className="hover:bg-gray-50/50 transition-colors">
-                    <td className="py-3 px-4">
+                    <td className="py-4.5 px-6">
                       <input
                         type="checkbox"
-                        className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                        className="rounded border-gray-300 text-purple-600 focus:ring-purple-500 h-4 w-4"
                         checked={selectedItems.includes(cat._id || cat.id)}
                         onChange={() => handleSelect(cat._id || cat.id)}
                       />
                     </td>
-                    <td className="py-3 px-4">
-                      <div className="w-10 h-10 rounded-lg bg-gray-100 overflow-hidden flex items-center justify-center border border-gray-200">
+                    <td className="py-4.5 px-6">
+                      <div className="w-11 h-11 rounded-xl bg-gray-100 overflow-hidden flex items-center justify-center border border-gray-200 shrink-0">
                         {cat.image ? (
                           <img
                             src={typeof cat.image === 'string' ? cat.image : (cat.image.url || cat.image.secure_url || cat.image)}
@@ -417,18 +422,18 @@ const Level2Categories = () => {
                         )}
                       </div>
                     </td>
-                    <td className="py-3 px-4 font-medium text-gray-900">
+                    <td className="py-4.5 px-6 font-bold text-base text-slate-900 dark:text-white">
                       {cat.name}
                     </td>
-                    <td className="py-3 px-4 text-gray-500">
+                    <td className="py-4.5 px-6 text-slate-500">
                       <Badge
                         variant="neutral"
-                        className="bg-gray-100 text-gray-600">
+                        className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold px-2.5 py-1">
                         {getParentName(cat.parentId)}
                       </Badge>
                     </td>
-                    <td className="py-3 px-4 text-gray-500">{cat.slug}</td>
-                    <td className="py-3 px-4">
+                    <td className="py-4.5 px-6 text-sm font-mono text-slate-500">{cat.slug}</td>
+                    <td className="py-4.5 px-6">
                       <Badge
                         variant={
                           cat.status === "active" ? "success" : "warning"
@@ -436,7 +441,7 @@ const Level2Categories = () => {
                         {cat.status}
                       </Badge>
                     </td>
-                    <td className="py-3 px-4 text-right space-x-2">
+                    <td className="py-4.5 px-6 text-right space-x-2">
                       <button
                         onClick={() => openEditModal(cat)}
                         className="p-1 text-gray-500 hover:text-brand-600 transition-colors">

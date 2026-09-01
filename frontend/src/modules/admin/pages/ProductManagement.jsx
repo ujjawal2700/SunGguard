@@ -529,17 +529,17 @@ const ProductManagement = () => {
                             <col className="w-[15%]" />
                         </colgroup>
                         <thead>
-                            <tr className="bg-slate-50/50 border-b border-slate-100">
-                                <th className="px-6 py-3 text-left text-[10px] font-medium text-slate-500 uppercase tracking-[0.18em]">Product</th>
-                                <th className="px-6 py-3 text-left text-[10px] font-medium text-slate-500 uppercase tracking-[0.18em]">Seller</th>
-                                <th className="px-6 py-3 text-left text-[10px] font-medium text-slate-500 uppercase tracking-[0.18em]">Variant</th>
-                                <th className="px-6 py-3 text-left text-[10px] font-medium text-slate-500 uppercase tracking-[0.18em]">Category</th>
-                                <th className="px-6 py-3 text-left text-[10px] font-medium text-slate-500 uppercase tracking-[0.18em]">Subcategory</th>
-                                <th className="px-4 py-3 text-center text-[10px] font-medium text-slate-500 uppercase tracking-[0.18em] whitespace-nowrap">Status</th>
-                                <th className="px-4 py-3 text-center text-[10px] font-medium text-slate-500 uppercase tracking-[0.18em] whitespace-nowrap">Actions</th>
+                            <tr className="bg-slate-50/70 dark:bg-slate-800/40 border-b border-slate-100 dark:border-slate-800">
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Product</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Seller</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Variant</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Category</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Subcategory</th>
+                                <th className="px-4 py-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Status</th>
+                                <th className="px-4 py-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-50">
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                             {isLoading ? (
                                 <tr>
                                     <td colSpan="7" className="px-6 py-20 text-center">
@@ -562,16 +562,16 @@ const ProductManagement = () => {
                                     )}
                                 >
                                     {/* Product Column */}
-                                    <td className="px-6 py-5 align-middle">
+                                    <td className="px-6 py-4 align-middle">
                                         <div className="flex items-center gap-3 min-w-0">
-                                            <div className="h-11 w-11 shrink-0 rounded-xl overflow-hidden bg-slate-100 ring-1 ring-slate-200 shadow-sm">
-                                                <img src={p.mainImage || p.images?.[0]} alt={p.name} className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                                            <div className="h-12 w-12 shrink-0 rounded-xl overflow-hidden bg-slate-100 ring-1 ring-slate-200 shadow-sm">
+                                                <img src={p.mainImage || p.images?.[0]} alt={p.name} className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300" />
                                             </div>
                                             <div className="min-w-0">
-                                                <p className="truncate text-[13px] font-semibold leading-5 text-slate-900" title={p.name}>{p.name}</p>
-                                                <p className="truncate text-[10px] font-medium uppercase tracking-widest text-slate-400" title={p.unit}>{p.unit}</p>
+                                                <p className="truncate text-sm font-semibold text-slate-900 dark:text-white" title={p.name}>{p.name}</p>
+                                                <p className="truncate text-xs font-normal text-slate-500 mt-0.5" title={p.unit}>{p.unit}</p>
                                                 {p.approvalStatus === 'rejected' && p.approvalNote ? (
-                                                    <p className="truncate text-[10px] font-medium text-rose-500" title={p.approvalNote}>
+                                                    <p className="truncate text-xs font-medium text-rose-500" title={p.approvalNote}>
                                                         Note: {p.approvalNote}
                                                     </p>
                                                 ) : null}
@@ -580,10 +580,10 @@ const ProductManagement = () => {
                                     </td>
 
                                     {/* Seller Column */}
-                                    <td className="px-6 py-5 align-middle">
+                                    <td className="px-6 py-4 align-middle">
                                         <div className="flex items-center gap-2 min-w-0">
-                                            <div className="h-2.5 w-2.5 shrink-0 rounded-full bg-brand-500 shadow-[0_0_0_4px_rgba(59,130,246,0.12)]" />
-                                            <span className="truncate text-[13px] font-medium text-slate-700" title={p.sellerId?.shopName || 'Admin'}>
+                                            <div className="h-2 w-2 shrink-0 rounded-full bg-brand-500" />
+                                            <span className="truncate text-sm font-normal text-slate-700 dark:text-slate-300" title={p.sellerId?.shopName || 'Admin'}>
                                                 {p.sellerId?.shopName || 'Admin'}
                                             </span>
                                         </div>
@@ -591,29 +591,29 @@ const ProductManagement = () => {
 
                                     {/* Variant Column */}
                                     <td
-                                        className="px-6 py-5 cursor-pointer align-middle transition-colors group/variant hover:bg-purple-50/60"
+                                        className="px-6 py-4 cursor-pointer align-middle transition-colors group/variant hover:bg-purple-50/60"
                                         onClick={(e) => {
-                                            e.stopPropagation();
-                                            setViewingVariants(p);
-                                            setIsVariantsViewModalOpen(true);
+                                             e.stopPropagation();
+                                             setViewingVariants(p);
+                                             setIsVariantsViewModalOpen(true);
                                         }}
                                     >
                                         {p.variants && p.variants.length > 0 ? (
-                                            <div className="inline-flex items-center gap-1.5 rounded-full bg-purple-50 px-2.5 py-1 text-purple-700 ring-1 ring-purple-100 transition-transform group-hover/variant:-translate-y-0.5">
+                                            <div className="inline-flex items-center gap-1.5 rounded-full bg-purple-50 dark:bg-purple-950/40 px-3 py-1 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
                                                 <HiOutlineSwatch className="h-3.5 w-3.5 shrink-0 text-purple-500" />
-                                                <span className="text-[12px] font-medium whitespace-nowrap">
+                                                <span className="text-xs font-medium whitespace-nowrap">
                                                     {p.variants.length} Variant{p.variants.length > 1 ? 's' : ''}
                                                 </span>
                                             </div>
                                         ) : (
-                                            <span className="text-[12px] font-medium text-slate-400">No variants</span>
+                                            <span className="text-xs font-normal text-slate-400">No variants</span>
                                         )}
                                     </td>
 
                                     {/* Category Column */}
-                                    <td className="px-6 py-5 align-middle">
+                                    <td className="px-6 py-4 align-middle">
                                         <span
-                                            className="inline-block max-w-full rounded-full bg-slate-100 px-3 py-1 text-[12px] font-medium text-slate-700 ring-1 ring-slate-200 truncate"
+                                            className="inline-block max-w-full rounded-lg bg-slate-100 dark:bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 truncate"
                                             title={p.categoryId?.name || 'N/A'}
                                         >
                                             {p.categoryId?.name || 'N/A'}
@@ -621,18 +621,17 @@ const ProductManagement = () => {
                                     </td>
 
                                     {/* Subcategory Column */}
-                                    <td className="px-6 py-5 align-middle">
+                                    <td className="px-6 py-4 align-middle">
                                         <span
-                                            className="inline-block max-w-full rounded-full bg-slate-50 px-3 py-1 text-[12px] font-medium text-slate-600 ring-1 ring-slate-100 truncate"
+                                            className="inline-block max-w-full rounded-lg bg-slate-50 dark:bg-slate-800/60 px-2.5 py-1 text-xs font-normal text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-800 truncate"
                                             title={p.subcategoryId?.name || 'N/A'}
                                         >
                                             {p.subcategoryId?.name || 'N/A'}
                                         </span>
                                     </td>
 
-
                                     {/* Status Column */}
-                                    <td className="px-4 py-5 text-center align-middle whitespace-nowrap">
+                                    <td className="px-4 py-4 text-center align-middle whitespace-nowrap">
                                         <div className="flex flex-col items-center gap-1">
                                             <StatusBadge status={p.status} stock={p.stock} />
                                             <ApprovalBadge approvalStatus={p.approvalStatus} />

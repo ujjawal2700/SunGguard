@@ -237,45 +237,44 @@ const CustomerManagement = () => {
                                 </tr>
                             ) : (
                                 filteredCustomers.map((cust) => (
-                                    <tr key={cust.id} className="ds-table-row">
-                                        <td className="ds-table-cell">
-                                            <div className="flex items-center gap-3">
+                                    <tr key={cust.id} className="ds-table-row hover:bg-slate-50/70 transition-colors">
+                                        <td className="ds-table-cell py-4 px-6">
+                                            <div className="flex items-center gap-3.5">
                                                 <img
                                                     src="https://cdn-icons-png.flaticon.com/512/149/149071.png"
                                                     alt=""
-                                                    className="h-10 w-10 rounded-lg bg-gray-100 ring-2 ring-white shadow-sm object-cover"
+                                                    className="h-11 w-11 rounded-xl bg-slate-100 ring-1 ring-slate-200 shadow-sm object-cover shrink-0"
                                                 />
                                                 <div>
                                                     <p
                                                         onClick={() => navigate(`/admin/customers/${cust.id}`)}
-                                                        className="ds-h4 hover:text-primary cursor-pointer transition-colors"
+                                                        className="text-sm font-semibold text-slate-900 hover:text-primary cursor-pointer transition-colors"
                                                     >
                                                         {cust.name}
                                                     </p>
-                                                    <p className="ds-body-sm text-gray-500">{cust.email || 'No email'}</p>
+                                                    <p className="text-xs text-slate-500 font-normal mt-0.5">{cust.email || 'No email'}</p>
                                                     <div className="flex items-center gap-1.5 mt-0.5">
-                                                        <Phone className="ds-icon-sm text-gray-300" />
-                                                        <span className="text-[9px] text-gray-400">{cust.phone}</span>
+                                                        <Phone className="h-3 w-3 text-slate-400" />
+                                                        <span className="text-xs text-slate-400 font-mono">{cust.phone}</span>
                                                     </div>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="ds-table-cell">
+                                        <td className="ds-table-cell py-4 px-6">
                                             <div>
-                                                <div className="flex items-center gap-1.5 ds-body font-semibold">
-                                                    <ShoppingBag className="ds-icon-sm text-primary" />
+                                                <div className="flex items-center gap-1.5 text-sm font-medium text-slate-800">
+                                                    <ShoppingBag className="h-4 w-4 text-primary" />
                                                     {cust.totalOrders} Orders
                                                 </div>
-                                                <p className="ds-body-sm text-gray-400 mt-0.5">Last: {getTimeAgo(cust.lastOrderDate)}</p>
+                                                <p className="text-xs text-slate-400 font-normal mt-0.5">Last: {getTimeAgo(cust.lastOrderDate)}</p>
                                             </div>
                                         </td>
-                                        <td className="ds-table-cell ds-h4">
+                                        <td className="ds-table-cell py-4 px-6 text-sm font-bold text-slate-900 font-mono">
                                             ₹{(cust.totalSpent || 0).toLocaleString()}
                                         </td>
-                                        <td className="ds-table-cell">
+                                        <td className="ds-table-cell py-4 px-6">
                                             <Badge
                                                 variant={cust.status === 'active' ? 'success' : 'error'}
-                                                className="ds-badge"
                                             >
                                                 {cust.status}
                                             </Badge>

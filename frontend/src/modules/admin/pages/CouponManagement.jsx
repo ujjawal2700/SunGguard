@@ -259,73 +259,73 @@ const CouponManagement = () => {
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
                         <thead>
-                            <tr className="bg-slate-50/50 border-b border-slate-50">
-                                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Coupon Code</th>
-                                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Offerings</th>
-                                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Performance</th>
-                                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Validity</th>
-                                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
-                                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                            <tr className="bg-slate-50/70 dark:bg-slate-800/40 border-b border-slate-100 dark:border-slate-800">
+                                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Coupon Code</th>
+                                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Offerings</th>
+                                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Performance</th>
+                                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Validity</th>
+                                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider text-center">Status</th>
+                                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-50">
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                             {isLoading && (
                                 <tr>
-                                    <td colSpan="6" className="text-center py-8 text-slate-400 text-sm">
+                                    <td colSpan="6" className="text-center py-12 text-slate-400 text-sm">
                                         Loading coupons...
                                     </td>
                                 </tr>
                             )}
                             {!isLoading && filteredCoupons.map((c) => (
-                                <tr key={c._id} className="group hover:bg-slate-50/30 transition-colors">
-                                    <td className="px-4 py-6">
+                                <tr key={c._id} className="group hover:bg-slate-50/50 transition-colors">
+                                    <td className="px-6 py-4.5">
                                         <div className="flex items-center gap-4">
-                                            <div className="h-12 w-12 rounded-2xl bg-brand-50 text-brand-600 flex items-center justify-center">
+                                            <div className="h-12 w-12 rounded-2xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">
                                                 <HiOutlineTicket className="h-6 w-6" />
                                             </div>
                                             <div>
-                                                <span className="text-sm font-black text-slate-900 tracking-wider bg-slate-100 px-2 py-1 rounded-lg border-2 border-dashed border-slate-300">{c.code}</span>
-                                                <p className="text-[10px] font-bold text-slate-400 mt-1">{c.title}</p>
-                                                <p className="text-[10px] font-medium text-slate-400 mt-0.5 line-clamp-2">{c.description}</p>
+                                                <span className="text-base font-bold text-slate-900 font-mono tracking-wider bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">{c.code}</span>
+                                                <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 mt-1">{c.title}</p>
+                                                <p className="text-xs font-normal text-slate-400 mt-0.5 line-clamp-2">{c.description}</p>
                                             </div>
                                         </div>
                                     </td>
-                                    <td className="px-4 py-6">
+                                    <td className="px-6 py-4.5">
                                         <div className="space-y-1">
-                                            <p className="text-xs font-black text-slate-900">
+                                            <p className="text-sm font-bold text-slate-900 dark:text-white">
                                                 {c.discountType === 'percentage' ? `${c.discountValue}% OFF` : c.discountType === 'free_delivery' ? 'Free Delivery' : `₹${c.discountValue} OFF`}
                                             </p>
                                             {c.minOrderValue > 0 && (
-                                                <p className="text-[10px] font-bold text-slate-400">Min. Order: ₹{c.minOrderValue}</p>
+                                                <p className="text-xs text-slate-500 font-medium">Min. Order: ₹{c.minOrderValue}</p>
                                             )}
-                                            <p className="text-[10px] font-bold text-slate-400 capitalize">Type: {c.couponType?.replace(/_/g, ' ') || 'generic'}</p>
+                                            <p className="text-xs text-slate-400 font-normal capitalize">Type: {c.couponType?.replace(/_/g, ' ') || 'generic'}</p>
                                         </div>
                                     </td>
-                                    <td className="px-4 py-6">
+                                    <td className="px-6 py-4.5">
                                         <div className="space-y-2">
                                             <div className="flex justify-between items-end">
-                                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Redeemed</span>
-                                                <span className="text-xs font-black text-slate-900">{c.usedCount || 0}{c.usageLimit ? `/${c.usageLimit}` : ''}</span>
+                                                <span className="text-xs text-slate-500 font-medium">Redeemed</span>
+                                                <span className="text-sm font-bold text-slate-900 font-mono">{c.usedCount || 0}{c.usageLimit ? `/${c.usageLimit}` : ''}</span>
                                             </div>
                                             <div className="h-1.5 w-32 bg-slate-100 rounded-full overflow-hidden">
                                                 <div
-                                                    className="h-full bg-brand-500 rounded-full transition-all duration-1000"
+                                                    className="h-full bg-primary rounded-full transition-all duration-1000"
                                                     style={{ width: c.usageLimit ? `${((c.usedCount || 0) / c.usageLimit) * 100}%` : '0%' }}
                                                 />
                                             </div>
                                         </div>
                                     </td>
-                                    <td className="px-4 py-6">
-                                        <div className="flex items-center gap-2 text-slate-500">
-                                            <HiOutlineCalendarDays className="h-4 w-4" />
-                                            <span className="text-[10px] font-bold uppercase tracking-tighter">
+                                    <td className="px-6 py-4.5">
+                                        <div className="flex items-center gap-2 text-slate-500 text-xs font-medium">
+                                            <HiOutlineCalendarDays className="h-4 w-4 text-slate-400" />
+                                            <span>
                                                 {c.validFrom ? new Date(c.validFrom).toLocaleDateString() : '—'} - {c.validTill ? new Date(c.validTill).toLocaleDateString() : '—'}
                                             </span>
                                         </div>
                                     </td>
-                                    <td className="px-4 py-6 text-center">
-                                        <Badge variant={c.isActive ? 'success' : 'secondary'} className="text-[9px] font-black uppercase">
-                                            {c.isActive ? 'active' : 'inactive'}
+                                    <td className="px-6 py-4.5 text-center">
+                                        <Badge variant={c.isActive ? 'success' : 'secondary'} className="text-xs font-semibold px-2.5 py-0.5">
+                                            {c.isActive ? 'Active' : 'Inactive'}
                                         </Badge>
                                     </td>
                                     <td className="px-4 py-6">
