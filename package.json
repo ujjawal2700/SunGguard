@@ -1,1 +1,11 @@
-{}
+{
+  "name": "sungguard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SunGguard - On-Demand Courier & Logistics Platform",
+  "scripts": {
+    "start": "npm --prefix backend start",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev"
+  }
+}
