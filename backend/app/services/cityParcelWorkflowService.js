@@ -7,6 +7,7 @@ import { getParcelRiderIdsNearPickup } from "./deliveryNearbyService.js";
 import { emitToDelivery, emitToCustomer, emitToAdmins } from "./orderSocketEmitter.js";
 import {
   deliveryPartnerHasActiveJob,
+  getDeliveryPartnerActiveJobInfo,
   markDeliveryPartnerBusy,
   syncDeliveryPartnerBusyFlag,
 } from "./deliveryBusyService.js";
@@ -269,7 +270,8 @@ export async function fetchAvailableForRider(deliveryId) {
    * outstation jobs kept appearing. They just cannot take one until they are
    * free, which `acceptAtomic` enforces anyway.
    */
-  const busy = await deliveryPartnerHasActiveJob(oid);
+  const activeJobInfo = await getDeliveryPartnerActiveJobInfo(oid);
+  const busy = activeJobInfo.hasActiveJob;
 
   const config = await CityParcelConfig.getConfig();
   const baseRadiusM = config.baseSearchRadiusKm * 1000;
@@ -333,6 +335,7 @@ export async function fetchAvailableForRider(deliveryId) {
     // Why the list looks the way it does — the app turns this into a sentence.
     reason: busy ? "ON_A_JOB" : matched.length ? "OK" : "NONE_NEARBY",
     canAccept: !busy,
+    activeJobType: activeJobInfo.type,
   };
 }
 

@@ -347,11 +347,18 @@ export const getHistory = async (req, res) => {
 
 export const trackCityParcel = async (req, res) => {
   try {
-    const parcel = await CityParcel.findOne({
-      _id: req.params.cityParcelId,
-      customerId: req.user.id,
-    })
+    const isPrivilegedOrRider =
+      req.user?.role === "delivery" ||
+      req.user?.role === "admin" ||
+      req.user?.role === "seller";
+
+    const query = isPrivilegedOrRider
+      ? { _id: req.params.cityParcelId }
+      : { _id: req.params.cityParcelId, customerId: req.user.id };
+
+    const parcel = await CityParcel.findOne(query)
       .populate("deliveryPartnerId", "name phone vehicleType vehicleNumber profileImage location")
+      .populate("customerId", "name phone")
       .lean();
 
     if (!parcel) return handleResponse(res, 404, "Parcel not found");
@@ -360,7 +367,20 @@ export const trackCityParcel = async (req, res) => {
       .sort({ at: 1 })
       .lean();
 
-    return handleResponse(res, 200, "Tracking", { parcel, timeline });
+    // The receiver's full number is never sent to the rider app (only last 4 digits for read-back verification)
+    let safeParcel = parcel;
+    if (req.user?.role === "delivery") {
+      const { phone, ...receiverSafe } = parcel.receiver || {};
+      safeParcel = {
+        ...parcel,
+        receiver: {
+          ...receiverSafe,
+          phoneLast4: String(phone || "").replace(/\D/g, "").slice(-4),
+        },
+      };
+    }
+
+    return handleResponse(res, 200, "Tracking", { parcel: safeParcel, timeline });
   } catch (error) {
     return fail(res, error);
   }
@@ -508,14 +528,27 @@ const NO_JOBS_MESSAGE = {
 
 export const riderGetAvailable = async (req, res) => {
   try {
-    const { parcels, reason, canAccept } = await fetchAvailableForRider(req.user.id);
+    const { parcels, reason, canAccept, activeJobType } = await fetchAvailableForRider(req.user.id);
+
+    let hint = reason === "OK" ? "" : NO_JOBS_MESSAGE[reason] || "";
+    if (reason === "ON_A_JOB") {
+      if (activeJobType === "ORDER") {
+        hint = "You have an active store order delivery in progress. Complete it to take a city parcel.";
+      } else if (activeJobType === "PARCEL") {
+        hint = "You have an active standard parcel delivery in progress. Complete it to take a city parcel.";
+      } else if (activeJobType === "RETURN") {
+        hint = "You have an active return pickup in progress. Complete it to take a city parcel.";
+      } else {
+        hint = "Finish your current job to take another.";
+      }
+    }
 
     return handleResponse(res, 200, "Available jobs", {
       parcels,
       reason,
       canAccept: canAccept !== false,
-      // So the app never has to guess why the list is empty.
-      hint: reason === "OK" ? "" : NO_JOBS_MESSAGE[reason] || "",
+      hint,
+      activeJobType: activeJobType || null,
     });
   } catch (error) {
     return fail(res, error);

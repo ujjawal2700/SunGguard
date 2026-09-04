@@ -45,9 +45,9 @@ export async function clearDeliveryPartnerBusy(deliveryId) {
   await Delivery.findByIdAndUpdate(oid, { $set: { isBusy: false } });
 }
 
-export async function deliveryPartnerHasActiveJob(deliveryId) {
+export async function getDeliveryPartnerActiveJobInfo(deliveryId) {
   const oid = toOid(deliveryId);
-  if (!oid) return false;
+  if (!oid) return { hasActiveJob: false, type: null };
 
   const [order, ret, parcel, cityParcel] = await Promise.all([
     Order.exists({
@@ -85,7 +85,16 @@ export async function deliveryPartnerHasActiveJob(deliveryId) {
     }),
   ]);
 
-  return Boolean(order || ret || parcel || cityParcel);
+  if (cityParcel) return { hasActiveJob: true, type: "CITY_PARCEL" };
+  if (order) return { hasActiveJob: true, type: "ORDER" };
+  if (ret) return { hasActiveJob: true, type: "RETURN" };
+  if (parcel) return { hasActiveJob: true, type: "PARCEL" };
+  return { hasActiveJob: false, type: null };
+}
+
+export async function deliveryPartnerHasActiveJob(deliveryId) {
+  const info = await getDeliveryPartnerActiveJobInfo(deliveryId);
+  return info.hasActiveJob;
 }
 
 export async function syncDeliveryPartnerBusyFlag(deliveryId) {
