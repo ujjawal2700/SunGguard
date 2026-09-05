@@ -6,6 +6,7 @@
   "scripts": {
     "start": "npm --prefix backend start",
     "dev:backend": "npm --prefix backend run dev",
-    "dev:frontend": "npm --prefix frontend run dev"
+    "dev:frontend": "npm --prefix frontend run dev",
+    "reset:bookings": "npm --prefix backend run reset:bookings"
   }
 }

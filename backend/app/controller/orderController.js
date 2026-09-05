@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Order from "../models/order.js";
 import Cart from "../models/cart.js";
 import Product from "../models/product.js";
@@ -1724,3 +1725,117 @@ export const uploadReturnPickupProof = async (req, res) => {
     return handleResponse(res, 500, error.message);
   }
 };
+
+/* ===============================
+   GET ASSIGNED STORE ORDER (Delivery Partner)
+================================ */
+export const getAssignedOrder = async (req, res) => {
+  try {
+    const { role } = req.user || {};
+    const userId = req.user?.id ?? req.user?._id;
+
+    if (!userId) {
+      return handleResponse(res, 401, "Unauthorized, token missing or invalid");
+    }
+
+    if (role !== "delivery" && role !== "admin") {
+      return handleResponse(
+        res,
+        403,
+        "Access denied. Only delivery partners can view assigned orders.",
+      );
+    }
+
+    const oid = mongoose.Types.ObjectId.isValid(String(userId))
+      ? new mongoose.Types.ObjectId(String(userId))
+      : userId;
+
+    const query = {
+      $or: [
+        {
+          $or: [
+            { deliveryBoy: oid },
+            { deliveryPartner: oid },
+          ],
+          status: { $nin: ["delivered", "cancelled", "returned"] },
+          orderStatus: { $nin: ["delivered", "cancelled", "returned"] },
+          workflowStatus: {
+            $nin: [WORKFLOW_STATUS.DELIVERED, WORKFLOW_STATUS.CANCELLED],
+          },
+        },
+        {
+          returnDeliveryBoy: oid,
+          returnStatus: {
+            $in: [
+              "return_pickup_assigned",
+              "return_in_transit",
+              "return_drop_pending",
+            ],
+          },
+        },
+      ],
+    };
+
+    const order = await Order.findOne(query)
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .populate("seller", "_id name shopName phone address location")
+      .populate("customer", "_id name phone")
+      .populate("deliveryBoy", "_id name phone")
+      .populate("deliveryPartner", "_id name phone")
+      .populate("returnDeliveryBoy", "_id name phone")
+      .populate("items.product", "_id name mainImage price salePrice")
+      .lean();
+
+    if (!order) {
+      return handleResponse(res, 200, "No active assigned store order", null);
+    }
+
+    // Ensure deliveryBoy is populated if only deliveryPartner was assigned
+    if (!order.deliveryBoy && order.deliveryPartner) {
+      order.deliveryBoy = order.deliveryPartner;
+    }
+
+    // Normalize items image
+    if (Array.isArray(order.items)) {
+      order.items = order.items.map((item) => ({
+        ...item,
+        image: item.image || item.product?.mainImage || "",
+      }));
+    }
+
+    // Normalize pricing fallback if missing
+    if (!order.pricing && order.paymentBreakdown) {
+      order.pricing = {
+        subtotal: order.paymentBreakdown.productSubtotal || 0,
+        deliveryFee: order.paymentBreakdown.deliveryFeeCharged || 0,
+        platformFee: order.paymentBreakdown.handlingFeeCharged || 0,
+        gst: order.paymentBreakdown.taxTotal || 0,
+        tip: order.paymentBreakdown.tipTotal || 0,
+        total: order.paymentBreakdown.grandTotal || 0,
+      };
+    }
+
+    // Normalize payment fallback if missing
+    if (!order.payment) {
+      order.payment = {
+        method: order.paymentMode?.toLowerCase() || "cash",
+        status: order.paymentStatus?.toLowerCase() || "pending",
+      };
+    }
+
+    return handleResponse(
+      res,
+      200,
+      "Assigned store order retrieved successfully",
+      order,
+    );
+  } catch (error) {
+    logger.error("Error fetching assigned order for rider", {
+      scope: "ASSIGNED_ORDER_ERROR",
+      userId: req.user?.id,
+      error: error.message,
+    });
+    return handleResponse(res, 500, error.message);
+  }
+};
+

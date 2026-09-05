@@ -13,7 +13,8 @@
     "test:finance-flow": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --testPathPatterns=finance-.*\\.test\\.js",
     "test:finance-e2e": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --detectOpenHandles --testPathPatterns=finance-api-e2e\\.test\\.js",
     "test:delivery-broadcast": "node scripts/test-delivery-broadcast-flow.js",
-    "reset:parcel-data": "node scripts/reset-parcel-data.js"
+    "reset:parcel-data": "node scripts/reset-parcel-data.js",
+    "reset:bookings": "node scripts/reset-bookings-and-riders.js"
   },
   "jest": {
     "testEnvironment": "node",

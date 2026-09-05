@@ -22,6 +22,7 @@ import {
   rejectReturnPickup,
   updateReturnStatus,
   uploadReturnPickupProof,
+  getAssignedOrder,
 } from "../controller/orderController.js";
 import {
   createOrderWithFinancialSnapshot,
@@ -166,6 +167,18 @@ router.put(
 );
 
 // Delivery routes
+router.get(
+  "/assigned",
+  verifyToken,
+  allowRoles("admin", "delivery"),
+  getAssignedOrder,
+);
+router.get(
+  "/rider/assigned",
+  verifyToken,
+  allowRoles("admin", "delivery"),
+  getAssignedOrder,
+);
 router.get(
   "/available",
   verifyToken,
