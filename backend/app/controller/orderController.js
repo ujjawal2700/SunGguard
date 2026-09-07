@@ -1813,6 +1813,48 @@ export const getAssignedOrder = async (req, res) => {
         tip: order.paymentBreakdown.tipTotal || 0,
         total: order.paymentBreakdown.grandTotal || 0,
       };
+    // Normalize pricing fallback
+    const pb = order.paymentBreakdown || {};
+    const pr = order.pricing || {};
+    order.pricing = {
+      subtotal: pr.subtotal ?? pb.productSubtotal ?? 0,
+      deliveryFee: pr.deliveryFee ?? pb.deliveryFeeCharged ?? 0,
+      platformFee: pr.platformFee ?? pb.handlingFeeCharged ?? 0,
+      gst: pr.gst ?? pb.taxTotal ?? 0,
+      tip: pr.tip ?? pb.tipTotal ?? 0,
+      total: pr.total ?? pb.grandTotal ?? 0,
+    };
+
+    // Normalize payment fallback
+    const pay = order.payment || {};
+    order.payment = {
+      method: (pay.method || order.paymentMode || "cash").toLowerCase(),
+      status: (pay.status || order.paymentStatus || "pending").toLowerCase(),
+    };
+
+    // Normalize address location to GeoJSON { type: "Point", coordinates: [lng, lat] }
+    if (order.address?.location) {
+      if (
+        !Array.isArray(order.address.location.coordinates) &&
+        order.address.location.lat != null &&
+        order.address.location.lng != null
+      ) {
+        const lat = Number(order.address.location.lat);
+        const lng = Number(order.address.location.lng);
+        order.address.location = {
+          type: "Point",
+          coordinates: [lng, lat],
+          lat,
+          lng,
+        };
+      } else if (Array.isArray(order.address.location.coordinates)) {
+        order.address.location = {
+          type: order.address.location.type || "Point",
+          coordinates: order.address.location.coordinates,
+          lat: order.address.location.coordinates[1],
+          lng: order.address.location.coordinates[0],
+        };
+      }
     }
 
     // Normalize payment fallback if missing
@@ -1821,6 +1863,16 @@ export const getAssignedOrder = async (req, res) => {
         method: order.paymentMode?.toLowerCase() || "cash",
         status: order.paymentStatus?.toLowerCase() || "pending",
       };
+    // Normalize seller location coordinates
+    if (order.seller?.location) {
+      if (Array.isArray(order.seller.location.coordinates)) {
+        order.seller.location = {
+          type: order.seller.location.type || "Point",
+          coordinates: order.seller.location.coordinates,
+          lat: order.seller.location.coordinates[1],
+          lng: order.seller.location.coordinates[0],
+        };
+      }
     }
 
     return handleResponse(

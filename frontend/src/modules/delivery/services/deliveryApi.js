@@ -25,6 +25,15 @@ export const deliveryApi = {
       forceRefresh: config.forceRefresh ?? false,
     });
   },
+  getAssignedOrder: (config = {}) => {
+    if (config?.signal || config?.forceRefresh) {
+      return axiosInstance.get("/orders/assigned", config);
+    }
+    return getWithDedupe("/orders/assigned", {}, {
+      ttl: config.ttl ?? 15000,
+      forceRefresh: config.forceRefresh ?? false,
+    });
+  },
   acceptOrder: (orderId, idempotencyKey) =>
     axiosInstance.put(
       `/orders/accept/${encodeURIComponent(String(orderId))}`,

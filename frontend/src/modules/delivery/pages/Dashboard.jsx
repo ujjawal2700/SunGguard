@@ -16,6 +16,7 @@ import {
   LogOut,
   RefreshCw,
   Clock,
+  Store,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -34,6 +35,7 @@ import {
   onCityParcelBroadcast,
   onCityParcelRetract,
   onCityParcelAssigned,
+  onOrderStatusUpdate,
 } from "@core/services/orderSocket";
 import { createSocketTokenReader } from "@core/utils/authStorage";
 import { STORAGE_KEYS } from "@core/utils/storage";
@@ -50,6 +52,7 @@ const Dashboard = () => {
     // CAR WASH DISABLED — previously: user?.isCarWashService ? "car-wash" : "delivery"
   ); // 'delivery', 'return', 'parcel'
   const [availableOrders, setAvailableOrders] = useState([]);
+  const [assignedStoreOrder, setAssignedStoreOrder] = useState(null);
   const [assignedParcel, setAssignedParcel] = useState(null);
   // City Parcel is a separate module with its own collection, so it needs
   // its own fetch — the pickup-service endpoint above never returns these.
@@ -61,6 +64,7 @@ const Dashboard = () => {
     incentives: 0,
     cashCollected: 0,
   });
+  const assignedOrderRequestRef = useRef({ inFlight: false, lastFetchedAt: 0 });
   const assignedParcelRequestRef = useRef({ inFlight: false, lastFetchedAt: 0 });
   const cityParcelRequestRef = useRef({ inFlight: false, lastFetchedAt: 0 });
 
@@ -115,6 +119,24 @@ const Dashboard = () => {
       console.error("Failed to fetch available orders:", error);
     }
   };
+
+  const fetchAssignedOrder = useCallback(async (force = false) => {
+    const now = Date.now();
+    if (!force && now - assignedOrderRequestRef.current.lastFetchedAt < 30000) return;
+    if (assignedOrderRequestRef.current.inFlight) return;
+    assignedOrderRequestRef.current.inFlight = true;
+    try {
+      const res = await deliveryApi.getAssignedOrder({ ttl: 30000, forceRefresh: force });
+      if (!res.data?.success) return;
+      const order = res.data.result || null;
+      setAssignedStoreOrder(order);
+    } catch {
+      setAssignedStoreOrder(null);
+    } finally {
+      assignedOrderRequestRef.current.inFlight = false;
+      assignedOrderRequestRef.current.lastFetchedAt = Date.now();
+    }
+  }, []);
 
   const fetchAssignedParcel = useCallback(async (force = false) => {
     const now = Date.now();
@@ -195,12 +217,19 @@ const Dashboard = () => {
       fetchCityParcels(true);
     });
 
+    const offOrderStatus = onOrderStatusUpdate(getToken, () => {
+      fetchAssignedOrder(true);
+      refreshUser();
+    });
+
     return () => {
       offBroadcast();
       offRetract();
       offAssigned();
+      offOrderStatus();
     };
   }, [isOnline, fetchCityParcels]);
+  }, [isOnline, fetchCityParcels, fetchAssignedOrder, refreshUser]);
 
   useEffect(() => {
     fetchStats();
@@ -209,14 +238,22 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (isOnline && activeTab === "delivery") {
+      fetchAssignedOrder();
       fetchAssignedParcel();
       fetchCityParcels();
     }
     if (isOnline && !user?.isBusy) fetchAvailableOrders();
     else if (user?.isBusy) setAvailableOrders([]);
+    if (isOnline && !user?.isBusy) {
+      fetchAvailableOrders();
+    } else if (user?.isBusy) {
+      setAvailableOrders([]);
+      fetchAssignedOrder(true);
+    }
     // Layout already polls available for offer modals; this only fills the dashboard list.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: avoid user-object churn
   }, [isOnline, activeTab, user?.isBusy, fetchAssignedParcel, fetchCityParcels]);
+  }, [isOnline, activeTab, user?.isBusy, fetchAssignedOrder, fetchAssignedParcel, fetchCityParcels]);
 
   const handleOnlineToggle = async () => {
     const newStatus = !isOnline;
@@ -397,6 +434,85 @@ const Dashboard = () => {
 
       {/* Main Content */}
       <div className="px-6 space-y-6">
+        {/* Active Store Order */}
+        {assignedStoreOrder && (
+          <Card className="bg-brand-50/60 border border-brand-200 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-brand-700">
+                    Active Store Order
+                  </span>
+                  <span className="inline-flex rounded-full bg-brand-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-brand-800">
+                    {String(
+                      assignedStoreOrder.workflowStatus ||
+                        assignedStoreOrder.status ||
+                        "Assigned",
+                    ).replace(/_/g, " ")}
+                  </span>
+                </div>
+                <p className="text-sm font-bold text-slate-900 font-mono mt-0.5">
+                  #{assignedStoreOrder.orderId}
+                </p>
+                <div className="mt-2 space-y-1 text-xs text-slate-600">
+                  <div className="flex items-center gap-1.5">
+                    <Store size={12} className="text-slate-400 shrink-0" />
+                    <span className="font-semibold text-slate-800 truncate">
+                      {assignedStoreOrder.seller?.shopName ||
+                        assignedStoreOrder.seller?.name ||
+                        "Store"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <MapPin size={12} className="text-slate-400 shrink-0" />
+                    <span className="text-slate-500 truncate">
+                      {assignedStoreOrder.address?.address ||
+                        assignedStoreOrder.address?.city ||
+                        "Delivery Location"}
+                    </span>
+                  </div>
+                </div>
+                {String(
+                  assignedStoreOrder.payment?.method ||
+                    assignedStoreOrder.paymentMode ||
+                    "",
+                ).toUpperCase() === "CASH" ||
+                String(
+                  assignedStoreOrder.payment?.method ||
+                    assignedStoreOrder.paymentMode ||
+                    "",
+                ).toUpperCase() === "COD" ? (
+                  <p className="text-xs font-black text-amber-700 mt-2">
+                    Collect ₹
+                    {Number(
+                      assignedStoreOrder.pricing?.total ||
+                        assignedStoreOrder.paymentBreakdown?.grandTotal ||
+                        0,
+                    ).toFixed(2)}{" "}
+                    on delivery
+                  </p>
+                ) : (
+                  <p className="text-[11px] font-semibold text-emerald-600 mt-2">
+                    Paid Online
+                  </p>
+                )}
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() =>
+                  navigate(
+                    `/delivery/order-details/${assignedStoreOrder.orderId || assignedStoreOrder._id}`,
+                  )
+                }
+                className="h-9 px-3 text-[11px] font-black uppercase tracking-wider shrink-0"
+              >
+                Open
+              </Button>
+            </div>
+          </Card>
+        )}
+
         {/* City Parcel — separate module, its own card. Placed first because a
             job already in hand outranks one still on offer. */}
         {assignedCityParcel && (
@@ -611,6 +727,40 @@ const Dashboard = () => {
             </motion.div>
           ) : activeTab === 'delivery' ? (
             availableOrders.length > 0 ? (
+            assignedStoreOrder ? (
+              <motion.div
+                key="active-store-job"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white rounded-2xl p-6 border-2 border-brand-200 shadow-md shadow-brand-500/5 text-center"
+              >
+                <div className="flex justify-center mb-3">
+                  <div className="w-12 h-12 rounded-full bg-brand-100 flex items-center justify-center">
+                    <Package className="text-brand-600" size={24} />
+                  </div>
+                </div>
+                <h3 className="ds-h3 text-gray-900 mb-1">
+                  Active Store Order in Progress
+                </h3>
+                <p className="text-xs text-gray-500 font-mono mb-2">
+                  #{assignedStoreOrder.orderId}
+                </p>
+                <p className="text-sm text-gray-600 leading-relaxed px-2 mb-4">
+                  You have an active store order delivery in progress. Complete or continue this order to receive new assignments.
+                </p>
+                <Button
+                  variant="primary"
+                  className="w-full h-11 font-black text-xs uppercase tracking-wider shadow-md shadow-primary/20"
+                  onClick={() =>
+                    navigate(
+                      `/delivery/order-details/${assignedStoreOrder.orderId || assignedStoreOrder._id}`,
+                    )
+                  }
+                >
+                  Continue Delivery
+                </Button>
+              </motion.div>
+            ) : availableOrders.length > 0 ? (
               <motion.div
                 key="waiting"
                 initial={{ opacity: 0, y: 12 }}

@@ -286,6 +286,49 @@ describe("Assigned Store Order Endpoint and Controller", () => {
       expect(res.body.result.pricing.total).toBe(135);
       expect(res.body.result.payment.method).toBe("online");
     });
+
+    test("normalizes address and seller locations to GeoJSON coordinates", async () => {
+      const mockRawOrder = {
+        _id: "699b4cbdbdd7f3ef4dbd7c74",
+        orderId: "ORD177178540540545",
+        status: "confirmed",
+        seller: {
+          _id: "seller123",
+          location: {
+            type: "Point",
+            coordinates: [75.8564, 22.7174],
+          },
+        },
+        address: {
+          name: "Harshvardhan",
+          location: {
+            lat: 22.7278,
+            lng: 75.8844,
+          },
+        },
+      };
+
+      mockOrderFindOne.mockReturnValue(makeQueryChain(mockRawOrder));
+
+      const req = {
+        user: { id: "6a9ab4ee32197c0eef3de0a7", role: "delivery" },
+      };
+      const res = createMockRes();
+
+      await getAssignedOrder(req, res);
+
+      expect(res.statusCode).toBe(200);
+      expect(res.body.result.address.location.type).toBe("Point");
+      expect(res.body.result.address.location.coordinates).toEqual([75.8844, 22.7278]);
+      expect(res.body.result.address.location.lat).toBe(22.7278);
+      expect(res.body.result.address.location.lng).toBe(75.8844);
+
+      expect(res.body.result.seller.location.type).toBe("Point");
+      expect(res.body.result.seller.location.coordinates).toEqual([75.8564, 22.7174]);
+      expect(res.body.result.seller.location.lat).toBe(22.7174);
+      expect(res.body.result.seller.location.lng).toBe(75.8564);
+    });
   });
 });
+
 
