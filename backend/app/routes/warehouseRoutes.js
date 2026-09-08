@@ -8,6 +8,11 @@ import {
   getActiveWarehouses,
 } from "../controller/warehouseController.js";
 import { verifyToken, allowRoles } from "../middleware/authMiddleware.js";
+import { validate } from "../middleware/validate.js";
+import {
+  adminCreateWarehouseSchema,
+  adminUpdateWarehouseSchema,
+} from "../validation/porterAdminValidation.js";
 
 const router = express.Router();
 
@@ -17,8 +22,8 @@ router.get("/active", getActiveWarehouses);
 
 // Admin CRUD routes
 router.get("/", verifyToken, allowRoles("admin", "parcel_admin"), adminListWarehouses);
-router.post("/", verifyToken, allowRoles("admin", "parcel_admin"), adminCreateWarehouse);
-router.put("/:id", verifyToken, allowRoles("admin", "parcel_admin"), adminUpdateWarehouse);
+router.post("/", verifyToken, allowRoles("admin", "parcel_admin"), validate(adminCreateWarehouseSchema), adminCreateWarehouse);
+router.put("/:id", verifyToken, allowRoles("admin", "parcel_admin"), validate(adminUpdateWarehouseSchema), adminUpdateWarehouse);
 router.delete("/:id", verifyToken, allowRoles("admin", "parcel_admin"), adminDeleteWarehouse);
 
 export default router;

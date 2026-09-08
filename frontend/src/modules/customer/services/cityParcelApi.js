@@ -19,6 +19,9 @@ export const cityParcelApi = {
   getServiceability: (params) =>
     axiosInstance.get("/city-parcel/serviceability", { params }),
 
+  /** Is one dropped pin inside a delivery zone? Asked while still picking it. */
+  zoneCheck: (params) => axiosInstance.get("/city-parcel/zone-check", { params }),
+
   calculateFare: (body) => axiosInstance.post("/city-parcel/calculate-fare", body),
 
   create: (body) => axiosInstance.post("/city-parcel/create", body),

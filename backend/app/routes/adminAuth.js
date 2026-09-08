@@ -49,6 +49,8 @@ import {
 } from "../controller/adminFinanceController.js";
 
 import { verifyToken, allowRoles } from "../middleware/authMiddleware.js";
+import { validate } from "../middleware/validate.js";
+import { adminSettleCashSchema } from "../validation/porterAdminValidation.js";
 import {
     adminBootstrapRateLimiter,
     authRouteRateLimiter,
@@ -202,7 +204,7 @@ router.put("/transactions/bulk-settle-delivery", verifyToken, allowRoles("admin"
 // Cash Collection Hub
 router.get("/delivery-cash", verifyToken, allowRoles("admin"), getDeliveryCashBalances);
 router.get("/rider-cash-details/:id", verifyToken, allowRoles("admin"), getRiderCashDetails);
-router.post("/settle-cash", verifyToken, allowRoles("admin"), settleRiderCash);
+router.post("/settle-cash", verifyToken, allowRoles("admin"), validate(adminSettleCashSchema), settleRiderCash);
 router.get("/cash-history", verifyToken, allowRoles("admin"), getCashSettlementHistory);
 
 // Seller Withdrawal Management

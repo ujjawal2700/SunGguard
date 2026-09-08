@@ -78,6 +78,12 @@ export const serviceabilitySchema = Joi.object({
   dropLng: lng,
 });
 
+/** One end of a trip, asked while the customer is still picking it. */
+export const zoneCheckSchema = Joi.object({
+  lat,
+  lng,
+});
+
 export const cancelCityParcelSchema = Joi.object({
   reason: trimmed.max(300).allow("").optional(),
 });

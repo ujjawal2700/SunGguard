@@ -1,3 +1,12 @@
+import {
+  checkCoords,
+  checkName,
+  checkPhone,
+  checkPincode,
+  checkText,
+  firstError,
+} from "./formRules";
+
 export function composeCourierFullAddress(location = {}) {
   const flatNo = String(location.flatNo || "").trim();
   const address = String(location.address || "").trim();
@@ -68,21 +77,20 @@ export function buildCourierLocationPayload(location = {}) {
   };
 }
 
+/**
+ * Checks the courier office address before it is sent.
+ *
+ * Presence alone used to be enough here, so a pincode of "abc" and a
+ * four-digit phone both saved cleanly. The format rules now match the Joi
+ * schema the server enforces, so the two cannot disagree.
+ */
 export function validateCourierLocationForm(location = {}) {
-  if (!String(location.address || "").trim()) {
-    return "Street / building address is required";
-  }
-  if (!String(location.city || "").trim()) {
-    return "City is required";
-  }
-  if (!String(location.state || "").trim()) {
-    return "State is required";
-  }
-  if (!String(location.pincode || "").trim()) {
-    return "Pincode is required";
-  }
-  if (!location.lat || !location.lng) {
-    return "Please select the courier office location on the map";
-  }
-  return null;
+  return firstError(
+    checkText(location.address, "Street / building address", { min: 3 }),
+    checkName(location.city, "City"),
+    checkName(location.state, "State"),
+    checkPincode(location.pincode, "Pincode", { required: true }),
+    checkPhone(location.phone, "Contact phone"),
+    checkCoords(location.lat, location.lng, "Courier office location"),
+  );
 }

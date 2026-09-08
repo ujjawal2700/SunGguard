@@ -30,6 +30,8 @@ const ADDRESS_COMPONENT_PRIORITY = {
   ],
   city: [
     "locality",
+    // UK-style responses name the town here rather than in `locality`.
+    "postal_town",
     "administrative_area_level_3",
     "administrative_area_level_2",
   ],
@@ -37,30 +39,43 @@ const ADDRESS_COMPONENT_PRIORITY = {
   pincode: ["postal_code"],
 };
 
+/**
+ * First component matching any of `types`, in the order `types` lists them —
+ * so a more specific match is preferred over a broader one.
+ */
 const getAddressComponent = (components = [], types = []) => {
-  const match = components.find((component) =>
-    types.some((type) => component.types?.includes(type)),
-  );
-  return match?.long_name || "";
+  for (const type of types) {
+    const match = components.find((component) => component.types?.includes(type));
+    if (match?.long_name) return match.long_name;
+  }
+  return "";
 };
 
-const extractAddressDetails = (result) => {
-  const components = result?.address_components || [];
-  const locality =
-    getAddressComponent(components, ADDRESS_COMPONENT_PRIORITY.locality) || "";
-  const city =
-    getAddressComponent(components, ADDRESS_COMPONENT_PRIORITY.city) || "";
-  const state =
-    getAddressComponent(components, ADDRESS_COMPONENT_PRIORITY.state) || "";
-  const pincode =
-    getAddressComponent(components, ADDRESS_COMPONENT_PRIORITY.pincode) || "";
+/**
+ * Reads the address parts out of a whole geocoder response.
+ *
+ * Google returns several results per coordinate, ordered specific to broad,
+ * and the most specific one is often a building or a Plus Code that carries
+ * no city or postal code at all. Reading only `results[0]` therefore returned
+ * a blank city often enough that callers kept whatever stale value the form
+ * already held. Scanning every result until each field is found fixes that at
+ * the source.
+ */
+const extractAddressDetails = (results) => {
+  const list = Array.isArray(results) ? results : [results].filter(Boolean);
+  const found = { locality: "", city: "", state: "", pincode: "" };
 
-  return {
-    locality,
-    city,
-    state,
-    pincode,
-  };
+  for (const result of list) {
+    const components = result?.address_components || [];
+    for (const key of Object.keys(found)) {
+      if (!found[key]) {
+        found[key] = getAddressComponent(components, ADDRESS_COMPONENT_PRIORITY[key]);
+      }
+    }
+    if (Object.values(found).every(Boolean)) break;
+  }
+
+  return found;
 };
 
 const parseLatLng = (loc) => {
@@ -96,6 +111,23 @@ const MapPicker = ({
   const mapRef = useRef(null);
   const autocompleteRef = useRef(null);
   const circleRef = useRef(null);
+  const suppressMapClickUntilRef = useRef(0);
+
+  useEffect(() => {
+    const handleGlobalPointerDown = (e) => {
+      const isPac = e.target instanceof Element && Boolean(e.target.closest('.pac-container, .pac-item'));
+      if (isPac) {
+        suppressMapClickUntilRef.current = Date.now() + 600;
+      }
+    };
+
+    window.addEventListener("pointerdown", handleGlobalPointerDown, true);
+    window.addEventListener("mousedown", handleGlobalPointerDown, true);
+    return () => {
+      window.removeEventListener("pointerdown", handleGlobalPointerDown, true);
+      window.removeEventListener("mousedown", handleGlobalPointerDown, true);
+    };
+  }, []);
 
   const clearCircleOverlay = useCallback(() => {
     if (circleRef.current) {
@@ -141,6 +173,7 @@ const MapPicker = ({
   }, [isOpen, initialLocation, initialRadius, preferCurrentLocationOnOpen]);
 
   const onMapClick = useCallback((e) => {
+    if (Date.now() < suppressMapClickUntilRef.current) return;
     clearCircleOverlay();
     const newPos = {
       lat: e.latLng.lat(),
@@ -159,6 +192,7 @@ const MapPicker = ({
   }, [clearCircleOverlay]);
 
   const handlePlaceChanged = () => {
+    suppressMapClickUntilRef.current = Date.now() + 600;
     if (autocompleteRef.current) {
       const place = autocompleteRef.current.getPlace();
       if (place.geometry) {
@@ -264,9 +298,11 @@ const MapPicker = ({
     try {
       // Reverse geocode only on confirmation to save costs
       const geocoder = new window.google.maps.Geocoder();
-      const result = await new Promise((resolve, reject) => {
-        geocoder.geocode({ location: marker }, (results, status) => {
-          if (status === "OK") resolve(results[0]);
+      // Every result, not just the first: the closest match is often a
+      // building with no city or postal code on it.
+      const results = await new Promise((resolve, reject) => {
+        geocoder.geocode({ location: marker }, (found, status) => {
+          if (status === "OK" && found?.length) resolve(found);
           else reject(status);
         });
       });
@@ -274,8 +310,11 @@ const MapPicker = ({
       onConfirm({
         ...marker,
         ...(showRadius ? { radius } : {}),
-        address: result.formatted_address,
-        ...extractAddressDetails(result),
+        address: results[0].formatted_address,
+        ...extractAddressDetails(results),
+        // Lets a caller tell "the geocoder had no city" apart from "the
+        // lookup failed", so it knows whether a blank field is trustworthy.
+        geocoded: true,
       });
       onClose();
     } catch (error) {

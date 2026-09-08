@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import Warehouse from "../models/warehouse.js";
 import handleResponse from "../utils/helper.js";
+import { backfillAddressLabels } from "../services/locationBackfillService.js";
 
 /**
  * List all warehouses for admin
@@ -54,11 +55,20 @@ export const adminCreateWarehouse = async (req, res) => {
       return handleResponse(res, 400, "Coordinates are out of range");
     }
 
+    // Anything the admin left blank is read back off the coordinates, so a
+    // warehouse is never filed with a pin but no place name.
+    const filled = await backfillAddressLabels({
+      lat: numLat,
+      lng: numLng,
+      city,
+      pincode,
+    });
+
     const warehouse = await Warehouse.create({
       name: String(name).trim(),
       address: String(address).trim(),
-      city: String(city || "").trim(),
-      pincode: String(pincode || "").trim(),
+      city: String(city || filled.city || "").trim(),
+      pincode: String(pincode || filled.pincode || "").trim(),
       phone: String(phone || "").trim(),
       email: String(email || "").trim(),
       contactPerson: String(contactPerson || "").trim(),

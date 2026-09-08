@@ -2,6 +2,45 @@ import CityParcelConfig from "../models/cityParcelConfig.js";
 import { distanceMeters } from "../utils/geoUtils.js";
 import { getCachedRoute } from "./mapsRouteService.js";
 import { roundCurrency, multiplyMoney } from "../utils/money.js";
+import { resolveTripZone } from "./deliveryZoneService.js";
+
+/**
+ * Turns a zone refusal into something the customer can act on.
+ *
+ * Which end is at fault matters: "move the pickup" and "move the drop" are
+ * different corrections, and a trip that straddles two zones is a third case
+ * again — both addresses are fine on their own, they just are not one local
+ * delivery.
+ */
+function zoneRefusal(trip) {
+  if (trip.code === "DROP_OUT_OF_ZONE") {
+    return {
+      code: "DROP_OUT_OF_ZONE",
+      reason:
+        "We do not deliver to this drop location yet. Pick a spot inside a serviceable area.",
+    };
+  }
+
+  if (trip.code === "ZONE_MISMATCH") {
+    const from = trip.pickupZone?.name;
+    const to = trip.dropZone?.name;
+    return {
+      code: "ZONE_MISMATCH",
+      reason:
+        from && to
+          ? `Local delivery runs inside one area. Your pickup is in ${from} and the drop is in ${to}, so pick both within the same area.`
+          : "Local delivery runs inside one area. Pick the pickup and the drop within the same area.",
+      pickupZone: from || null,
+      dropZone: to || null,
+    };
+  }
+
+  return {
+    code: "OUT_OF_ZONE",
+    reason:
+      "We do not deliver from this pickup location yet. Pick a spot inside a serviceable area.",
+  };
+}
 
 /**
  * Pricing and ETAs for the City Parcel module.
@@ -82,6 +121,21 @@ export async function checkServiceability({ pickup, drop, weightKg = 0 }) {
     };
   }
 
+  /**
+   * Both ends have to sit in the same delivery zone. Checked before the
+   * distance lookup on purpose: a trip we will never run should not cost a
+   * routing API call to refuse.
+   *
+   * The zone travels back with a serviceable result so the booking can be
+   * filed under it — resolving it a second time at create would risk a
+   * different answer if an admin edited a boundary in between.
+   */
+  const trip = await resolveTripZone(pickup, drop);
+  if (!trip.ok) {
+    return { serviceable: false, ...zoneRefusal(trip) };
+  }
+  const zone = trip.zone;
+
   const { distanceKm, straightKm, source, durationSeconds } =
     await resolveTripDistanceKm(pickup, drop);
 
@@ -121,6 +175,7 @@ export async function checkServiceability({ pickup, drop, weightKg = 0 }) {
     straightKm,
     distanceSource: source,
     durationSeconds,
+    zone,
   };
 }
 
@@ -275,6 +330,8 @@ export async function quoteTrip({ pickup, drop, weightKg, deliverySpeed }) {
     riderEarning: computeRiderEarning(breakdown, config),
     etaMinutes: sla.etaMinutes,
     deliveryEta: sla.deliveryEta,
+    // Null when no zone is configured; the booking is then filed unzoned.
+    zone: serviceability.zone || null,
     config,
   };
 }

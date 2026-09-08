@@ -118,9 +118,18 @@ export const getAllTickets = async (req, res) => {
     try {
         const { page, limit, skip } = getPagination(req, { defaultLimit: 25, maxLimit: 200 });
 
+        /**
+         * Optional `?category=` narrowing. Omitting it returns every ticket,
+         * exactly as before, so the general support queue is unchanged — the
+         * porter desk passes `parcel` to see only its own.
+         */
+        const filter = {};
+        const category = String(req.query?.category || "").trim();
+        if (category) filter.category = category;
+
         const [tickets, total] = await Promise.all([
-            Ticket.find().populate("userId", "name email").sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-            Ticket.countDocuments()
+            Ticket.find(filter).populate("userId", "name email").sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+            Ticket.countDocuments(filter)
         ]);
 
         return handleResponse(res, 200, "All tickets fetched successfully", {

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import {
   Loader2, ShieldAlert, UserPlus, RefreshCw, Save, MapPin, X, Check,
   AlertTriangle, IndianRupee, Search, ChevronLeft, ChevronRight, Package,
@@ -171,7 +172,29 @@ const AssignModal = ({ parcel, onClose, onAssigned }) => {
 /* -------------------------------------------------------------------------- */
 
 const CityParcelAdmin = () => {
-  const [tab, setTab] = useState("attention");
+  const { tab: urlTab } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const validTabs = ["attention", "all", "pricing"];
+  const [tab, setTab] = useState(() => (urlTab && validTabs.includes(urlTab) ? urlTab : "attention"));
+
+  useEffect(() => {
+    if (urlTab && validTabs.includes(urlTab) && urlTab !== tab) {
+      setTab(urlTab);
+    }
+  }, [urlTab]);
+
+  useEffect(() => {
+    if (!urlTab) {
+      navigate(`/admin/city-parcels/attention${location.search}`, { replace: true });
+    }
+  }, [urlTab, location.search, navigate]);
+
+  const handleTabChange = (newTab) => {
+    setTab(newTab);
+    navigate(`/admin/city-parcels/${newTab}`);
+  };
   const [parcels, setParcels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [config, setConfig] = useState(null);
@@ -330,7 +353,7 @@ const CityParcelAdmin = () => {
           <button
             key={t.value}
             type="button"
-            onClick={() => setTab(t.value)}
+            onClick={() => handleTabChange(t.value)}
             className={cn(
               "rounded-lg px-4 py-2 text-sm font-semibold transition",
               tab === t.value

@@ -4,6 +4,11 @@ import CityParcelConfig from "../models/cityParcelConfig.js";
 import Delivery from "../models/delivery.js";
 import { distanceMeters } from "../utils/geoUtils.js";
 import { getParcelRiderIdsNearPickup } from "./deliveryNearbyService.js";
+import {
+  getActiveZoneById,
+  isPointInZoneId,
+  zonesForPoint,
+} from "./deliveryZoneService.js";
 import { emitToDelivery, emitToCustomer, emitToAdmins } from "./orderSocketEmitter.js";
 import {
   deliveryPartnerHasActiveJob,
@@ -78,9 +83,19 @@ async function fanOutToNearbyRiders(parcel, radiusKm, extra = {}) {
   const config = await CityParcelConfig.getConfig();
   const earning = computeRiderEarning(parcel.fareBreakdown, config);
 
+  /**
+   * The zone is a hard boundary; the radius is the soft ring that widens
+   * inside it over unanswered rounds. So a widening search reaches more
+   * riders in the zone and never anyone outside it.
+   *
+   * An unzoned parcel (booked before zones existed, or while none were
+   * configured) passes null and keeps the old city-wide reach.
+   */
+  const zone = await getActiveZoneById(parcel.zoneId);
+
   // Reuses the pickup-service rider pool: same people, same eligibility
   // rules (parcel-enabled, online, verified). Read-only, nothing shared.
-  const rawIds = await getParcelRiderIdsNearPickup(lat, lng, radiusKm);
+  const rawIds = await getParcelRiderIdsNearPickup(lat, lng, radiusKm, { zone });
   const skipped = new Set((parcel.skippedBy || []).map(String));
   const ids = [...new Set(rawIds.map(String))].filter((id) => !skipped.has(id));
 
@@ -277,6 +292,16 @@ export async function fetchAvailableForRider(deliveryId) {
   const baseRadiusM = config.baseSearchRadiusKm * 1000;
 
   /**
+   * Which zones this rider is standing in, resolved once for the whole list.
+   * A job is only shown if its zone is one of them, so the pull feed enforces
+   * the same boundary the push broadcast does — otherwise a rider outside the
+   * zone could simply poll for what was never broadcast to them.
+   */
+  const riderZoneIds = new Set(
+    (await zonesForPoint(lat, lng)).map((zone) => String(zone._id)),
+  );
+
+  /**
    * Deliberately NOT filtered on `searchExpiresAt`.
    *
    * That field paces the push rounds — how long to wait before widening the
@@ -308,6 +333,10 @@ export async function fetchAvailableForRider(deliveryId) {
       const pLat = Number(parcel.pickupAddress?.lat);
       const pLng = Number(parcel.pickupAddress?.lng);
       if (!Number.isFinite(pLat) || !Number.isFinite(pLng)) return false;
+
+      // Zoned jobs belong to riders inside that zone. Unzoned ones are open
+      // to everyone, as they were before zones existed.
+      if (parcel.zoneId && !riderZoneIds.has(String(parcel.zoneId))) return false;
 
       // A parcel nobody has taken widens its own reach over time, so it stays
       // discoverable without depending on the sweeper to widen it. Capped, so
@@ -412,7 +441,7 @@ export async function acceptAtomic({ deliveryId, cityParcelId, idempotencyKey = 
   // promise to the customer means nothing.
   const coords = rider.location?.coordinates;
   const parcelPeek = await CityParcel.findById(cityParcelId)
-    .select("pickupAddress status")
+    .select("pickupAddress status zoneId")
     .lean();
   if (!parcelPeek) {
     const err = new Error("That job no longer exists");
@@ -430,6 +459,19 @@ export async function acceptAtomic({ deliveryId, cityParcelId, idempotencyKey = 
     if (gap > config.baseSearchRadiusKm * 1000) {
       const err = new Error(
         `You need to be within ${config.baseSearchRadiusKm} km of the pickup to accept this.`,
+      );
+      err.statusCode = 403;
+      throw err;
+    }
+
+    /**
+     * The claim is gated as well as the offer. Broadcast and feed both filter
+     * by zone, but a rider holding an id from an earlier round — or one who
+     * has since ridden out of the zone — could otherwise still take the job.
+     */
+    if (parcelPeek.zoneId && !(await isPointInZoneId(parcelPeek.zoneId, rLat, rLng))) {
+      const err = new Error(
+        "This delivery is reserved for riders inside its delivery zone.",
       );
       err.statusCode = 403;
       throw err;
@@ -493,7 +535,15 @@ export async function acceptAtomic({ deliveryId, cityParcelId, idempotencyKey = 
 
   await markDeliveryPartnerBusy(oid);
 
-  // Retract the offer from everyone else so it stops flashing on their phone.
+  /**
+   * Retract the offer from everyone else so it stops flashing on their phone.
+   *
+   * Deliberately NOT zone-filtered, unlike the broadcast. If a boundary was
+   * edited between the offer and this accept, a rider who legitimately
+   * received the job could now fall outside the zone and would never be told
+   * it was taken. Retracting from a rider who never had it is a no-op, so the
+   * wider net is the safe direction to err in.
+   */
   const others = await getParcelRiderIdsNearPickup(
     Number(claimed.pickupAddress.lat),
     Number(claimed.pickupAddress.lng),

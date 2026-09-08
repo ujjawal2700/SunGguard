@@ -107,6 +107,21 @@ const cityParcelSchema = new mongoose.Schema(
 
     package: { type: packageSchema, required: true },
 
+    /**
+     * The delivery zone the pickup fell inside, resolved once at booking.
+     *
+     * Only riders inside this zone are offered the job. Null means the parcel
+     * predates zone gating, or was booked while no zone was configured — those
+     * stay visible to every eligible rider, because retro-fencing a live job
+     * would strand it with nobody able to see it.
+     */
+    zoneId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "DeliveryZone",
+      default: null,
+      index: true,
+    },
+
     /** Road distance A to B in km, from the routing service at booking time. */
     distanceKm: { type: Number, required: true, min: 0 },
 
@@ -413,6 +428,8 @@ export const RIDER_SAFE_FIELDS = [
   "pickupAddress",
   "dropAddress",
   "package",
+  // Needed so the rider feed can drop jobs whose zone the rider is outside.
+  "zoneId",
   "distanceKm",
   "deliverySpeed",
   "paymentMethod",

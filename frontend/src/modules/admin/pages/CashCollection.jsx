@@ -23,6 +23,7 @@ import {
     RotateCw
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { maskAmount, checkAmount } from '../utils/formRules';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const CashCollection = () => {
@@ -142,6 +143,11 @@ const CashCollection = () => {
     };
 
     const confirmSettlement = async () => {
+        const invalid = checkAmount(settlementData.amount, "Settlement amount", {
+            min: 0.01,
+        });
+        if (invalid) return toast.error(invalid);
+
         try {
             setIsProcessing(true);
             const response = await adminApi.settleRiderCash({
@@ -513,9 +519,10 @@ const CashCollection = () => {
                             <div className="flex items-center justify-center gap-2">
                                 <span className="text-xl font-black italic text-slate-900">₹</span>
                                 <input
-                                    type="number"
+                                    type="text"
+                                    inputMode="decimal"
                                     value={settlementData.amount}
-                                    onChange={(e) => setSettlementData({ ...settlementData, amount: e.target.value })}
+                                    onChange={(e) => setSettlementData({ ...settlementData, amount: maskAmount(e.target.value) })}
                                     className="bg-transparent text-2xl font-black italic text-slate-900 w-40 outline-none text-center"
                                 />
                             </div>

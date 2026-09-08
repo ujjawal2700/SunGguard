@@ -130,6 +130,40 @@ const AddressStep = ({
 
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Keeps `setZone` in step with which delivery zone an address's pin falls in.
+ *
+ * Re-runs only when the coordinates move, so typing a flat number or a
+ * landmark does not re-ask. In-flight answers for a pin the customer has
+ * already dragged away from are discarded rather than applied late.
+ */
+function useZonePin(address, setZone) {
+  const { lat, lng } = address;
+
+  useEffect(() => {
+    if (!lat || !lng) {
+      setZone(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await cityParcelApi.zoneCheck({ lat, lng });
+        if (!cancelled) setZone(unwrap(res));
+      } catch {
+        // A failed check must not block the booking: the price step and the
+        // create call both enforce the same rule server-side.
+        if (!cancelled) setZone(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [lat, lng, setZone]);
+}
+
 const CityParcelBooking = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -146,7 +180,10 @@ const CityParcelBooking = () => {
   const [payment, setPayment] = useState("UPI");
   const [quote, setQuote] = useState(null);
   const [quoting, setQuoting] = useState(false);
+  const [quoteError, setQuoteError] = useState(null);
   const [placing, setPlacing] = useState(false);
+  const [pickupZone, setPickupZone] = useState(null);
+  const [dropZone, setDropZone] = useState(null);
 
   const loadConfig = useCallback(async () => {
     try {
@@ -218,12 +255,46 @@ const CityParcelBooking = () => {
   const addressReady = (a) =>
     Boolean(a.lat && a.lng && (a.line?.trim() || a.formattedAddress?.trim()));
 
+  /**
+   * Ask whether a dropped pin is inside a delivery zone, on the step where it
+   * is dropped. The same rule is enforced when the trip is priced and again
+   * when it is booked — this is only so the customer hears it while they are
+   * still looking at the map, instead of on the payment screen.
+   */
+  useZonePin(pickup, setPickupZone);
+  useZonePin(drop, setDropZone);
+
+  /** The zone problem, if any, that the customer must fix on this step. */
+  const zoneIssue = useMemo(() => {
+    if (step === 0) {
+      if (pickupZone?.gated && pickupZone.covered === false) {
+        return "We don't deliver from here yet. Move the pin into an area we cover.";
+      }
+      return null;
+    }
+
+    if (step === 1) {
+      if (dropZone?.gated && dropZone.covered === false) {
+        return "We don't deliver to here yet. Move the pin into an area we cover.";
+      }
+      const from = pickupZone?.zone;
+      const to = dropZone?.zone;
+      if (from && to && from._id !== to._id) {
+        return `A local delivery stays inside one area. Your pickup is in ${from.name} and this drop is in ${to.name}.`;
+      }
+      return null;
+    }
+
+    return null;
+  }, [step, pickupZone, dropZone]);
+
   const canContinue = useMemo(() => {
+    if (zoneIssue) return false;
     if (step === 0) return addressReady(pickup) && sender.name.trim() && sender.phone.trim();
     if (step === 1) return addressReady(drop) && receiver.name.trim() && receiver.phone.trim();
     if (step === 2) return pkg.packageType && Number(pkg.weightKg) > 0;
     return Boolean(quote);
-  }, [step, pickup, drop, sender, receiver, pkg, quote]);
+  }, [step, pickup, drop, sender, receiver, pkg, quote, zoneIssue]);
 
   const buildPayload = useCallback(
     () => ({
@@ -253,9 +324,17 @@ const CityParcelBooking = () => {
     try {
       const { data } = await cityParcelApi.calculateFare(buildPayload());
       setQuote(unwrap({ data }));
+      setQuoteError(null);
     } catch (err) {
+      const body = err?.response?.data;
       setQuote(null);
-      toast.error(err?.response?.data?.message || "Couldn't price this trip");
+      // Kept on screen rather than only toasted: "we don't deliver from
+      // there" is something the customer has to act on, and a toast is gone
+      // before they have worked out which address to change.
+      setQuoteError({
+        message: body?.message || "Couldn't price this trip",
+        code: body?.result?.code || null,
+      });
     } finally {
       setQuoting(false);
     }
@@ -352,6 +431,15 @@ const CityParcelBooking = () => {
             </div>
           </div>
         </Card>
+
+        {zoneIssue && (
+          <div
+            role="alert"
+            className="mt-6 rounded-[var(--sg-r)] border border-amber-300 bg-amber-50 px-4 py-3"
+          >
+            <p className="text-[13px] font-semibold text-amber-900">{zoneIssue}</p>
+          </div>
+        )}
 
         <div className="mt-6">
           {step === 0 ? (
@@ -520,9 +608,21 @@ const CityParcelBooking = () => {
                     </p>
                   </div>
                 ) : (
-                  <p className="py-4 text-center text-[13px] text-sg-ink-2">
-                    We couldn't price this trip. Check the addresses and try again.
-                  </p>
+                  <div className="space-y-3 py-3 text-center">
+                    <p className="text-[13px] text-sg-ink-2">
+                      {quoteError?.message ||
+                        "We couldn't price this trip. Check the addresses and try again."}
+                    </p>
+                    {quoteError?.code === "OUT_OF_ZONE" && (
+                      <button
+                        type="button"
+                        onClick={() => setStep(0)}
+                        className="rounded-[var(--sg-r)] border border-sg-line bg-sg-surface px-4 py-2 text-[12px] font-semibold text-sg-ink"
+                      >
+                        Change pickup location
+                      </button>
+                    )}
+                  </div>
                 )}
               </Card>
 

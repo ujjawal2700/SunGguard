@@ -40,6 +40,7 @@ import {
   deliveryPartnerHasActiveJob,
 } from "../services/deliveryBusyService.js";
 import Delivery from "../models/delivery.js";
+import { isZoneGatingActive, resolveZoneForPoint } from "../services/deliveryZoneService.js";
 import {
   createCityParcelOrder,
   verifyCityParcelSignature,
@@ -101,6 +102,41 @@ export const getServiceability = async (req, res) => {
       drop: { lat: dropLat, lng: dropLng },
     });
     return handleResponse(res, 200, "Serviceability", result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
+/**
+ * Is this single coordinate inside a delivery zone, and which one?
+ *
+ * The booking screen asks as soon as a pin is dropped, so a customer is told
+ * "we don't cover this" while they are still looking at the map — rather than
+ * three steps later on the payment screen, with no idea which address to fix.
+ *
+ * Deliberately not a serviceability check: only one end exists at that point
+ * in the flow, so there is no distance or trip to judge yet.
+ */
+export const getZoneForPoint = async (req, res) => {
+  try {
+    const { lat, lng } = req.query;
+    const gated = await isZoneGatingActive();
+
+    // Nothing drawn yet means nothing is out of bounds.
+    if (!gated) {
+      return handleResponse(res, 200, "Zone check", {
+        gated: false,
+        covered: true,
+        zone: null,
+      });
+    }
+
+    const zone = await resolveZoneForPoint(lat, lng);
+    return handleResponse(res, 200, "Zone check", {
+      gated: true,
+      covered: Boolean(zone),
+      zone: zone ? { _id: String(zone._id), name: zone.name, city: zone.city } : null,
+    });
   } catch (error) {
     return fail(res, error);
   }
@@ -176,6 +212,9 @@ export const createCityParcel = async (req, res) => {
       pickupAddress,
       dropAddress,
       package: pkg,
+      // Filed against the zone the quote resolved, so the rider matching that
+      // follows cannot land on a different one.
+      zoneId: quote.zone?._id || null,
       distanceKm: quote.distanceKm,
       deliverySpeed,
       fare: quote.fare,

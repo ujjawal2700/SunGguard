@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useParams, useNavigate, useLocation } from "react-router-dom";
 import {
   Truck,
   DollarSign,
@@ -36,6 +36,20 @@ import {
   buildCourierLocationPayload,
   validateCourierLocationForm,
 } from "../utils/courierLocation";
+import {
+  maskName,
+  maskPhone,
+  maskPincode,
+  maskAmount,
+  checkName,
+  checkText,
+  checkPhone,
+  checkPincode,
+  checkEmail,
+  checkAmount,
+  checkCoords,
+  firstError,
+} from "../utils/formRules";
 import {
   onParcelNew,
   onParcelStatusUpdate,
@@ -91,8 +105,9 @@ const CourierLocationFields = ({ location, onFieldChange, onOpenMap }) => (
         </label>
         <input
           type="tel"
+          inputMode="numeric"
           value={location.phone}
-          onChange={(e) => onFieldChange("phone", e.target.value)}
+          onChange={(e) => onFieldChange("phone", maskPhone(e.target.value))}
           placeholder="10-digit number"
           className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary bg-white"
         />
@@ -135,7 +150,7 @@ const CourierLocationFields = ({ location, onFieldChange, onOpenMap }) => (
           type="text"
           required
           value={location.city}
-          onChange={(e) => onFieldChange("city", e.target.value)}
+          onChange={(e) => onFieldChange("city", maskName(e.target.value, 60))}
           placeholder="City"
           className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary bg-white"
         />
@@ -148,7 +163,7 @@ const CourierLocationFields = ({ location, onFieldChange, onOpenMap }) => (
           type="text"
           required
           value={location.state}
-          onChange={(e) => onFieldChange("state", e.target.value)}
+          onChange={(e) => onFieldChange("state", maskName(e.target.value, 60))}
           placeholder="State"
           className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary bg-white"
         />
@@ -163,7 +178,8 @@ const CourierLocationFields = ({ location, onFieldChange, onOpenMap }) => (
         type="text"
         required
         value={location.pincode}
-        onChange={(e) => onFieldChange("pincode", e.target.value)}
+        onChange={(e) => onFieldChange("pincode", maskPincode(e.target.value))}
+        inputMode="numeric"
         placeholder="6-digit pincode"
         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary bg-white"
       />
@@ -193,7 +209,29 @@ const CourierLocationFields = ({ location, onFieldChange, onOpenMap }) => (
 
 const AdminParcelDashboard = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState("all"); // 'all', 'active', 'pricing', 'couriers', 'reports', 'reviews'
+  const { tab: urlTab } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const validTabs = ["all", "active", "pricing", "couriers", "warehouses", "reviews", "reports"];
+  const [activeTab, setActiveTab] = useState(() => (urlTab && validTabs.includes(urlTab) ? urlTab : "all"));
+
+  useEffect(() => {
+    if (urlTab && validTabs.includes(urlTab) && urlTab !== activeTab) {
+      setActiveTab(urlTab);
+    }
+  }, [urlTab]);
+
+  useEffect(() => {
+    if (!urlTab) {
+      navigate(`/admin/parcels/all${location.search}`, { replace: true });
+    }
+  }, [urlTab, location.search, navigate]);
+
+  const handleTabChange = (tabId) => {
+    setActiveTab(tabId);
+    navigate(`/admin/parcels/${tabId}`);
+  };
   const [loading, setLoading] = useState(false);
   const [parcels, setParcels] = useState([]);
   const [riders, setRiders] = useState([]);
@@ -602,7 +640,7 @@ const AdminParcelDashboard = () => {
     const match = parcels.find((p) => String(p._id) === String(parcelId));
     if (!match) return;
     openParcelDetail(match);
-    setActiveTab("all");
+    handleTabChange("all");
     const next = new URLSearchParams(searchParams);
     next.delete("parcelId");
     setSearchParams(next, { replace: true });
@@ -702,18 +740,39 @@ const AdminParcelDashboard = () => {
     location: emptyCourierLocation(),
   };
 
+  /**
+   * Folds a freshly picked pin into an address form.
+   *
+   * The pin wins. These fields used to be written as
+   * `mapLocation.city || prev.city`, which kept whatever had been typed
+   * earlier whenever the geocoder returned nothing for that field — so moving
+   * the map to Bhopal left the city reading "Gwalior" beside Bhopal
+   * coordinates. Riders navigate by the coordinates, so an address that
+   * disagrees with them is simply wrong.
+   *
+   * A previous value is kept only when the lookup itself failed, since then a
+   * blank is an absent answer rather than a real one.
+   */
+  const adoptPickedLocation = (prev, mapLocation) => {
+    const keepOnFailure = (picked, previous) =>
+      mapLocation.geocoded ? String(picked || "") : String(picked || previous || "");
+
+    return {
+      address: keepOnFailure(
+        mapLocation.locality || mapLocation.address,
+        prev.address,
+      ),
+      city: keepOnFailure(mapLocation.city, prev.city),
+      state: keepOnFailure(mapLocation.state, prev.state),
+      pincode: keepOnFailure(mapLocation.pincode, prev.pincode),
+    };
+  };
+
   const handleCourierMapConfirm = (mapLocation) => {
     const applyMapLocation = (prev) => {
       const location = {
         ...prev.location,
-        address:
-          prev.location.address ||
-          mapLocation.locality ||
-          mapLocation.address ||
-          "",
-        city: mapLocation.city || prev.location.city || "",
-        state: mapLocation.state || prev.location.state || "",
-        pincode: mapLocation.pincode || prev.location.pincode || "",
+        ...adoptPickedLocation(prev.location, mapLocation),
         lat: mapLocation.lat,
         lng: mapLocation.lng,
       };
@@ -767,12 +826,22 @@ const AdminParcelDashboard = () => {
     ...buildCourierLocationPayload(form.location),
   });
 
+  /** Name and charges. The address block is judged separately. */
+  const validateCourierFields = (form) =>
+    firstError(
+      checkName(form.name, "Courier company name"),
+      checkAmount(form.platformCharge, "Platform charge", { max: 100000 }),
+      checkAmount(form.companyCharge, "Company charge", { max: 100000 }),
+      checkAmount(form.sortOrder, "Sort order", { max: 9999 }),
+    );
+
   const handleAddCourier = async (e) => {
     e.preventDefault();
-    const name = String(addCourierForm.name || "").trim();
-    if (!name) {
-      return toast.error("Courier company name is required");
-    }
+    const invalid = firstError(
+      validateCourierFields(addCourierForm),
+      validateCourierLocationForm(addCourierForm.location),
+    );
+    if (invalid) return toast.error(invalid);
 
     setCourierSaving(true);
     try {
@@ -796,19 +865,16 @@ const AdminParcelDashboard = () => {
 
   const handleUpdateCourier = async (e) => {
     e.preventDefault();
-    const name = String(editCourierForm.name || "").trim();
-    if (!name) {
-      return toast.error("Courier company name is required");
-    }
     if (!editingCourierId) return;
-    if (!editingCourierIsOther) {
-      const locationError = validateCourierLocationForm(
-        editCourierForm.location,
-      );
-      if (locationError) {
-        return toast.error(locationError);
-      }
-    }
+
+    // The catch-all "Other" courier carries no branch address of its own.
+    const invalid = firstError(
+      validateCourierFields(editCourierForm),
+      editingCourierIsOther
+        ? null
+        : validateCourierLocationForm(editCourierForm.location),
+    );
+    if (invalid) return toast.error(invalid);
 
     setCourierSaving(true);
     try {
@@ -881,20 +947,12 @@ const AdminParcelDashboard = () => {
   };
 
   const handleWarehouseMapConfirm = (mapLocation) => {
-    const applyMapLocation = (prev) => {
-      const address =
-        prev.address || mapLocation.locality || mapLocation.address || "";
-      const city = mapLocation.city || prev.city || "";
-      const pincode = mapLocation.pincode || prev.pincode || "";
-      return {
-        ...prev,
-        address: address || mapLocation.address || "",
-        city,
-        pincode,
-        lat: Number(mapLocation.lat),
-        lng: Number(mapLocation.lng),
-      };
-    };
+    const applyMapLocation = (prev) => ({
+      ...prev,
+      ...adoptPickedLocation(prev, mapLocation),
+      lat: Number(mapLocation.lat),
+      lng: Number(mapLocation.lng),
+    });
 
     if (warehouseMapPickerTarget === "add") {
       setAddWarehouseForm(applyMapLocation);
@@ -929,20 +987,26 @@ const AdminParcelDashboard = () => {
     setWarehouseEditModalOpen(true);
   };
 
+  /**
+   * Same rules the warehouse Joi schema applies, so the admin is corrected
+   * here rather than by a 400 after a round trip.
+   */
+  const validateWarehouseForm = (form) =>
+    firstError(
+      checkName(form.name, "Warehouse name"),
+      checkText(form.address, "Warehouse address", { min: 3 }),
+      form.city ? checkName(form.city, "City") : null,
+      checkPincode(form.pincode, "Pincode"),
+      checkPhone(form.phone, "Phone"),
+      checkEmail(form.email, "Email"),
+      form.contactPerson ? checkName(form.contactPerson, "Contact person") : null,
+      checkCoords(form.lat, form.lng, "Warehouse location"),
+    );
+
   const handleAddWarehouse = async (e) => {
     e.preventDefault();
-    if (!addWarehouseForm.name?.trim()) {
-      return toast.error("Warehouse name is required");
-    }
-    if (!addWarehouseForm.address?.trim()) {
-      return toast.error("Warehouse address is required");
-    }
-    if (
-      !Number.isFinite(Number(addWarehouseForm.lat)) ||
-      !Number.isFinite(Number(addWarehouseForm.lng))
-    ) {
-      return toast.error("Please pick warehouse location on map");
-    }
+    const invalid = validateWarehouseForm(addWarehouseForm);
+    if (invalid) return toast.error(invalid);
 
     setWarehouseSaving(true);
     try {
@@ -967,18 +1031,8 @@ const AdminParcelDashboard = () => {
 
   const handleUpdateWarehouse = async (e) => {
     e.preventDefault();
-    if (!editWarehouseForm.name?.trim()) {
-      return toast.error("Warehouse name is required");
-    }
-    if (!editWarehouseForm.address?.trim()) {
-      return toast.error("Warehouse address is required");
-    }
-    if (
-      !Number.isFinite(Number(editWarehouseForm.lat)) ||
-      !Number.isFinite(Number(editWarehouseForm.lng))
-    ) {
-      return toast.error("Please pick warehouse location on map");
-    }
+    const invalid = validateWarehouseForm(editWarehouseForm);
+    if (invalid) return toast.error(invalid);
 
     setWarehouseSaving(true);
     try {
@@ -1086,7 +1140,7 @@ const AdminParcelDashboard = () => {
           ].map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => handleTabChange(tab.id)}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg font-bold text-xs transition-all ${
                 activeTab === tab.id
                   ? "bg-white text-slate-800 shadow-sm"
@@ -1858,7 +1912,7 @@ const AdminParcelDashboard = () => {
                         onChange={(e) =>
                           setAddCourierForm((f) => ({
                             ...f,
-                            name: e.target.value,
+                            name: maskName(e.target.value, 80),
                           }))
                         }
                         placeholder="e.g. Blue Dart"
@@ -1879,7 +1933,7 @@ const AdminParcelDashboard = () => {
                         onChange={(e) =>
                           setAddCourierForm((f) => ({
                             ...f,
-                            platformCharge: e.target.value,
+                            platformCharge: maskAmount(e.target.value),
                           }))
                         }
                         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
@@ -1903,7 +1957,7 @@ const AdminParcelDashboard = () => {
                         onChange={(e) =>
                           setAddCourierForm((f) => ({
                             ...f,
-                            companyCharge: e.target.value,
+                            companyCharge: maskAmount(e.target.value),
                           }))
                         }
                         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
@@ -1924,7 +1978,7 @@ const AdminParcelDashboard = () => {
                         onChange={(e) =>
                           setAddCourierForm((f) => ({
                             ...f,
-                            sortOrder: e.target.value,
+                            sortOrder: maskAmount(e.target.value, { decimals: 0, max: 4 }),
                           }))
                         }
                         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
@@ -2097,7 +2151,7 @@ const AdminParcelDashboard = () => {
                         onChange={(e) =>
                           setAddWarehouseForm((f) => ({
                             ...f,
-                            name: e.target.value,
+                            name: maskName(e.target.value, 80),
                           }))
                         }
                         placeholder="e.g. Indore Central Hub"
@@ -2135,7 +2189,7 @@ const AdminParcelDashboard = () => {
                           onChange={(e) =>
                             setAddWarehouseForm((f) => ({
                               ...f,
-                              city: e.target.value,
+                              city: maskName(e.target.value, 60),
                             }))
                           }
                           placeholder="e.g. Indore"
@@ -2152,7 +2206,7 @@ const AdminParcelDashboard = () => {
                           onChange={(e) =>
                             setAddWarehouseForm((f) => ({
                               ...f,
-                              pincode: e.target.value,
+                              pincode: maskPincode(e.target.value),
                             }))
                           }
                           placeholder="e.g. 452010"
@@ -2172,7 +2226,7 @@ const AdminParcelDashboard = () => {
                           onChange={(e) =>
                             setAddWarehouseForm((f) => ({
                               ...f,
-                              phone: e.target.value,
+                              phone: maskPhone(e.target.value),
                             }))
                           }
                           placeholder="Contact phone"
@@ -2189,7 +2243,7 @@ const AdminParcelDashboard = () => {
                           onChange={(e) =>
                             setAddWarehouseForm((f) => ({
                               ...f,
-                              contactPerson: e.target.value,
+                              contactPerson: maskName(e.target.value, 60),
                             }))
                           }
                           placeholder="Manager name"
@@ -3115,7 +3169,7 @@ const AdminParcelDashboard = () => {
                           onChange={(e) =>
                             setEditCourierForm((f) => ({
                               ...f,
-                              name: e.target.value,
+                              name: maskName(e.target.value, 80),
                             }))
                           }
                           placeholder="e.g. Blue Dart"
@@ -3150,7 +3204,7 @@ const AdminParcelDashboard = () => {
                       onChange={(e) =>
                         setEditCourierForm((f) => ({
                           ...f,
-                          platformCharge: e.target.value,
+                          platformCharge: maskAmount(e.target.value),
                         }))
                       }
                       className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
@@ -3176,7 +3230,7 @@ const AdminParcelDashboard = () => {
                           onChange={(e) =>
                             setEditCourierForm((f) => ({
                               ...f,
-                              companyCharge: e.target.value,
+                              companyCharge: maskAmount(e.target.value),
                             }))
                           }
                           className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
@@ -3197,7 +3251,7 @@ const AdminParcelDashboard = () => {
                           onChange={(e) =>
                             setEditCourierForm((f) => ({
                               ...f,
-                              sortOrder: e.target.value,
+                              sortOrder: maskAmount(e.target.value, { decimals: 0, max: 4 }),
                             }))
                           }
                           className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
@@ -3359,7 +3413,7 @@ const AdminParcelDashboard = () => {
                       onChange={(e) =>
                         setEditWarehouseForm((f) => ({
                           ...f,
-                          name: e.target.value,
+                          name: maskName(e.target.value, 80),
                         }))
                       }
                       className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
@@ -3395,7 +3449,7 @@ const AdminParcelDashboard = () => {
                         onChange={(e) =>
                           setEditWarehouseForm((f) => ({
                             ...f,
-                            city: e.target.value,
+                            city: maskName(e.target.value, 60),
                           }))
                         }
                         className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary"
@@ -3411,7 +3465,7 @@ const AdminParcelDashboard = () => {
                         onChange={(e) =>
                           setEditWarehouseForm((f) => ({
                             ...f,
-                            pincode: e.target.value,
+                            pincode: maskPincode(e.target.value),
                           }))
                         }
                         className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary"
@@ -3430,7 +3484,7 @@ const AdminParcelDashboard = () => {
                         onChange={(e) =>
                           setEditWarehouseForm((f) => ({
                             ...f,
-                            phone: e.target.value,
+                            phone: maskPhone(e.target.value),
                           }))
                         }
                         className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary"
@@ -3446,7 +3500,7 @@ const AdminParcelDashboard = () => {
                         onChange={(e) =>
                           setEditWarehouseForm((f) => ({
                             ...f,
-                            contactPerson: e.target.value,
+                            contactPerson: maskName(e.target.value, 60),
                           }))
                         }
                         className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary"

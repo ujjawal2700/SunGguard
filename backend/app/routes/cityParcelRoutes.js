@@ -6,6 +6,7 @@ import {
   calculateCityFareSchema,
   createCityParcelSchema,
   serviceabilitySchema,
+  zoneCheckSchema,
   cancelCityParcelSchema,
   failureResponseSchema,
   riderVerifyPickupSchema,
@@ -21,6 +22,7 @@ import {
 import {
   getBookingConfig,
   getServiceability,
+  getZoneForPoint,
   calculateFare,
   createCityParcel,
   verifyPayment,
@@ -93,6 +95,12 @@ router.get(
   verifyToken,
   validate(serviceabilitySchema, "query"),
   getServiceability,
+);
+router.get(
+  "/zone-check",
+  verifyToken,
+  validate(zoneCheckSchema, "query"),
+  getZoneForPoint,
 );
 router.post("/calculate-fare", verifyToken, validate(calculateCityFareSchema), calculateFare);
 router.post("/create", verifyToken, validate(createCityParcelSchema), createCityParcel);

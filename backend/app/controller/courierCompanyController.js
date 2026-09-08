@@ -4,6 +4,7 @@ import {
   parseCourierLocation,
   validateCourierLocation,
 } from "../utils/courierLocation.js";
+import { backfillAddressLabels } from "../services/locationBackfillService.js";
 
 export const adminListCourierCompanies = async (req, res) => {
   try {
@@ -47,13 +48,16 @@ export const adminCreateCourierCompany = async (req, res) => {
       return handleResponse(res, 400, "A courier company with this name already exists");
     }
 
+    // Same safety net the warehouses get: blank place names are read back off
+    // the picked coordinates rather than saved empty.
+    const filled = await backfillAddressLabels(location);
     const company = await CourierCompany.create({
       name,
       platformCharge,
       companyCharge,
       sortOrder,
       isActive,
-      location,
+      location: { ...location, ...filled },
     });
 
     return handleResponse(res, 201, "Courier company created", company);

@@ -1,6 +1,7 @@
 import Delivery from "../models/delivery.js";
 import Seller from "../models/seller.js";
 import { distanceMeters } from "../utils/geoUtils.js";
+import { isPointInPolygon } from "../utils/zoneGeometry.js";
 
 /** When true, only verified riders receive broadcasts (stricter). Default: do not require. */
 const requireVerifiedForBroadcast = () =>
@@ -27,7 +28,12 @@ function buildParcelDeliveryFilter() {
   };
 }
 
-function filterByHaversine(candidates, lat, lng, maxDistanceM) {
+/**
+ * `zone`, when given, additionally requires the rider to stand inside that
+ * polygon. Tested in the same pass as the radius, so confining a broadcast to
+ * a zone costs nothing beyond the point-in-polygon arithmetic.
+ */
+function filterByHaversine(candidates, lat, lng, maxDistanceM, zone = null) {
   return candidates
     .filter((d) => {
       const c = d.location?.coordinates;
@@ -35,7 +41,9 @@ function filterByHaversine(candidates, lat, lng, maxDistanceM) {
       const [dlng, dlat] = c;
       if (!Number.isFinite(dlat) || !Number.isFinite(dlng)) return false;
       if (Math.abs(dlat) < 1e-5 && Math.abs(dlng) < 1e-5) return false;
-      return distanceMeters(dlat, dlng, lat, lng) <= maxDistanceM;
+      if (distanceMeters(dlat, dlng, lat, lng) > maxDistanceM) return false;
+      if (zone && !isPointInPolygon(dlat, dlng, zone.points || [])) return false;
+      return true;
     })
     .map((d) => d._id.toString());
 }
@@ -166,8 +174,17 @@ export async function getDeliveryPartnerIdsWithinCustomerRadius(customerLocation
  * Includes riders who selected "parcel" or "both" (`isParcelService: true`).
  * Uses Haversine over all eligible online riders so nobody in-radius is missed
  * by geo-index quirks.
+ *
+ * `options.zone` narrows the result to riders standing inside that delivery
+ * zone. It is opt-in: the outstation flow calls this without it and keeps the
+ * unzoned reach it has always had.
  */
-export async function getParcelRiderIdsNearPickup(lat, lng, radiusKm = 5) {
+export async function getParcelRiderIdsNearPickup(
+  lat,
+  lng,
+  radiusKm = 5,
+  { zone = null } = {},
+) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return [];
 
   const safeRadiusKm = Math.min(Math.max(Number(radiusKm) || 5, 1), 100);
@@ -185,7 +202,7 @@ export async function getParcelRiderIdsNearPickup(lat, lng, radiusKm = 5) {
       .limit(HAVERSINE_FALLBACK_LIMIT())
       .lean();
 
-    return filterByHaversine(candidates, lat, lng, maxDistanceM);
+    return filterByHaversine(candidates, lat, lng, maxDistanceM, zone);
   } catch (e) {
     console.warn("[deliveryNearby] parcel radius scan failed:", e.message);
     return [];

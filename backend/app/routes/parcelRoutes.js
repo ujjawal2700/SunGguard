@@ -1,6 +1,12 @@
 import express from "express";
 import mongoose from "mongoose";
 import { verifyToken, allowRoles } from "../middleware/authMiddleware.js";
+import { validate } from "../middleware/validate.js";
+import {
+  adminCreateCourierSchema,
+  adminUpdateCourierSchema,
+  adminUpdateParcelPricingSchema,
+} from "../validation/porterAdminValidation.js";
 import {
   calculateFare,
   createParcel,
@@ -94,7 +100,7 @@ router.post("/review", verifyToken, submitParcelReview);
 router.get("/admin/all", verifyToken, allowRoles("admin", "parcel_admin"), adminGetParcels);
 router.post("/admin/assign-rider", verifyToken, allowRoles("admin", "parcel_admin"), adminAssignRider);
 router.get("/admin/pricing", verifyToken, allowRoles("admin", "parcel_admin"), adminGetPricingConfig);
-router.put("/admin/pricing", verifyToken, allowRoles("admin", "parcel_admin"), adminUpdatePricingConfig);
+router.put("/admin/pricing", verifyToken, allowRoles("admin", "parcel_admin"), validate(adminUpdateParcelPricingSchema), adminUpdatePricingConfig);
 router.get("/admin/reports", verifyToken, allowRoles("admin", "parcel_admin"), adminGetReports);
 router.get("/admin/active", verifyToken, allowRoles("admin", "parcel_admin"), adminGetActiveDeliveries);
 router.post(
@@ -126,12 +132,14 @@ router.post(
   "/admin/couriers",
   verifyToken,
   allowRoles("admin", "parcel_admin"),
+  validate(adminCreateCourierSchema),
   adminCreateCourierCompany,
 );
 router.put(
   "/admin/couriers/:id",
   verifyToken,
   allowRoles("admin", "parcel_admin"),
+  validate(adminUpdateCourierSchema),
   adminUpdateCourierCompany,
 );
 router.delete(

@@ -147,6 +147,56 @@ async function sendParcelNotification(userId, role, title, body, eventType = "al
    CUSTOMER CONTROLLERS
    ========================================================================== */
 
+/** Distance fallback when a pickup has neither a warehouse nor a hub nearby. */
+const DEFAULT_FIRST_MILE_KM = 5;
+
+/**
+ * How far the rider carries the parcel on its first mile, and to what.
+ *
+ * Outstation and local answer this differently. An outstation parcel is
+ * handed to a warehouse — or, until one is set up, to a parcel-hub seller —
+ * and if neither is in range it still books against a nominal first mile,
+ * because the courier company is what actually carries it onward. A local
+ * parcel has no courier leg, so a hub in range is the whole service and its
+ * absence is a real refusal.
+ *
+ * Quoting and booking both call this. They used to carry their own copies of
+ * the rule, which is how the quote came to refuse outstation pickups that
+ * `createParcel` would happily have taken.
+ */
+async function resolveFirstMile({ lat, lng, isOutstation }) {
+  if (!isOutstation) {
+    const nearest = await findNearestParcelSellerWithDistance(lat, lng);
+    if (!nearest) {
+      return {
+        error: "No parcel hub seller is available near your pickup location",
+      };
+    }
+    return { distanceKm: nearest.distanceKm, warehouse: null, nearest };
+  }
+
+  const warehouse = await Warehouse.findNearestActive(lat, lng);
+  if (warehouse) {
+    const metres = distanceMeters(lat, lng, Number(warehouse.lat), Number(warehouse.lng));
+    return {
+      distanceKm: Math.max(1, Math.round((metres / 1000) * 10) / 10),
+      warehouse,
+      nearest: null,
+    };
+  }
+
+  const nearest = await findNearestParcelSellerWithDistance(lat, lng);
+  return {
+    // Checked for a number rather than truthiness: a pickup standing at the
+    // hub is 0 km away, and `|| 5` billed that as a five-kilometre first mile.
+    distanceKm: Number.isFinite(nearest?.distanceKm)
+      ? nearest.distanceKm
+      : DEFAULT_FIRST_MILE_KM,
+    warehouse: null,
+    nearest,
+  };
+}
+
 export const calculateFare = async (req, res) => {
   try {
     const {
@@ -182,16 +232,18 @@ export const calculateFare = async (req, res) => {
       );
     }
 
-    // Distance = pickup (user) → nearest parcel-hub seller (delivery location).
-    const nearest = await findNearestParcelSellerWithDistance(pickupLatN, pickupLngN);
-    if (!nearest) {
-      return handleResponse(
-        res,
-        400,
-        "No parcel hub seller is available near your pickup location",
-      );
+    // Same first-mile rule the booking itself uses, so a quote can never
+    // refuse a pickup that `createParcel` would have accepted.
+    const firstMile = await resolveFirstMile({
+      lat: pickupLatN,
+      lng: pickupLngN,
+      isOutstation:
+        String(req.body.parcelType || "outstation").toLowerCase() !== "local",
+    });
+    if (firstMile.error) {
+      return handleResponse(res, 400, firstMile.error);
     }
-    const distanceKm = nearest.distanceKm;
+    const { distanceKm, warehouse, nearest } = firstMile;
 
     let platformCharge = 0;
     const courierKey = courierCompanyId || courierCompany;
@@ -217,7 +269,14 @@ export const calculateFare = async (req, res) => {
     });
     const priced = applyBillableDaysToFare(daily, billableDays);
 
-    const sellerName = nearest.seller.shopName || nearest.seller.name || "Parcel hub";
+    // Whatever the rider actually hands the parcel to. An outstation pickup
+    // with no warehouse and no hub in range still quotes, so this has to
+    // survive both being absent.
+    const sellerName =
+      warehouse?.name ||
+      nearest?.seller?.shopName ||
+      nearest?.seller?.name ||
+      "Parcel hub";
     const configuredExpressCharge =
       Math.round((Math.max(0, Number(config.expressCharge) || 0) + Number.EPSILON) * 100) / 100;
 
@@ -378,46 +437,18 @@ export const createParcel = async (req, res) => {
         : "outstation";
     const isOutstation = parcelType !== "local";
 
-    // Fare distance: outstation routes to the nearest active warehouse when
-    // one exists, otherwise falls back to the nearest parcel-hub seller.
-    let distanceKm = 5;
-    let warehouse = null;
-    let nearest = null;
-
-    if (isOutstation) {
-      warehouse = await Warehouse.findNearestActive(
-        Number(pickupAddress.lat),
-        Number(pickupAddress.lng),
-      );
-      if (warehouse) {
-        const dM = distanceMeters(
-          Number(pickupAddress.lat),
-          Number(pickupAddress.lng),
-          Number(warehouse.lat),
-          Number(warehouse.lng),
-        );
-        distanceKm = Math.max(1, Math.round((dM / 1000) * 10) / 10);
-      } else {
-        nearest = await findNearestParcelSellerWithDistance(
-          Number(pickupAddress.lat),
-          Number(pickupAddress.lng),
-        );
-        distanceKm = nearest?.distanceKm || 5;
-      }
-    } else {
-      nearest = await findNearestParcelSellerWithDistance(
-        Number(pickupAddress.lat),
-        Number(pickupAddress.lng),
-      );
-      if (!nearest) {
-        return handleResponse(
-          res,
-          400,
-          "No parcel hub seller is available near your pickup location",
-        );
-      }
-      distanceKm = nearest.distanceKm;
+    // Shared with the quote endpoint, so the price the customer was shown is
+    // the price this books against.
+    const firstMile = await resolveFirstMile({
+      lat: Number(pickupAddress.lat),
+      lng: Number(pickupAddress.lng),
+      isOutstation,
+    });
+    if (firstMile.error) {
+      return handleResponse(res, 400, firstMile.error);
     }
+
+    const { distanceKm, warehouse, nearest } = firstMile;
 
     const resolvedDropAddress =
       isOutstation && warehouse

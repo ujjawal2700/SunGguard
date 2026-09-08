@@ -822,6 +822,9 @@ const ParcelDeliveryPage = () => {
           const res = await parcelApi.calculateFare({
             pickupLat: pickupDetails.lat,
             pickupLng: pickupDetails.lng,
+            // Sent so the quote resolves its first mile exactly the way the
+            // booking below does; without it the two can price differently.
+            parcelType: "outstation",
             weight: weightKg,
             courierCompanyId: selectedCourier?.id || undefined,
             courierCompany: selectedCourier?.name || undefined,

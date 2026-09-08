@@ -23,6 +23,9 @@ import {
   Sparkles,
   User,
   Package,
+  Layers,
+  Boxes,
+  LifeBuoy,
 } from "lucide-react";
 
 const Dashboard = React.lazy(() => import("../pages/Dashboard"));
@@ -56,6 +59,12 @@ const PendingDeliveryBoys = React.lazy(
 const AdminParcelDashboard = React.lazy(
   () => import("../pages/AdminParcelDashboard"),
 );
+const PorterDashboard = React.lazy(() => import("../pages/porter/PorterDashboard"));
+const DeliveryZones = React.lazy(() => import("../pages/porter/DeliveryZones"));
+const PorterRiderPayouts = React.lazy(
+  () => import("../pages/porter/PorterRiderPayouts"),
+);
+const PorterTickets = React.lazy(() => import("../pages/porter/PorterTickets"));
 const CityParcelAdmin = React.lazy(() => import("../pages/CityParcelAdmin"));
 const DeliveryFunds = React.lazy(() => import("../pages/DeliveryFunds"));
 const AdminWallet = React.lazy(() => import("../pages/AdminWallet"));
@@ -152,9 +161,39 @@ const navItems = [
     ],
   },
   {
+    label: "Porter Dashboard",
+    path: "/admin/porter",
+    icon: Boxes,
+    color: "cyan",
+    group: "porter",
+    end: true,
+  },
+  {
+    label: "Delivery Zones",
+    path: "/admin/porter/zones",
+    icon: Layers,
+    color: "violet",
+    group: "porter",
+  },
+  {
+    label: "Rider Payouts",
+    path: "/admin/porter/rider-payouts",
+    icon: Receipt,
+    color: "orange",
+    group: "porter",
+  },
+  {
+    label: "Parcel Support",
+    path: "/admin/porter/support",
+    icon: LifeBuoy,
+    color: "rose",
+    group: "porter",
+  },
+  {
     label: "Delivery Drivers",
     icon: Truck,
     color: "emerald",
+    group: "porter",
     children: [
       { label: "Active Drivers", path: "/admin/delivery-boys/active" },
       { label: "Waiting for Review", path: "/admin/delivery-boys/pending" },
@@ -164,15 +203,29 @@ const navItems = [
   },
   {
     label: "Parcel Delivery",
-    path: "/admin/parcels",
     icon: Package,
     color: "cyan",
+    group: "porter",
+    children: [
+      { label: "All Bookings", path: "/admin/parcels/all" },
+      { label: "Active Deliveries", path: "/admin/parcels/active" },
+      { label: "Parcel Settings", path: "/admin/parcels/pricing" },
+      { label: "Couriers", path: "/admin/parcels/couriers" },
+      { label: "Warehouses", path: "/admin/parcels/warehouses" },
+      { label: "Reviews", path: "/admin/parcels/reviews" },
+      { label: "Revenue Reports", path: "/admin/parcels/reports" },
+    ],
   },
   {
     label: "City Parcel",
-    path: "/admin/city-parcels",
     icon: Truck,
     color: "emerald",
+    group: "porter",
+    children: [
+      { label: "Needs Attention", path: "/admin/city-parcels/attention" },
+      { label: "All Parcels", path: "/admin/city-parcels/all" },
+      { label: "Rate Card", path: "/admin/city-parcels/pricing" },
+    ],
   },
   { label: "Wallet", path: "/admin/wallet", icon: Wallet, color: "violet" },
   {
@@ -192,6 +245,7 @@ const navItems = [
     path: "/admin/cash-collection",
     icon: CircleDollarSign,
     color: "green",
+    group: "porter",
   },
   { label: "Customers", path: "/admin/customers", icon: Users, color: "sky" },
   { label: "FAQs", path: "/admin/faqs", icon: HelpCircle, color: "pink" },
@@ -253,7 +307,12 @@ const AdminRoutes = () => {
           </DashboardLayout>
         }
       >
-        <Route path="/" element={<Dashboard />} />
+        {/* Quick's dashboard is currently hidden from the sidebar (see
+            Sidebar's SHOW_QUICK_TAB), so the admin's default landing page is
+            the porter desk instead. Dashboard's import and route wiring stay
+            in place — nothing here was deleted — so this is a one-line
+            revert: swap the Navigate back for `<Dashboard />`. */}
+        <Route path="/" element={<Navigate to="/admin/porter" replace />} />
         <Route path="/users" element={<UserManagement />} />
         <Route path="/profile" element={<AdminProfile />} />
         {/* Lazy routes for new sections */}
@@ -285,7 +344,13 @@ const AdminRoutes = () => {
           element={<PendingDeliveryBoys />}
         />
         <Route path="/parcels" element={<AdminParcelDashboard />} />
+        <Route path="/parcels/:tab" element={<AdminParcelDashboard />} />
         <Route path="/city-parcels" element={<CityParcelAdmin />} />
+        <Route path="/city-parcels/:tab" element={<CityParcelAdmin />} />
+        <Route path="/porter" element={<PorterDashboard />} />
+        <Route path="/porter/zones" element={<DeliveryZones />} />
+        <Route path="/porter/rider-payouts" element={<PorterRiderPayouts />} />
+        <Route path="/porter/support" element={<PorterTickets />} />
         <Route path="/tracking" element={<FleetTracking />} />
         <Route path="/delivery-funds" element={<DeliveryFunds />} />
         <Route path="/wallet" element={<AdminWallet />} />
