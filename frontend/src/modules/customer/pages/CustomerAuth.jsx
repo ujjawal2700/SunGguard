@@ -411,14 +411,6 @@ const CustomerAuth = () => {
                             </NotePane>
                         )}
                     </AnimatePresence>
-
-                    {/* ── Machine-readable footer ──────────────────────────── */}
-                    <div className="mt-7 border-t border-dashed border-slate-200 pt-4">
-                        <div className="mt-2 flex items-center justify-between">
-                            <Caption>{isLogin ? 'Returning sender' : 'New sender'}</Caption>
-                            <Caption>{accepted ? 'Accepted' : 'Awaiting verification'}</Caption>
-                        </div>
-                    </div>
                 </div>
             </ConsignmentNote>
 

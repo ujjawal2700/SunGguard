@@ -490,7 +490,7 @@ export const DeliveryCode = ({
                 className="absolute inset-0 z-10 h-full w-full cursor-pointer bg-transparent text-transparent caret-transparent outline-none disabled:cursor-not-allowed"
                 style={{ fontFamily: MONO }}
             />
-            <div className="flex gap-2" aria-hidden>
+            <div className="flex justify-center gap-2.5" aria-hidden>
                 {Array.from({ length }).map((_, index) => {
                     const char = value[index] || '';
                     const isActive = focused && index === active && !disabled;
@@ -501,7 +501,7 @@ export const DeliveryCode = ({
                                 boxes.current[index] = node;
                             }}
                             className={cn(
-                                'grid h-12 flex-1 place-items-center rounded-xl border-2 text-[20px] font-bold tabular-nums',
+                                'grid h-11 w-11 shrink-0 place-items-center rounded-xl border-2 text-[18px] font-bold tabular-nums',
                                 'transition-colors duration-200',
                                 disabled && 'opacity-60',
                                 error
@@ -526,7 +526,7 @@ export const DeliveryCode = ({
 
 /** Stands in for the caret in the box that is next to be answered. */
 const CaretTick = () => (
-    <span className="h-7 w-px animate-pulse bg-[color:var(--primary)]" aria-hidden />
+    <span className="h-5 w-px animate-pulse bg-[color:var(--primary)]" aria-hidden />
 );
 
 /* ── Action ──────────────────────────────────────────────────────────────────
