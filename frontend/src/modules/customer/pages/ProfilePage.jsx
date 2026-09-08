@@ -126,20 +126,27 @@ const ProfilePage = () => {
 
                 {/* User Identity Card */}
                 <div className="bg-white rounded-xl p-4 border border-slate-200 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="h-14 w-14 rounded-xl bg-slate-100 flex items-center justify-center p-1 border border-slate-200">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                        <div className="h-14 w-14 shrink-0 rounded-xl bg-slate-100 flex items-center justify-center p-1 border border-slate-200">
                             <div className="h-full w-full rounded-lg bg-white flex items-center justify-center overflow-hidden">
-                                <User size={28} className="text-slate-700" />
+                                {user?.avatar ? (
+                                    <img src={user.avatar} alt="" className="h-full w-full object-cover" />
+                                ) : (
+                                    <User size={28} className="text-slate-700" />
+                                )}
                             </div>
                         </div>
-                        <div>
-                            <h2 className="text-base leading-tight font-semibold text-slate-900">{user?.name || 'Customer'}</h2>
+                        {/* min-w-0 is what lets the name truncate: without it a long
+                            one stretches the row and pushes Edit off the screen. */}
+                        <div className="min-w-0">
+                            <h2 className="truncate text-base leading-tight font-semibold text-slate-900">{user?.name || 'Customer'}</h2>
                             <p className="text-slate-500 text-xs font-medium flex items-center gap-1 mt-0.5">
-                                <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[10px] uppercase">India</span> +91 {formatIndiaPhone(user?.phone)}
+                                <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[10px] uppercase shrink-0">India</span>
+                                <span className="truncate">+91 {formatIndiaPhone(user?.phone)}</span>
                             </p>
                         </div>
                     </div>
-                    <Link to="/profile/edit" className="p-2.5 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">
+                    <Link to="/profile/edit" className="ml-3 shrink-0 p-2.5 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">
                         <Edit2 size={16} />
                     </Link>
                 </div>

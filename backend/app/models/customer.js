@@ -28,6 +28,7 @@ const userSchema = new mongoose.Schema(
         name: {
             type: String,
             trim: true,
+            maxlength: [50, "Name cannot exceed 50 characters"],
         },
 
         email: {
@@ -35,6 +36,12 @@ const userSchema = new mongoose.Schema(
             lowercase: true,
             unique: true,
             sparse: true, // phone login users ke liye
+        },
+
+        avatar: {
+            type: String,
+            default: "",
+            trim: true,
         },
 
         phone: {

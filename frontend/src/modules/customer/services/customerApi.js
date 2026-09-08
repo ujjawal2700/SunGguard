@@ -8,6 +8,10 @@ export const customerApi = {
   verifyOtp: (data) => axiosInstance.post("/customer/verify-otp", data),
   getProfile: () => getWithDedupe("/customer/profile", {}, { ttl: 5000 }), // Short cache for profile
   updateProfile: (data) => axiosInstance.put("/customer/profile", data),
+  uploadMedia: (formData) =>
+    axiosInstance.post("/media/upload", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
   getWalletTransactions: (params) =>
     getWithDedupe("/customer/transactions", params),
   getCategories: (params) =>

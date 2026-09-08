@@ -159,23 +159,66 @@ export const getCustomerProfile = async (req, res) => {
 /* ===============================
    UPDATE PROFILE
 ================================ */
+const NAME_MAX_LENGTH = 50;
+const NAME_MIN_LENGTH = 2;
+/* Deliberately permissive: one @, something either side, a dotted TLD. */
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
 export const updateCustomerProfile = async (req, res) => {
     try {
-        const { name, email, addresses } = req.body;
+        const { name, email, addresses, avatar } = req.body;
 
         const customer = await Customer.findById(req.user.id);
         if (!customer) {
             return handleResponse(res, 404, "Customer not found");
         }
 
-        if (name) customer.name = name;
-        if (email) customer.email = email;
+        if (name !== undefined) {
+            const trimmed = String(name).trim();
+            if (trimmed.length < NAME_MIN_LENGTH) {
+                return handleResponse(
+                    res,
+                    400,
+                    `Name must be at least ${NAME_MIN_LENGTH} characters`,
+                );
+            }
+            if (trimmed.length > NAME_MAX_LENGTH) {
+                return handleResponse(
+                    res,
+                    400,
+                    `Name cannot exceed ${NAME_MAX_LENGTH} characters`,
+                );
+            }
+            customer.name = trimmed;
+        }
+
+        if (email !== undefined) {
+            const trimmed = String(email).trim().toLowerCase();
+            // Clearing the address is allowed; a malformed one is not.
+            if (trimmed && !EMAIL_PATTERN.test(trimmed)) {
+                return handleResponse(res, 400, "Enter a valid email address");
+            }
+            // `unique: true` is sparse, so store undefined rather than "" when cleared.
+            customer.email = trimmed || undefined;
+        }
+
+        if (avatar !== undefined) {
+            customer.avatar = String(avatar).trim();
+        }
+
         if (addresses) customer.addresses = addresses;
 
         await customer.save();
 
         return handleResponse(res, 200, "Profile updated successfully", customer);
     } catch (error) {
+        // A second account already holding this address surfaces as a duplicate key.
+        if (error?.code === 11000 && error?.keyPattern?.email) {
+            return handleResponse(res, 409, "That email is already in use");
+        }
+        if (error?.name === "ValidationError") {
+            return handleResponse(res, 400, error.message);
+        }
         return handleResponse(res, 500, error.message);
     }
 };
