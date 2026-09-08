@@ -105,7 +105,13 @@ export function emitToAdmins(event, payload) {
 }
 
 /** Notify parcel hub sellers whose service radius covers the pickup location. */
+/** Notify parcel hub sellers whose service radius covers the pickup location (local parcels only). */
 export async function emitParcelNewToNearbySellers(parcel) {
+  // Outstation parcels are routed to warehouses, never to sellers
+  if (parcel?.parcelType && parcel.parcelType !== "local") {
+    return;
+  }
+
   const lat = Number(parcel?.pickupAddress?.lat);
   const lng = Number(parcel?.pickupAddress?.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;

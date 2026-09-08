@@ -192,6 +192,27 @@ const parcelSchema = new mongoose.Schema(
       index: true,
     },
     /** Parcel hub seller who auto-accepts within their service radius. */
+    /** Warehouse for outstation drop-off */
+    warehouseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Warehouse",
+      default: null,
+      index: true,
+    },
+    /** 'outstation' (delivers to warehouse) or 'local' (delivers to seller/receiver) */
+    parcelType: {
+      type: String,
+      enum: ["outstation", "local"],
+      default: "outstation",
+      index: true,
+    },
+    /** Instruction displayed to the delivery rider */
+    deliveryInstruction: {
+      type: String,
+      enum: ["deliver_to_warehouse", "deliver_to_receiver"],
+      default: "deliver_to_warehouse",
+    },
+    /** Parcel hub seller who auto-accepts within their service radius (local parcels only). */
     sellerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Seller",

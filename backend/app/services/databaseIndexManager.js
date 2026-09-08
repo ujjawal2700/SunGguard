@@ -214,6 +214,20 @@ export async function createAllIndexes() {
             results.existing++;
             continue;
           }
+          if (error.code === 26 || error.codeName === "NamespaceNotFound") {
+            try {
+              await mongoose.connection.createCollection(collectionName);
+              const options = { ...indexDef.options, background: true };
+              await collection.createIndex(indexDef.keys, options);
+              results.created++;
+              continue;
+            } catch (retryErr) {
+              if (retryErr.code === 85 || retryErr.codeName === "IndexOptionsConflict") {
+                results.existing++;
+                continue;
+              }
+            }
+          }
           
           logger.error(`[DatabaseIndexManager] Failed to create index on ${collectionName}:`, error);
           results.failed++;

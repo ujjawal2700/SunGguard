@@ -552,6 +552,14 @@ const Dashboard = () => {
                 <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">
                   Active City Delivery
                 </p>
+                <div className="flex items-center gap-2 mb-0.5">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">
+                    Active City Delivery
+                  </p>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-700">
+                    📦 Deliver to Receiver
+                  </span>
+                </div>
                 <p className="text-sm font-bold text-slate-900 font-mono">
                   {assignedCityParcel.referenceId}
                 </p>
@@ -643,6 +651,23 @@ const Dashboard = () => {
                 <p className="text-[10px] font-black uppercase tracking-wider text-brand-600">
                   Active Parcel Task
                 </p>
+                <div className="flex items-center gap-2 mb-0.5">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-brand-600">
+                    Active Parcel Task
+                  </p>
+                  {assignedParcel.parcelType === "outstation" ||
+                  assignedParcel.warehouseId ||
+                  assignedParcel.deliveryInstruction ===
+                    "deliver_to_warehouse" ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-700">
+                      🏭 Deliver to Warehouse
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-700">
+                      📦 Deliver to Receiver
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm font-bold text-slate-900">
                   Continue parcel workflow
                 </p>

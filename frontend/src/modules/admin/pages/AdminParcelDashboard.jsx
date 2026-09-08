@@ -24,6 +24,7 @@ import {
   Star,
   EyeOff,
   Eye,
+  Warehouse as WarehouseIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { parcelApi } from "../../customer/services/parcelApi";
@@ -35,7 +36,11 @@ import {
   buildCourierLocationPayload,
   validateCourierLocationForm,
 } from "../utils/courierLocation";
-import { onParcelNew, onParcelStatusUpdate, getOrderSocket } from "@/core/services/orderSocket";
+import {
+  onParcelNew,
+  onParcelStatusUpdate,
+  getOrderSocket,
+} from "@/core/services/orderSocket";
 import { createSocketTokenReader } from "@core/utils/authStorage";
 import { STORAGE_KEYS } from "@core/utils/storage";
 
@@ -61,8 +66,7 @@ const CourierLocationFields = ({ location, onFieldChange, onOpenMap }) => (
       <button
         type="button"
         onClick={onOpenMap}
-        className="inline-flex items-center gap-1.5 rounded-xl border border-primary/20 bg-white px-3 py-2 text-[11px] font-bold text-primary hover:bg-primary/5"
-      >
+        className="inline-flex items-center gap-1.5 rounded-xl border border-primary/20 bg-white px-3 py-2 text-[11px] font-bold text-primary hover:bg-primary/5">
         <MapPin size={14} />
         {location.lat && location.lng ? "Update Map" : "Pick on Map"}
       </button>
@@ -70,7 +74,9 @@ const CourierLocationFields = ({ location, onFieldChange, onOpenMap }) => (
 
     <div className="grid grid-cols-2 gap-3">
       <div className="space-y-1">
-        <label className="text-xs font-bold text-slate-500 uppercase">Flat / Shop No.</label>
+        <label className="text-xs font-bold text-slate-500 uppercase">
+          Flat / Shop No.
+        </label>
         <input
           type="text"
           value={location.flatNo}
@@ -80,7 +86,9 @@ const CourierLocationFields = ({ location, onFieldChange, onOpenMap }) => (
         />
       </div>
       <div className="space-y-1">
-        <label className="text-xs font-bold text-slate-500 uppercase">Contact Phone</label>
+        <label className="text-xs font-bold text-slate-500 uppercase">
+          Contact Phone
+        </label>
         <input
           type="tel"
           value={location.phone}
@@ -92,7 +100,9 @@ const CourierLocationFields = ({ location, onFieldChange, onOpenMap }) => (
     </div>
 
     <div className="space-y-1">
-      <label className="text-xs font-bold text-slate-500 uppercase">Street / Building</label>
+      <label className="text-xs font-bold text-slate-500 uppercase">
+        Street / Building
+      </label>
       <input
         type="text"
         required
@@ -104,7 +114,9 @@ const CourierLocationFields = ({ location, onFieldChange, onOpenMap }) => (
     </div>
 
     <div className="space-y-1">
-      <label className="text-xs font-bold text-slate-500 uppercase">Landmark</label>
+      <label className="text-xs font-bold text-slate-500 uppercase">
+        Landmark
+      </label>
       <input
         type="text"
         value={location.landmark}
@@ -116,7 +128,9 @@ const CourierLocationFields = ({ location, onFieldChange, onOpenMap }) => (
 
     <div className="grid grid-cols-2 gap-3">
       <div className="space-y-1">
-        <label className="text-xs font-bold text-slate-500 uppercase">City</label>
+        <label className="text-xs font-bold text-slate-500 uppercase">
+          City
+        </label>
         <input
           type="text"
           required
@@ -127,7 +141,9 @@ const CourierLocationFields = ({ location, onFieldChange, onOpenMap }) => (
         />
       </div>
       <div className="space-y-1">
-        <label className="text-xs font-bold text-slate-500 uppercase">State</label>
+        <label className="text-xs font-bold text-slate-500 uppercase">
+          State
+        </label>
         <input
           type="text"
           required
@@ -140,7 +156,9 @@ const CourierLocationFields = ({ location, onFieldChange, onOpenMap }) => (
     </div>
 
     <div className="space-y-1">
-      <label className="text-xs font-bold text-slate-500 uppercase">Pincode</label>
+      <label className="text-xs font-bold text-slate-500 uppercase">
+        Pincode
+      </label>
       <input
         type="text"
         required
@@ -153,8 +171,12 @@ const CourierLocationFields = ({ location, onFieldChange, onOpenMap }) => (
 
     {location.fullAddress ? (
       <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Full Address</p>
-        <p className="text-xs font-medium text-slate-700 mt-1">{location.fullAddress}</p>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+          Full Address
+        </p>
+        <p className="text-xs font-medium text-slate-700 mt-1">
+          {location.fullAddress}
+        </p>
         {location.lat && location.lng ? (
           <p className="text-[10px] text-slate-400 mt-1 font-mono">
             {Number(location.lat).toFixed(5)}, {Number(location.lng).toFixed(5)}
@@ -205,19 +227,57 @@ const AdminParcelDashboard = () => {
   const [editingCourierIsOther, setEditingCourierIsOther] = useState(false);
   const [courierToDelete, setCourierToDelete] = useState(null);
   const [courierDeleting, setCourierDeleting] = useState(false);
+  const [warehouses, setWarehouses] = useState([]);
+  const [warehouseLoading, setWarehouseLoading] = useState(false);
+  const [warehouseSaving, setWarehouseSaving] = useState(false);
+  const [warehouseDeleting, setWarehouseDeleting] = useState(false);
+  const [warehouseToDelete, setWarehouseToDelete] = useState(null);
+  const [warehouseEditModalOpen, setWarehouseEditModalOpen] = useState(false);
+  const [editingWarehouseId, setEditingWarehouseId] = useState(null);
+  const [warehouseMapPickerTarget, setWarehouseMapPickerTarget] =
+    useState(null);
+  const emptyWarehouseForm = {
+    name: "",
+    address: "",
+    city: "",
+    pincode: "",
+    phone: "",
+    email: "",
+    contactPerson: "",
+    lat: 22.7196,
+    lng: 75.8577,
+    isActive: true,
+    notes: "",
+  };
+  const [addWarehouseForm, setAddWarehouseForm] = useState(emptyWarehouseForm);
+  const [editWarehouseForm, setEditWarehouseForm] =
+    useState(emptyWarehouseForm);
   const courierEditScrollRef = useRef(null);
   const courierEditModalRef = useRef(null);
   const parcelDetailScrollRef = useRef(null);
   const parcelDetailModalRef = useRef(null);
 
-  const modalOpen = Boolean(selectedParcel || courierEditModalOpen || courierToDelete);
+  const modalOpen = Boolean(
+    selectedParcel || courierEditModalOpen || courierToDelete,
+  );
+  const modalOpen = Boolean(
+    selectedParcel ||
+    courierEditModalOpen ||
+    courierToDelete ||
+    warehouseEditModalOpen ||
+    warehouseToDelete,
+  );
 
   useEffect(() => {
     if (!modalOpen) return undefined;
 
     const scrollY = window.scrollY;
-    const { overflow: prevBodyOverflow, position: prevBodyPosition, top: prevBodyTop, width: prevBodyWidth } =
-      document.body.style;
+    const {
+      overflow: prevBodyOverflow,
+      position: prevBodyPosition,
+      top: prevBodyTop,
+      width: prevBodyWidth,
+    } = document.body.style;
     const prevHtmlOverflow = document.documentElement.style.overflow;
 
     document.body.style.overflow = "hidden";
@@ -249,7 +309,9 @@ const AdminParcelDashboard = () => {
       if (parcelModal?.contains(event.target)) {
         scrollEl = parcelDetailScrollRef.current;
       } else if (courierModal?.contains(event.target)) {
-        const dialogEl = courierModal.querySelector("[data-courier-edit-dialog]");
+        const dialogEl = courierModal.querySelector(
+          "[data-courier-edit-dialog]",
+        );
         if (dialogEl && !dialogEl.contains(event.target)) {
           event.preventDefault();
           return;
@@ -268,14 +330,20 @@ const AdminParcelDashboard = () => {
       event.preventDefault();
       event.stopPropagation();
 
-      const maxScroll = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
+      const maxScroll = Math.max(
+        0,
+        scrollEl.scrollHeight - scrollEl.clientHeight,
+      );
       scrollEl.scrollTop = Math.min(
         maxScroll,
         Math.max(0, scrollEl.scrollTop + event.deltaY),
       );
     };
 
-    document.addEventListener("wheel", handleWheel, { passive: false, capture: true });
+    document.addEventListener("wheel", handleWheel, {
+      passive: false,
+      capture: true,
+    });
 
     return () => {
       document.removeEventListener("wheel", handleWheel, { capture: true });
@@ -296,7 +364,8 @@ const AdminParcelDashboard = () => {
     expressCharge: 0,
   });
   const [newPackageCategoryLabel, setNewPackageCategoryLabel] = useState("");
-  const [newPackageCategorySegment, setNewPackageCategorySegment] = useState("personal");
+  const [newPackageCategorySegment, setNewPackageCategorySegment] =
+    useState("personal");
   const [pricingSaving, setPricingSaving] = useState(false);
 
   // Reports state
@@ -331,6 +400,26 @@ const AdminParcelDashboard = () => {
     }
   }, [activeTab, fetchParcelReviews]);
 
+  const fetchWarehouses = useCallback(async () => {
+    try {
+      setWarehouseLoading(true);
+      const res = await parcelApi.adminGetWarehouses();
+      if (res.data?.success) {
+        setWarehouses(res.data.results || res.data.result || []);
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to load warehouses");
+    } finally {
+      setWarehouseLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "warehouses") {
+      fetchWarehouses();
+    }
+  }, [activeTab, fetchWarehouses]);
+
   const handleReviewStatus = async (id, status) => {
     try {
       const res = await parcelApi.adminUpdateReviewStatus(id, { status });
@@ -345,73 +434,88 @@ const AdminParcelDashboard = () => {
     }
   };
 
-  const fetchData = useCallback(async (isSilent = false, { refreshPricing = !isSilent } = {}) => {
-    if (!isSilent) setLoading(true);
-    try {
-      // Fetch Parcels
-      const parcelsRes = await parcelApi.adminGetParcels();
-      if (parcelsRes.data && parcelsRes.data.success) {
-        setParcels(parcelsRes.data.results || parcelsRes.data.result || []);
-      }
+  const fetchData = useCallback(
+    async (isSilent = false, { refreshPricing = !isSilent } = {}) => {
+      if (!isSilent) setLoading(true);
+      try {
+        // Fetch Parcels
+        const parcelsRes = await parcelApi.adminGetParcels();
+        if (parcelsRes.data && parcelsRes.data.success) {
+          setParcels(parcelsRes.data.results || parcelsRes.data.result || []);
+        }
 
-      // Fetch Riders
-      const ridersRes = await parcelApi.adminGetRiders();
-      if (ridersRes.data && ridersRes.data.success) {
-        setRiders(ridersRes.data.results || ridersRes.data.result || []);
-      }
+        // Fetch Riders
+        const ridersRes = await parcelApi.adminGetRiders();
+        if (ridersRes.data && ridersRes.data.success) {
+          setRiders(ridersRes.data.results || ridersRes.data.result || []);
+        }
 
-      // Fetch Courier Companies
-      const couriersRes = await parcelApi.adminGetCouriers();
-      if (couriersRes.data && couriersRes.data.success) {
-        setCouriers(couriersRes.data.results || couriersRes.data.result || []);
-      }
+        // Fetch Courier Companies
+        const couriersRes = await parcelApi.adminGetCouriers();
+        if (couriersRes.data && couriersRes.data.success) {
+          setCouriers(
+            couriersRes.data.results || couriersRes.data.result || [],
+          );
+        }
 
-      // Pricing form must NOT refresh on silent polls — that wipes in-progress edits
-      // (e.g. Express Extra Charge) every 15s before Save.
-      if (refreshPricing) {
-        const pricingRes = await parcelApi.adminGetPricingConfig();
-        if (pricingRes.data && pricingRes.data.success) {
-          const cfg = pricingRes.data.result || {};
-          setPricing({
-            baseFare: cfg.baseFare || 0,
-            perKmCharge: cfg.perKmCharge || 0,
-            weightCharge: cfg.weightCharge || 0,
-            baseSearchRadiusKm: cfg.baseSearchRadiusKm ?? 5,
-            radiusMultiplier: cfg.radiusMultiplier ?? 1.6,
-            riderBaseFareSharePercent:
-              cfg.riderBaseFareSharePercent ?? cfg.riderSharePercent ?? 80,
-            riderDistanceFareSharePercent:
-              cfg.riderDistanceFareSharePercent ?? cfg.riderSharePercent ?? 80,
-            packageCategories: Array.isArray(cfg.packageCategories)
-              ? cfg.packageCategories
-              : [],
-            maxWeightKg: cfg.maxWeightKg ?? 1,
-            expressCharge: cfg.expressCharge ?? 0,
+        // Fetch Warehouses
+        const warehousesRes = await parcelApi.adminGetWarehouses();
+        if (warehousesRes.data && warehousesRes.data.success) {
+          setWarehouses(
+            warehousesRes.data.results || warehousesRes.data.result || [],
+          );
+        }
+
+        // Pricing form must NOT refresh on silent polls — that wipes in-progress edits
+        // (e.g. Express Extra Charge) every 15s before Save.
+        if (refreshPricing) {
+          const pricingRes = await parcelApi.adminGetPricingConfig();
+          if (pricingRes.data && pricingRes.data.success) {
+            const cfg = pricingRes.data.result || {};
+            setPricing({
+              baseFare: cfg.baseFare || 0,
+              perKmCharge: cfg.perKmCharge || 0,
+              weightCharge: cfg.weightCharge || 0,
+              baseSearchRadiusKm: cfg.baseSearchRadiusKm ?? 5,
+              radiusMultiplier: cfg.radiusMultiplier ?? 1.6,
+              riderBaseFareSharePercent:
+                cfg.riderBaseFareSharePercent ?? cfg.riderSharePercent ?? 80,
+              riderDistanceFareSharePercent:
+                cfg.riderDistanceFareSharePercent ??
+                cfg.riderSharePercent ??
+                80,
+              packageCategories: Array.isArray(cfg.packageCategories)
+                ? cfg.packageCategories
+                : [],
+              maxWeightKg: cfg.maxWeightKg ?? 1,
+              expressCharge: cfg.expressCharge ?? 0,
+            });
+          }
+        }
+
+        // Fetch Reports
+        const reportsRes = await parcelApi.adminGetReports();
+        if (reportsRes.data && reportsRes.data.success) {
+          setReports({
+            totalDeliveries: 0,
+            completed: 0,
+            cancelled: 0,
+            revenue: 0,
+            riderSharePercent: 80,
+            riderPayout: 0,
+            adminCommission: 0,
+            ...(reportsRes.data.result || {}),
           });
         }
+      } catch (error) {
+        console.error("Failed to load dashboard data:", error);
+        if (!isSilent) toast.error("Failed to load dashboard data");
+      } finally {
+        if (!isSilent) setLoading(false);
       }
-
-      // Fetch Reports
-      const reportsRes = await parcelApi.adminGetReports();
-      if (reportsRes.data && reportsRes.data.success) {
-        setReports({
-          totalDeliveries: 0,
-          completed: 0,
-          cancelled: 0,
-          revenue: 0,
-          riderSharePercent: 80,
-          riderPayout: 0,
-          adminCommission: 0,
-          ...(reportsRes.data.result || {}),
-        });
-      }
-    } catch (error) {
-      console.error("Failed to load dashboard data:", error);
-      if (!isSilent) toast.error("Failed to load dashboard data");
-    } finally {
-      if (!isSilent) setLoading(false);
-    }
-  }, []);
+    },
+    [],
+  );
 
   useEffect(() => {
     fetchData(false);
@@ -431,7 +535,7 @@ const AdminParcelDashboard = () => {
     const getToken = createSocketTokenReader(STORAGE_KEYS.AUTH_ADMIN);
     const unsubscribe = onParcelNew(getToken, (newParcel) => {
       console.log("[AdminParcelDashboard] Real-time new parcel:", newParcel);
-      
+
       // Update parcels state: prepend newParcel if not already present
       setParcels((prev) => {
         if (prev.some((p) => p._id === newParcel._id)) return prev;
@@ -475,14 +579,24 @@ const AdminParcelDashboard = () => {
   // Keep open modal in sync when list refreshes (proofs appear after rider upload).
   useEffect(() => {
     if (!selectedParcel?._id || !parcels.length) return;
-    const fresh = parcels.find((p) => String(p._id) === String(selectedParcel._id));
+    const fresh = parcels.find(
+      (p) => String(p._id) === String(selectedParcel._id),
+    );
     if (!fresh) return;
-    const samePickup = fresh.pickupProofImage === selectedParcel.pickupProofImage;
-    const sameDrop = fresh.deliveryProofImage === selectedParcel.deliveryProofImage;
+    const samePickup =
+      fresh.pickupProofImage === selectedParcel.pickupProofImage;
+    const sameDrop =
+      fresh.deliveryProofImage === selectedParcel.deliveryProofImage;
     const sameStatus = fresh.status === selectedParcel.status;
     if (samePickup && sameDrop && sameStatus) return;
     setSelectedParcel((prev) => ({ ...prev, ...fresh }));
-  }, [parcels, selectedParcel?._id, selectedParcel?.pickupProofImage, selectedParcel?.deliveryProofImage, selectedParcel?.status]);
+  }, [
+    parcels,
+    selectedParcel?._id,
+    selectedParcel?.pickupProofImage,
+    selectedParcel?.deliveryProofImage,
+    selectedParcel?.status,
+  ]);
 
   // Open parcel details when navigated from notification / alert (`?parcelId=`)
   useEffect(() => {
@@ -509,11 +623,15 @@ const AdminParcelDashboard = () => {
       setParcels((prev) => {
         const exists = prev.some((p) => String(p._id) === String(id));
         if (!exists) return prev;
-        return prev.map((p) => (String(p._id) === String(id) ? { ...p, ...updated } : p));
+        return prev.map((p) =>
+          String(p._id) === String(id) ? { ...p, ...updated } : p,
+        );
       });
 
       setSelectedParcel((prev) =>
-        prev && String(prev._id) === String(id) ? { ...prev, ...updated } : prev,
+        prev && String(prev._id) === String(id)
+          ? { ...prev, ...updated }
+          : prev,
       );
 
       // keep summary reasonably fresh
@@ -526,15 +644,20 @@ const AdminParcelDashboard = () => {
     e.preventDefault();
     setPricingSaving(true);
     try {
-      const expressChargeValue = Math.max(0, Number(pricing.expressCharge) || 0);
+      const expressChargeValue = Math.max(
+        0,
+        Number(pricing.expressCharge) || 0,
+      );
       const payload = {
         baseFare: 0,
         perKmCharge: Number(pricing.perKmCharge) || 0,
         weightCharge: Number(pricing.weightCharge) || 0,
         baseSearchRadiusKm: Number(pricing.baseSearchRadiusKm) || 5,
         radiusMultiplier: Number(pricing.radiusMultiplier) || 1.6,
-        riderBaseFareSharePercent: Number(pricing.riderBaseFareSharePercent) || 0,
-        riderDistanceFareSharePercent: Number(pricing.riderDistanceFareSharePercent) || 0,
+        riderBaseFareSharePercent:
+          Number(pricing.riderBaseFareSharePercent) || 0,
+        riderDistanceFareSharePercent:
+          Number(pricing.riderDistanceFareSharePercent) || 0,
         packageCategories: pricing.packageCategories,
         maxWeightKg: Number(pricing.maxWeightKg) || 1,
         expressCharge: expressChargeValue,
@@ -552,7 +675,8 @@ const AdminParcelDashboard = () => {
           riderBaseFareSharePercent:
             cfg.riderBaseFareSharePercent ?? prev.riderBaseFareSharePercent,
           riderDistanceFareSharePercent:
-            cfg.riderDistanceFareSharePercent ?? prev.riderDistanceFareSharePercent,
+            cfg.riderDistanceFareSharePercent ??
+            prev.riderDistanceFareSharePercent,
           packageCategories: Array.isArray(cfg.packageCategories)
             ? cfg.packageCategories
             : prev.packageCategories,
@@ -585,7 +709,11 @@ const AdminParcelDashboard = () => {
     const applyMapLocation = (prev) => {
       const location = {
         ...prev.location,
-        address: prev.location.address || mapLocation.locality || mapLocation.address || "",
+        address:
+          prev.location.address ||
+          mapLocation.locality ||
+          mapLocation.address ||
+          "",
         city: mapLocation.city || prev.location.city || "",
         state: mapLocation.state || prev.location.state || "",
         pincode: mapLocation.pincode || prev.location.pincode || "",
@@ -661,7 +789,9 @@ const AdminParcelDashboard = () => {
         toast.error(res.data?.message || "Failed to save courier company");
       }
     } catch (error) {
-      toast.error(error.response?.data?.message || "Failed to save courier company");
+      toast.error(
+        error.response?.data?.message || "Failed to save courier company",
+      );
     } finally {
       setCourierSaving(false);
     }
@@ -675,7 +805,9 @@ const AdminParcelDashboard = () => {
     }
     if (!editingCourierId) return;
     if (!editingCourierIsOther) {
-      const locationError = validateCourierLocationForm(editCourierForm.location);
+      const locationError = validateCourierLocationForm(
+        editCourierForm.location,
+      );
       if (locationError) {
         return toast.error(locationError);
       }
@@ -693,14 +825,18 @@ const AdminParcelDashboard = () => {
         toast.error(res.data?.message || "Failed to update courier company");
       }
     } catch (error) {
-      toast.error(error.response?.data?.message || "Failed to update courier company");
+      toast.error(
+        error.response?.data?.message || "Failed to update courier company",
+      );
     } finally {
       setCourierSaving(false);
     }
   };
 
   const confirmDeleteCourier = async () => {
-    const courierId = String(courierToDelete?._id || courierToDelete?.id || "").trim();
+    const courierId = String(
+      courierToDelete?._id || courierToDelete?.id || "",
+    ).trim();
     if (!courierId) {
       toast.error("Could not delete: courier id missing");
       return;
@@ -721,7 +857,9 @@ const AdminParcelDashboard = () => {
         toast.error(res.data?.message || "Failed to delete");
       }
     } catch (error) {
-      toast.error(error.response?.data?.message || "Failed to delete courier company");
+      toast.error(
+        error.response?.data?.message || "Failed to delete courier company",
+      );
     } finally {
       setCourierDeleting(false);
     }
@@ -733,7 +871,9 @@ const AdminParcelDashboard = () => {
         isActive: !company.isActive,
       });
       if (res.data?.success) {
-        toast.success(company.isActive ? "Courier deactivated" : "Courier activated");
+        toast.success(
+          company.isActive ? "Courier deactivated" : "Courier activated",
+        );
         fetchData(true);
       } else {
         toast.error(res.data?.message || "Failed to update status");
@@ -743,9 +883,175 @@ const AdminParcelDashboard = () => {
     }
   };
 
+  const handleWarehouseMapConfirm = (mapLocation) => {
+    const applyMapLocation = (prev) => {
+      const address =
+        prev.address || mapLocation.locality || mapLocation.address || "";
+      const city = mapLocation.city || prev.city || "";
+      const pincode = mapLocation.pincode || prev.pincode || "";
+      return {
+        ...prev,
+        address: address || mapLocation.address || "",
+        city,
+        pincode,
+        lat: Number(mapLocation.lat),
+        lng: Number(mapLocation.lng),
+      };
+    };
+
+    if (warehouseMapPickerTarget === "add") {
+      setAddWarehouseForm(applyMapLocation);
+    } else if (warehouseMapPickerTarget === "edit") {
+      setEditWarehouseForm(applyMapLocation);
+    }
+    setWarehouseMapPickerTarget(null);
+    toast.success("Warehouse map location updated");
+  };
+
+  const closeWarehouseEditModal = () => {
+    setWarehouseEditModalOpen(false);
+    setEditingWarehouseId(null);
+    setEditWarehouseForm(emptyWarehouseForm);
+  };
+
+  const startEditWarehouse = (w) => {
+    setEditingWarehouseId(w._id);
+    setEditWarehouseForm({
+      name: w.name || "",
+      address: w.address || "",
+      city: w.city || "",
+      pincode: w.pincode || "",
+      phone: w.phone || "",
+      email: w.email || "",
+      contactPerson: w.contactPerson || "",
+      lat: Number(w.lat ?? w.location?.coordinates?.[1] ?? 22.7196),
+      lng: Number(w.lng ?? w.location?.coordinates?.[0] ?? 75.8577),
+      isActive: w.isActive !== false,
+      notes: w.notes || "",
+    });
+    setWarehouseEditModalOpen(true);
+  };
+
+  const handleAddWarehouse = async (e) => {
+    e.preventDefault();
+    if (!addWarehouseForm.name?.trim()) {
+      return toast.error("Warehouse name is required");
+    }
+    if (!addWarehouseForm.address?.trim()) {
+      return toast.error("Warehouse address is required");
+    }
+    if (
+      !Number.isFinite(Number(addWarehouseForm.lat)) ||
+      !Number.isFinite(Number(addWarehouseForm.lng))
+    ) {
+      return toast.error("Please pick warehouse location on map");
+    }
+
+    setWarehouseSaving(true);
+    try {
+      const res = await parcelApi.adminCreateWarehouse({
+        ...addWarehouseForm,
+        lat: Number(addWarehouseForm.lat),
+        lng: Number(addWarehouseForm.lng),
+      });
+      if (res.data?.success) {
+        toast.success("Warehouse added successfully");
+        setAddWarehouseForm(emptyWarehouseForm);
+        fetchWarehouses();
+      } else {
+        toast.error(res.data?.message || "Failed to add warehouse");
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to add warehouse");
+    } finally {
+      setWarehouseSaving(false);
+    }
+  };
+
+  const handleUpdateWarehouse = async (e) => {
+    e.preventDefault();
+    if (!editWarehouseForm.name?.trim()) {
+      return toast.error("Warehouse name is required");
+    }
+    if (!editWarehouseForm.address?.trim()) {
+      return toast.error("Warehouse address is required");
+    }
+    if (
+      !Number.isFinite(Number(editWarehouseForm.lat)) ||
+      !Number.isFinite(Number(editWarehouseForm.lng))
+    ) {
+      return toast.error("Please pick warehouse location on map");
+    }
+
+    setWarehouseSaving(true);
+    try {
+      const res = await parcelApi.adminUpdateWarehouse(editingWarehouseId, {
+        ...editWarehouseForm,
+        lat: Number(editWarehouseForm.lat),
+        lng: Number(editWarehouseForm.lng),
+      });
+      if (res.data?.success) {
+        toast.success("Warehouse updated successfully");
+        setWarehouseEditModalOpen(false);
+        fetchWarehouses();
+      } else {
+        toast.error(res.data?.message || "Failed to update warehouse");
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to update warehouse");
+    } finally {
+      setWarehouseSaving(false);
+    }
+  };
+
+  const handleDeleteWarehouse = async () => {
+    if (!warehouseToDelete) return;
+    setWarehouseDeleting(true);
+    try {
+      const res = await parcelApi.adminDeleteWarehouse(warehouseToDelete._id);
+      if (res.data?.success) {
+        toast.success("Warehouse deleted successfully");
+        setWarehouseToDelete(null);
+        fetchWarehouses();
+      } else {
+        toast.error(res.data?.message || "Failed to delete warehouse");
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to delete warehouse");
+    } finally {
+      setWarehouseDeleting(false);
+    }
+  };
+
+  const handleToggleWarehouseActive = async (w) => {
+    try {
+      const res = await parcelApi.adminUpdateWarehouse(w._id, {
+        isActive: !w.isActive,
+      });
+      if (res.data?.success) {
+        toast.success(
+          w.isActive ? "Warehouse deactivated" : "Warehouse activated",
+        );
+        fetchWarehouses();
+      } else {
+        toast.error(res.data?.message || "Failed to update status");
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to update status");
+    }
+  };
+
   const getActiveParcels = () => {
-    const activeStatuses = ["SEARCHING", "REQUESTED", "ACCEPTED", "RIDER_ASSIGNED", "PICKUP_REACHED", "PICKED_UP", "OUT_FOR_DELIVERY"];
-    return parcels.filter(p => activeStatuses.includes(p.status));
+    const activeStatuses = [
+      "SEARCHING",
+      "REQUESTED",
+      "ACCEPTED",
+      "RIDER_ASSIGNED",
+      "PICKUP_REACHED",
+      "PICKED_UP",
+      "OUT_FOR_DELIVERY",
+    ];
+    return parcels.filter((p) => activeStatuses.includes(p.status));
   };
 
   const getSearchingParcels = () =>
@@ -765,7 +1071,8 @@ const AdminParcelDashboard = () => {
             <Truck className="text-primary" size={28} /> Parcel Delivery Panel
           </h1>
           <p className="text-sm text-slate-400 font-medium mt-1">
-            Manage parcel delivery bookings, configure global rates, assign riders, and monitor operations.
+            Manage parcel delivery bookings, configure global rates, assign
+            riders, and monitor operations.
           </p>
         </div>
 
@@ -776,6 +1083,7 @@ const AdminParcelDashboard = () => {
             { id: "active", label: "Active Deliveries", icon: Activity },
             { id: "pricing", label: "Parcel Settings", icon: Settings },
             { id: "couriers", label: "Couriers", icon: Building2 },
+            { id: "warehouses", label: "Warehouses", icon: WarehouseIcon },
             { id: "reviews", label: "Reviews", icon: Star },
             { id: "reports", label: "Revenue Reports", icon: TrendingUp },
           ].map((tab) => (
@@ -786,8 +1094,7 @@ const AdminParcelDashboard = () => {
                 activeTab === tab.id
                   ? "bg-white text-slate-800 shadow-sm"
                   : "text-slate-500 hover:text-slate-800"
-              }`}
-            >
+              }`}>
               <tab.icon size={14} />
               {tab.label}
             </button>
@@ -797,7 +1104,9 @@ const AdminParcelDashboard = () => {
 
       {loading ? (
         <div className="h-64 flex items-center justify-center">
-          <span className="text-slate-400 animate-pulse font-medium">Loading panel data...</span>
+          <span className="text-slate-400 animate-pulse font-medium">
+            Loading panel data...
+          </span>
         </div>
       ) : (
         <>
@@ -805,7 +1114,9 @@ const AdminParcelDashboard = () => {
           {activeTab === "all" && (
             <div className="bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden">
               <div className="p-5 border-b border-slate-100 flex justify-between items-center">
-                <h2 className="text-base font-black text-slate-800">All Requests History</h2>
+                <h2 className="text-base font-black text-slate-800">
+                  All Requests History
+                </h2>
                 <span className="text-xs bg-slate-100 px-3 py-1 rounded-full font-bold text-slate-600">
                   {parcels.length} total requests
                 </span>
@@ -833,14 +1144,16 @@ const AdminParcelDashboard = () => {
                         <tr
                           key={parcel._id}
                           className="hover:bg-slate-50/50 cursor-pointer transition-colors"
-                          onClick={() => openParcelDetail(parcel)}
-                        >
+                          onClick={() => openParcelDetail(parcel)}>
                           <td className="p-4 align-top">
-                            <span className="font-bold text-slate-800">#{parcel._id.slice(-6)}</span>
+                            <span className="font-bold text-slate-800">
+                              #{parcel._id.slice(-6)}
+                            </span>
                             <div className="text-[10px] text-slate-400 mt-0.5">
                               {new Date(parcel.createdAt).toLocaleDateString()}
                             </div>
-                            {parcel.lateRefundRequest?.status === "requested" && (
+                            {parcel.lateRefundRequest?.status ===
+                              "requested" && (
                               <span className="inline-flex mt-1 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
                                 Late refund
                                 {parcel.lateRefundRequest?.lateByLabel ||
@@ -863,7 +1176,8 @@ const AdminParcelDashboard = () => {
                           </td>
                           <td className="p-4 align-top max-w-[200px]">
                             <span className="font-bold text-slate-700 block">
-                              {parcel.pickupAddress?.name} ({parcel.pickupAddress?.phone})
+                              {parcel.pickupAddress?.name} (
+                              {parcel.pickupAddress?.phone})
                             </span>
                             <span className="text-xs text-slate-400 line-clamp-2 mt-0.5">
                               {parcel.pickupAddress?.fullAddress}
@@ -871,41 +1185,59 @@ const AdminParcelDashboard = () => {
                           </td>
                           <td className="p-4 align-top max-w-[200px]">
                             <span className="font-bold text-slate-700 block">
-                              {parcel.dropAddress?.name} ({parcel.dropAddress?.phone})
+                              {parcel.dropAddress?.name} (
+                              {parcel.dropAddress?.phone})
                             </span>
                             <span className="text-xs text-slate-400 line-clamp-2 mt-0.5">
                               {parcel.dropAddress?.fullAddress}
                             </span>
                           </td>
                           <td className="p-4 align-top">
-                            <span className="font-black text-slate-900 block">₹{parcel.fare}</span>
-                            <span className="text-xs text-slate-400">{parcel.weight} KG</span>
-                            <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full mt-1 inline-block ${
-                              parcel.deliverySpeed === 'express'
-                                ? 'bg-amber-50 text-amber-700'
-                                : 'bg-slate-100 text-slate-500'
-                            }`}>
-                              {parcel.deliverySpeed === 'express' ? 'Express · 10 min' : 'Normal · 30 min'}
+                            <span className="font-black text-slate-900 block">
+                              ₹{parcel.fare}
                             </span>
-                            {String(parcel.paymentMethod).toUpperCase() === 'COD' && (
+                            <span className="text-xs text-slate-400">
+                              {parcel.weight} KG
+                            </span>
+                            <span
+                              className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full mt-1 inline-block ${
+                                parcel.deliverySpeed === "express"
+                                  ? "bg-amber-50 text-amber-700"
+                                  : "bg-slate-100 text-slate-500"
+                              }`}>
+                              {parcel.deliverySpeed === "express"
+                                ? "Express · 10 min"
+                                : "Normal · 30 min"}
+                            </span>
+                            {String(parcel.paymentMethod).toUpperCase() ===
+                              "COD" && (
                               <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full mt-1 inline-block bg-orange-50 text-orange-700 block w-fit">
-                                COD · {parcel.codSettlement?.status === 'REMITTED_TO_ADMIN' || parcel.paymentStatus === 'PAID'
-                                  ? 'Admin paid'
-                                  : parcel.codSettlement?.status === 'WITH_SELLER'
-                                    ? 'With seller'
-                                    : parcel.codSettlement?.status === 'RIDER_HOLDING'
-                                      ? 'With rider'
-                                      : 'Collect pending'}
+                                COD ·{" "}
+                                {parcel.codSettlement?.status ===
+                                  "REMITTED_TO_ADMIN" ||
+                                parcel.paymentStatus === "PAID"
+                                  ? "Admin paid"
+                                  : parcel.codSettlement?.status ===
+                                      "WITH_SELLER"
+                                    ? "With seller"
+                                    : parcel.codSettlement?.status ===
+                                        "RIDER_HOLDING"
+                                      ? "With rider"
+                                      : "Collect pending"}
                               </span>
                             )}
                           </td>
                           <td className="p-4 align-top">
-                            <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase block w-fit ${
-                              parcel.status === "DELIVERED" ? "bg-green-100 text-green-700" :
-                              parcel.status === "CANCELLED" ? "bg-red-100 text-red-600" :
-                              parcel.status === "SEARCHING" ? "bg-amber-100 text-amber-700 animate-pulse" :
-                              "bg-blue-100 text-blue-700 animate-pulse"
-                            }`}>
+                            <span
+                              className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase block w-fit ${
+                                parcel.status === "DELIVERED"
+                                  ? "bg-green-100 text-green-700"
+                                  : parcel.status === "CANCELLED"
+                                    ? "bg-red-100 text-red-600"
+                                    : parcel.status === "SEARCHING"
+                                      ? "bg-amber-100 text-amber-700 animate-pulse"
+                                      : "bg-blue-100 text-blue-700 animate-pulse"
+                              }`}>
                               {formatParcelStatus(parcel.status)}
                             </span>
 
@@ -914,7 +1246,8 @@ const AdminParcelDashboard = () => {
                                 Rider: {parcel.deliveryPartnerId.name}
                               </div>
                             ) : (
-                              parcel.status !== "CANCELLED" && parcel.status !== "DELIVERED" && (
+                              parcel.status !== "CANCELLED" &&
+                              parcel.status !== "DELIVERED" && (
                                 <div className="text-[11px] text-amber-700 font-bold mt-1">
                                   Auto broadcasting to nearby parcel riders
                                 </div>
@@ -936,7 +1269,9 @@ const AdminParcelDashboard = () => {
               {/* Active list */}
               <div className="md:col-span-2 bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden">
                 <div className="p-5 border-b border-slate-100 flex justify-between items-center">
-                  <h2 className="text-base font-black text-slate-800">In-Progress Deliveries</h2>
+                  <h2 className="text-base font-black text-slate-800">
+                    In-Progress Deliveries
+                  </h2>
                   <div className="flex items-center gap-2">
                     {getSearchingParcels().length > 0 && (
                       <span className="text-xs bg-amber-50 text-amber-700 px-3 py-1 rounded-full font-bold">
@@ -959,11 +1294,12 @@ const AdminParcelDashboard = () => {
                       <div
                         key={parcel._id}
                         className="p-5 hover:bg-slate-50/50 flex flex-col md:flex-row justify-between gap-4 cursor-pointer transition-colors"
-                        onClick={() => openParcelDetail(parcel)}
-                      >
+                        onClick={() => openParcelDetail(parcel)}>
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-800">#{parcel._id.slice(-6)}</span>
+                            <span className="font-bold text-slate-800">
+                              #{parcel._id.slice(-6)}
+                            </span>
                             <span className="text-xs text-slate-400">
                               {new Date(parcel.createdAt).toLocaleTimeString()}
                             </span>
@@ -974,19 +1310,26 @@ const AdminParcelDashboard = () => {
 
                           <div className="text-xs text-slate-500 font-medium space-y-1">
                             <div>
-                              <strong className="text-slate-700">From:</strong> {parcel.pickupAddress.fullAddress}
+                              <strong className="text-slate-700">From:</strong>{" "}
+                              {parcel.pickupAddress.fullAddress}
                             </div>
                             <div>
-                              <strong className="text-slate-700">To:</strong> {parcel.dropAddress.fullAddress}
+                              <strong className="text-slate-700">To:</strong>{" "}
+                              {parcel.dropAddress.fullAddress}
                             </div>
                           </div>
                         </div>
 
                         <div className="flex flex-col justify-between items-end shrink-0">
-                          <span className="font-black text-slate-900">₹{parcel.fare}</span>
+                          <span className="font-black text-slate-900">
+                            ₹{parcel.fare}
+                          </span>
                           {parcel.deliveryPartnerId ? (
                             <div className="text-xs bg-slate-50 px-3 py-1 rounded-lg border border-slate-200 mt-2">
-                              Rider: <strong className="text-slate-700">{parcel.deliveryPartnerId.name}</strong>
+                              Rider:{" "}
+                              <strong className="text-slate-700">
+                                {parcel.deliveryPartnerId.name}
+                              </strong>
                             </div>
                           ) : (
                             <div className="text-[11px] text-amber-700 font-bold mt-2">
@@ -1003,32 +1346,52 @@ const AdminParcelDashboard = () => {
               {/* Verified riders info sidebar */}
               <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-4">
                 <h2 className="text-base font-black text-slate-800 flex items-center gap-2">
-                  <User className="text-primary" size={18} /> Verified Riders list
+                  <User className="text-primary" size={18} /> Verified Riders
+                  list
                 </h2>
                 <div className="divide-y divide-slate-100 max-h-[400px] overflow-y-auto pr-1">
                   {riders.map((rider) => {
                     const statusConfig = !rider.isParcelService
-                      ? { text: "No Parcel Service", style: "bg-red-50 text-red-700" }
+                      ? {
+                          text: "No Parcel Service",
+                          style: "bg-red-50 text-red-700",
+                        }
                       : !rider.isOnline
-                      ? { text: "Offline", style: "bg-slate-100 text-slate-500" }
-                      : rider.isBusy
-                      ? { text: "Busy", style: "bg-amber-50 text-amber-700" }
-                      : { text: "Available", style: "bg-green-50 text-green-700" };
+                        ? {
+                            text: "Offline",
+                            style: "bg-slate-100 text-slate-500",
+                          }
+                        : rider.isBusy
+                          ? {
+                              text: "Busy",
+                              style: "bg-amber-50 text-amber-700",
+                            }
+                          : {
+                              text: "Available",
+                              style: "bg-green-50 text-green-700",
+                            };
 
                     return (
-                      <div key={rider._id} className="py-3 flex justify-between items-center text-xs">
+                      <div
+                        key={rider._id}
+                        className="py-3 flex justify-between items-center text-xs">
                         <div>
-                          <span className="font-bold text-slate-800 block">{rider.name}</span>
+                          <span className="font-bold text-slate-800 block">
+                            {rider.name}
+                          </span>
                           <span className="text-slate-400">{rider.phone}</span>
                         </div>
-                        <span className={`px-2 py-0.5 rounded-full font-bold uppercase text-[9px] ${statusConfig.style}`}>
+                        <span
+                          className={`px-2 py-0.5 rounded-full font-bold uppercase text-[9px] ${statusConfig.style}`}>
                           {statusConfig.text}
                         </span>
                       </div>
                     );
                   })}
                   {riders.length === 0 && (
-                    <p className="text-slate-400 text-xs py-4 text-center">No verified delivery partners.</p>
+                    <p className="text-slate-400 text-xs py-4 text-center">
+                      No verified delivery partners.
+                    </p>
                   )}
                 </div>
               </div>
@@ -1042,46 +1405,68 @@ const AdminParcelDashboard = () => {
                 <div className="bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden">
                   <div className="p-5 border-b border-slate-100">
                     <h2 className="text-base font-black text-slate-800 flex items-center gap-2">
-                      <DollarSign className="text-primary" size={18} /> Customer Pricing
+                      <DollarSign className="text-primary" size={18} /> Customer
+                      Pricing
                     </h2>
                     <p className="text-xs text-slate-400 mt-1">
-                      Fare = (pickup → nearest hub distance × per KM) + weight + courier platform fee + express (if selected). No base charge.
+                      Fare = (pickup → nearest hub distance × per KM) + weight +
+                      courier platform fee + express (if selected). No base
+                      charge.
                     </p>
                   </div>
 
                   <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">Per KM Charge (₹)</label>
+                      <label className="text-xs font-bold text-slate-500 uppercase">
+                        Per KM Charge (₹)
+                      </label>
                       <input
                         type="number"
                         min="0"
                         step="1"
                         required
                         value={pricing.perKmCharge}
-                        onChange={(e) => setPricing((p) => ({ ...p, perKmCharge: e.target.value }))}
+                        onChange={(e) =>
+                          setPricing((p) => ({
+                            ...p,
+                            perKmCharge: e.target.value,
+                          }))
+                        }
                         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
                       />
                       <p className="text-[10px] text-slate-400 font-medium">
-                        Charged for distance from customer pickup to nearest parcel hub seller.
+                        Charged for distance from customer pickup to nearest
+                        parcel hub seller.
                       </p>
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">Weight / KG (₹)</label>
+                      <label className="text-xs font-bold text-slate-500 uppercase">
+                        Weight / KG (₹)
+                      </label>
                       <input
                         type="number"
                         min="0"
                         step="1"
                         required
                         value={pricing.weightCharge}
-                        onChange={(e) => setPricing((p) => ({ ...p, weightCharge: e.target.value }))}
+                        onChange={(e) =>
+                          setPricing((p) => ({
+                            ...p,
+                            weightCharge: e.target.value,
+                          }))
+                        }
                         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
                       />
-                      <p className="text-[10px] text-slate-400 font-medium">Multiplied by package weight.</p>
+                      <p className="text-[10px] text-slate-400 font-medium">
+                        Multiplied by package weight.
+                      </p>
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">Max Weight (KG)</label>
+                      <label className="text-xs font-bold text-slate-500 uppercase">
+                        Max Weight (KG)
+                      </label>
                       <input
                         type="number"
                         min="0.1"
@@ -1090,7 +1475,10 @@ const AdminParcelDashboard = () => {
                         required
                         value={pricing.maxWeightKg}
                         onChange={(e) =>
-                          setPricing((p) => ({ ...p, maxWeightKg: e.target.value }))
+                          setPricing((p) => ({
+                            ...p,
+                            maxWeightKg: e.target.value,
+                          }))
                         }
                         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
                       />
@@ -1104,22 +1492,32 @@ const AdminParcelDashboard = () => {
                 <div className="bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden">
                   <div className="p-5 border-b border-slate-100">
                     <h2 className="text-base font-black text-slate-800 flex items-center gap-2">
-                      <Zap className="text-primary" size={18} /> Delivery Speed Options
+                      <Zap className="text-primary" size={18} /> Delivery Speed
+                      Options
                     </h2>
                     <p className="text-xs text-slate-400 mt-1">
-                      Customers choose Normal or Express when booking. Set the extra charge for Express.
+                      Customers choose Normal or Express when booking. Set the
+                      extra charge for Express.
                     </p>
                   </div>
 
                   <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-                      <p className="text-xs font-black text-slate-800">Normal</p>
-                      <p className="text-[11px] text-slate-500 mt-1">30 min · no extra charge</p>
+                      <p className="text-xs font-black text-slate-800">
+                        Normal
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        30 min · no extra charge
+                      </p>
                     </div>
 
                     <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-                      <p className="text-xs font-black text-slate-800">Express</p>
-                      <p className="text-[11px] text-slate-500 mt-1">10 min · priority delivery</p>
+                      <p className="text-xs font-black text-slate-800">
+                        Express
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        10 min · priority delivery
+                      </p>
                     </div>
 
                     <div className="space-y-1 sm:col-span-2">
@@ -1133,12 +1531,16 @@ const AdminParcelDashboard = () => {
                         required
                         value={pricing.expressCharge}
                         onChange={(e) =>
-                          setPricing((p) => ({ ...p, expressCharge: e.target.value }))
+                          setPricing((p) => ({
+                            ...p,
+                            expressCharge: e.target.value,
+                          }))
                         }
                         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
                       />
                       <p className="text-[10px] text-slate-400 font-medium">
-                        Added to customer fare when Express is selected. If this is ₹0, Express and Normal will cost the same.
+                        Added to customer fare when Express is selected. If this
+                        is ₹0, Express and Normal will cost the same.
                       </p>
                     </div>
                   </div>
@@ -1147,16 +1549,20 @@ const AdminParcelDashboard = () => {
                 <div className="bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden">
                   <div className="p-5 border-b border-slate-100">
                     <h2 className="text-base font-black text-slate-800 flex items-center gap-2">
-                      <MapPin className="text-primary" size={18} /> Delivery Partner Search Radius
+                      <MapPin className="text-primary" size={18} /> Delivery
+                      Partner Search Radius
                     </h2>
                     <p className="text-xs text-slate-400 mt-1">
-                      Decide how far nearby parcel riders are notified when a booking starts.
+                      Decide how far nearby parcel riders are notified when a
+                      booking starts.
                     </p>
                   </div>
 
                   <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">Base Radius (KM)</label>
+                      <label className="text-xs font-bold text-slate-500 uppercase">
+                        Base Radius (KM)
+                      </label>
                       <input
                         type="number"
                         min="1"
@@ -1164,7 +1570,12 @@ const AdminParcelDashboard = () => {
                         step="0.5"
                         required
                         value={pricing.baseSearchRadiusKm}
-                        onChange={(e) => setPricing((p) => ({ ...p, baseSearchRadiusKm: e.target.value }))}
+                        onChange={(e) =>
+                          setPricing((p) => ({
+                            ...p,
+                            baseSearchRadiusKm: e.target.value,
+                          }))
+                        }
                         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
                       />
                       <p className="text-[10px] text-slate-400 font-medium">
@@ -1173,7 +1584,9 @@ const AdminParcelDashboard = () => {
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">Radius Expand Multiplier</label>
+                      <label className="text-xs font-bold text-slate-500 uppercase">
+                        Radius Expand Multiplier
+                      </label>
                       <input
                         type="number"
                         min="1"
@@ -1181,11 +1594,17 @@ const AdminParcelDashboard = () => {
                         step="0.1"
                         required
                         value={pricing.radiusMultiplier}
-                        onChange={(e) => setPricing((p) => ({ ...p, radiusMultiplier: e.target.value }))}
+                        onChange={(e) =>
+                          setPricing((p) => ({
+                            ...p,
+                            radiusMultiplier: e.target.value,
+                          }))
+                        }
                         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
                       />
                       <p className="text-[10px] text-slate-400 font-medium">
-                        If no rider accepts, radius grows by this factor (e.g. 5km × 1.6 = 8km).
+                        If no rider accepts, radius grows by this factor (e.g.
+                        5km × 1.6 = 8km).
                       </p>
                     </div>
                   </div>
@@ -1194,11 +1613,13 @@ const AdminParcelDashboard = () => {
                 <div className="bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden">
                   <div className="p-5 border-b border-slate-100">
                     <h2 className="text-base font-black text-slate-800 flex items-center gap-2">
-                      <Package className="text-primary" size={18} /> Package Categories
+                      <Package className="text-primary" size={18} /> Package
+                      Categories
                     </h2>
                     <p className="text-xs text-slate-400 mt-1">
-                      Add categories under Personal or Business. Customers pick a segment first, then
-                      see only the categories for that segment.
+                      Add categories under Personal or Business. Customers pick
+                      a segment first, then see only the categories for that
+                      segment.
                     </p>
                   </div>
 
@@ -1212,8 +1633,7 @@ const AdminParcelDashboard = () => {
                       {(pricing.packageCategories || []).map((cat, idx) => (
                         <div
                           key={`${cat.value}-${idx}`}
-                          className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center"
-                        >
+                          className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
                           <input
                             type="text"
                             value={cat.label}
@@ -1238,7 +1658,11 @@ const AdminParcelDashboard = () => {
                             placeholder="Label (e.g. Gift)"
                           />
                           <select
-                            value={cat.segment === "business" ? "business" : "personal"}
+                            value={
+                              cat.segment === "business"
+                                ? "business"
+                                : "personal"
+                            }
                             onChange={(e) => {
                               const segment = e.target.value;
                               setPricing((p) => {
@@ -1247,8 +1671,7 @@ const AdminParcelDashboard = () => {
                                 return { ...p, packageCategories: next };
                               });
                             }}
-                            className="w-full sm:w-40 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary bg-white"
-                          >
+                            className="w-full sm:w-40 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary bg-white">
                             <option value="personal">Personal</option>
                             <option value="business">Business</option>
                           </select>
@@ -1259,7 +1682,10 @@ const AdminParcelDashboard = () => {
                               onChange={(e) => {
                                 setPricing((p) => {
                                   const next = [...(p.packageCategories || [])];
-                                  next[idx] = { ...next[idx], isActive: e.target.checked };
+                                  next[idx] = {
+                                    ...next[idx],
+                                    isActive: e.target.checked,
+                                  };
                                   return { ...p, packageCategories: next };
                                 });
                               }}
@@ -1271,13 +1697,12 @@ const AdminParcelDashboard = () => {
                             onClick={() =>
                               setPricing((p) => ({
                                 ...p,
-                                packageCategories: (p.packageCategories || []).filter(
-                                  (_, i) => i !== idx,
-                                ),
+                                packageCategories: (
+                                  p.packageCategories || []
+                                ).filter((_, i) => i !== idx),
                               }))
                             }
-                            className="px-3 py-2 rounded-xl bg-rose-50 text-rose-600 text-xs font-bold"
-                          >
+                            className="px-3 py-2 rounded-xl bg-rose-50 text-rose-600 text-xs font-bold">
                             Remove
                           </button>
                         </div>
@@ -1288,15 +1713,18 @@ const AdminParcelDashboard = () => {
                       <input
                         type="text"
                         value={newPackageCategoryLabel}
-                        onChange={(e) => setNewPackageCategoryLabel(e.target.value)}
+                        onChange={(e) =>
+                          setNewPackageCategoryLabel(e.target.value)
+                        }
                         placeholder="Add category label"
                         className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary"
                       />
                       <select
                         value={newPackageCategorySegment}
-                        onChange={(e) => setNewPackageCategorySegment(e.target.value)}
-                        className="w-full sm:w-40 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary bg-white"
-                      >
+                        onChange={(e) =>
+                          setNewPackageCategorySegment(e.target.value)
+                        }
+                        className="w-full sm:w-40 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary bg-white">
                         <option value="personal">Personal</option>
                         <option value="business">Business</option>
                       </select>
@@ -1306,7 +1734,9 @@ const AdminParcelDashboard = () => {
                           const label = newPackageCategoryLabel.trim();
                           if (!label) return;
                           const segment =
-                            newPackageCategorySegment === "business" ? "business" : "personal";
+                            newPackageCategorySegment === "business"
+                              ? "business"
+                              : "personal";
                           const value = `${segment}_${label
                             .toLowerCase()
                             .replace(/[^a-z0-9]+/g, "_")
@@ -1320,8 +1750,7 @@ const AdminParcelDashboard = () => {
                           }));
                           setNewPackageCategoryLabel("");
                         }}
-                        className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
-                      >
+                        className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold">
                         Add category
                       </button>
                     </div>
@@ -1331,10 +1760,12 @@ const AdminParcelDashboard = () => {
                 <div className="bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden">
                   <div className="p-5 border-b border-slate-100">
                     <h2 className="text-base font-black text-slate-800 flex items-center gap-2">
-                      <Truck className="text-primary" size={18} /> Delivery Partner Payout
+                      <Truck className="text-primary" size={18} /> Delivery
+                      Partner Payout
                     </h2>
                     <p className="text-xs text-slate-400 mt-1">
-                      Rider earns admin-set % of distance fare only. Weight, platform, and express charges stay with the platform.
+                      Rider earns admin-set % of distance fare only. Weight,
+                      platform, and express charges stay with the platform.
                     </p>
                   </div>
 
@@ -1352,7 +1783,10 @@ const AdminParcelDashboard = () => {
                           required
                           value={pricing.riderDistanceFareSharePercent}
                           onChange={(e) =>
-                            setPricing((p) => ({ ...p, riderDistanceFareSharePercent: e.target.value }))
+                            setPricing((p) => ({
+                              ...p,
+                              riderDistanceFareSharePercent: e.target.value,
+                            }))
                           }
                           className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
                         />
@@ -1365,19 +1799,22 @@ const AdminParcelDashboard = () => {
                     <div className="rounded-2xl bg-slate-50 border border-slate-100 p-4 text-xs text-slate-600 font-medium space-y-1">
                       <p className="font-bold text-slate-800">Example payout</p>
                       <p>
-                        Distance (e.g. 5 km × ₹{Number(pricing.perKmCharge) || 0} = ₹
+                        Distance (e.g. 5 km × ₹
+                        {Number(pricing.perKmCharge) || 0} = ₹
                         {(5 * (Number(pricing.perKmCharge) || 0)).toFixed(2)}) ×{" "}
                         {Number(pricing.riderDistanceFareSharePercent) || 0}%
-                        {" = "}
-                        ₹{(
+                        {" = "}₹
+                        {(
                           (5 *
                             (Number(pricing.perKmCharge) || 0) *
-                            (Number(pricing.riderDistanceFareSharePercent) || 0)) /
+                            (Number(pricing.riderDistanceFareSharePercent) ||
+                              0)) /
                           100
                         ).toFixed(2)}
                       </p>
                       <p className="text-slate-400">
-                        Weight, platform, and express charges are not shared with the rider.
+                        Weight, platform, and express charges are not shared
+                        with the rider.
                       </p>
                     </div>
                   </div>
@@ -1386,8 +1823,7 @@ const AdminParcelDashboard = () => {
                 <button
                   type="submit"
                   disabled={pricingSaving}
-                  className="w-full bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all"
-                >
+                  className="w-full bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all">
                   <Save size={16} />
                   {pricingSaving ? "Saving..." : "Save parcel settings"}
                 </button>
@@ -1401,26 +1837,33 @@ const AdminParcelDashboard = () => {
               <div className="lg:col-span-2">
                 <form
                   onSubmit={handleAddCourier}
-                  className="bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden"
-                >
+                  className="bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden">
                   <div className="p-5 border-b border-slate-100">
                     <h2 className="text-base font-black text-slate-800 flex items-center gap-2">
                       <Plus className="text-primary" size={18} />
                       Add Courier Company
                     </h2>
                     <p className="text-xs text-slate-400 mt-1">
-                      Set platform charge customers pay when they choose this courier.
+                      Set platform charge customers pay when they choose this
+                      courier.
                     </p>
                   </div>
 
                   <div className="p-5 space-y-4">
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">Company Name</label>
+                      <label className="text-xs font-bold text-slate-500 uppercase">
+                        Company Name
+                      </label>
                       <input
                         type="text"
                         required
                         value={addCourierForm.name}
-                        onChange={(e) => setAddCourierForm((f) => ({ ...f, name: e.target.value }))}
+                        onChange={(e) =>
+                          setAddCourierForm((f) => ({
+                            ...f,
+                            name: e.target.value,
+                          }))
+                        }
                         placeholder="e.g. Blue Dart"
                         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
                       />
@@ -1437,12 +1880,16 @@ const AdminParcelDashboard = () => {
                         required
                         value={addCourierForm.platformCharge}
                         onChange={(e) =>
-                          setAddCourierForm((f) => ({ ...f, platformCharge: e.target.value }))
+                          setAddCourierForm((f) => ({
+                            ...f,
+                            platformCharge: e.target.value,
+                          }))
                         }
                         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
                       />
                       <p className="text-[10px] text-slate-400 font-medium">
-                        Extra platform fee added to customer fare when this courier is selected.
+                        Extra platform fee added to customer fare when this
+                        courier is selected.
                       </p>
                     </div>
 
@@ -1457,7 +1904,10 @@ const AdminParcelDashboard = () => {
                         required
                         value={addCourierForm.companyCharge}
                         onChange={(e) =>
-                          setAddCourierForm((f) => ({ ...f, companyCharge: e.target.value }))
+                          setAddCourierForm((f) => ({
+                            ...f,
+                            companyCharge: e.target.value,
+                          }))
                         }
                         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
                       />
@@ -1467,12 +1917,19 @@ const AdminParcelDashboard = () => {
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">Sort Order</label>
+                      <label className="text-xs font-bold text-slate-500 uppercase">
+                        Sort Order
+                      </label>
                       <input
                         type="number"
                         step="1"
                         value={addCourierForm.sortOrder}
-                        onChange={(e) => setAddCourierForm((f) => ({ ...f, sortOrder: e.target.value }))}
+                        onChange={(e) =>
+                          setAddCourierForm((f) => ({
+                            ...f,
+                            sortOrder: e.target.value,
+                          }))
+                        }
                         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
                       />
                     </div>
@@ -1482,7 +1939,10 @@ const AdminParcelDashboard = () => {
                         type="checkbox"
                         checked={addCourierForm.isActive}
                         onChange={(e) =>
-                          setAddCourierForm((f) => ({ ...f, isActive: e.target.checked }))
+                          setAddCourierForm((f) => ({
+                            ...f,
+                            isActive: e.target.checked,
+                          }))
                         }
                         className="accent-primary h-4 w-4"
                       />
@@ -1492,8 +1952,7 @@ const AdminParcelDashboard = () => {
                     <button
                       type="submit"
                       disabled={courierSaving}
-                      className="w-full bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all"
-                    >
+                      className="w-full bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all">
                       <Save size={16} />
                       {courierSaving ? "Saving..." : "Add Courier"}
                     </button>
@@ -1505,7 +1964,8 @@ const AdminParcelDashboard = () => {
                 <div className="p-5 border-b border-slate-100 flex items-center justify-between gap-3">
                   <div>
                     <h2 className="text-base font-black text-slate-800 flex items-center gap-2">
-                      <Building2 className="text-primary" size={18} /> Courier Companies
+                      <Building2 className="text-primary" size={18} /> Courier
+                      Companies
                     </h2>
                     <p className="text-xs text-slate-400 mt-1">
                       {couriers.length} companies · edit & delete open in modal
@@ -1522,20 +1982,20 @@ const AdminParcelDashboard = () => {
                     couriers.map((company) => (
                       <div
                         key={company._id}
-                        className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/60"
-                      >
+                        className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/60">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-sm font-black text-slate-800">
-                              {company.isOther ? "Other (custom)" : company.name}
+                              {company.isOther
+                                ? "Other (custom)"
+                                : company.name}
                             </span>
                             <span
                               className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
                                 company.isActive
                                   ? "bg-green-50 text-green-700"
                                   : "bg-slate-100 text-slate-500"
-                              }`}
-                            >
+                              }`}>
                               {company.isActive ? "Active" : "Inactive"}
                             </span>
                             {company.isOther && (
@@ -1557,13 +2017,19 @@ const AdminParcelDashboard = () => {
                           </p>
                           {company.isOther ? (
                             <p className="text-[11px] text-slate-500 mt-1">
-                              Shown to customers as “Other”. They type their own courier
-                              company name; you only set the platform charge above.
+                              Shown to customers as “Other”. They type their own
+                              courier company name; you only set the platform
+                              charge above.
                             </p>
                           ) : company.location?.fullAddress ? (
                             <p className="text-[11px] text-slate-500 mt-1 flex items-start gap-1">
-                              <MapPin size={12} className="shrink-0 mt-0.5 text-primary" />
-                              <span className="line-clamp-2">{company.location.fullAddress}</span>
+                              <MapPin
+                                size={12}
+                                className="shrink-0 mt-0.5 text-primary"
+                              />
+                              <span className="line-clamp-2">
+                                {company.location.fullAddress}
+                              </span>
                             </p>
                           ) : (
                             <p className="text-[11px] text-amber-600 font-semibold mt-1">
@@ -1576,16 +2042,14 @@ const AdminParcelDashboard = () => {
                           <button
                             type="button"
                             onClick={() => handleToggleCourierActive(company)}
-                            className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-slate-200 text-slate-600 hover:bg-white"
-                          >
+                            className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-slate-200 text-slate-600 hover:bg-white">
                             {company.isActive ? "Deactivate" : "Activate"}
                           </button>
                           <button
                             type="button"
                             onClick={() => startEditCourier(company)}
                             className="p-2 rounded-lg border border-slate-200 text-slate-600 hover:text-primary hover:border-primary/30"
-                            title="Edit"
-                          >
+                            title="Edit">
                             <Pencil size={14} />
                           </button>
                           {!company.isOther && (
@@ -1593,11 +2057,308 @@ const AdminParcelDashboard = () => {
                               type="button"
                               onClick={() => setCourierToDelete(company)}
                               className="p-2 rounded-lg border border-slate-200 text-slate-600 hover:text-red-600 hover:border-red-200"
-                              title="Delete"
-                            >
+                              title="Delete">
                               <Trash2 size={14} />
                             </button>
                           )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: WAREHOUSES */}
+          {activeTab === "warehouses" && (
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+              <div className="lg:col-span-2">
+                <form
+                  onSubmit={handleAddWarehouse}
+                  className="bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden">
+                  <div className="p-5 border-b border-slate-100">
+                    <h2 className="text-base font-black text-slate-800 flex items-center gap-2">
+                      <Plus className="text-primary" size={18} />
+                      Add Warehouse
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Outstation parcels picked up by riders will be delivered
+                      to the nearest active warehouse.
+                    </p>
+                  </div>
+
+                  <div className="p-5 space-y-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">
+                        Warehouse Name *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={addWarehouseForm.name}
+                        onChange={(e) =>
+                          setAddWarehouseForm((f) => ({
+                            ...f,
+                            name: e.target.value,
+                          }))
+                        }
+                        placeholder="e.g. Indore Central Hub"
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">
+                        Address *
+                      </label>
+                      <textarea
+                        rows={2}
+                        required
+                        value={addWarehouseForm.address}
+                        onChange={(e) =>
+                          setAddWarehouseForm((f) => ({
+                            ...f,
+                            address: e.target.value,
+                          }))
+                        }
+                        placeholder="Street address, building name, locality"
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary resize-none"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">
+                          City
+                        </label>
+                        <input
+                          type="text"
+                          value={addWarehouseForm.city}
+                          onChange={(e) =>
+                            setAddWarehouseForm((f) => ({
+                              ...f,
+                              city: e.target.value,
+                            }))
+                          }
+                          placeholder="e.g. Indore"
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">
+                          Pincode
+                        </label>
+                        <input
+                          type="text"
+                          value={addWarehouseForm.pincode}
+                          onChange={(e) =>
+                            setAddWarehouseForm((f) => ({
+                              ...f,
+                              pincode: e.target.value,
+                            }))
+                          }
+                          placeholder="e.g. 452010"
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">
+                          Phone
+                        </label>
+                        <input
+                          type="text"
+                          value={addWarehouseForm.phone}
+                          onChange={(e) =>
+                            setAddWarehouseForm((f) => ({
+                              ...f,
+                              phone: e.target.value,
+                            }))
+                          }
+                          placeholder="Contact phone"
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">
+                          Contact Person
+                        </label>
+                        <input
+                          type="text"
+                          value={addWarehouseForm.contactPerson}
+                          onChange={(e) =>
+                            setAddWarehouseForm((f) => ({
+                              ...f,
+                              contactPerson: e.target.value,
+                            }))
+                          }
+                          placeholder="Manager name"
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Map Location Picker */}
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                          <MapPin size={14} className="text-primary" /> Map
+                          Coordinates *
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setWarehouseMapPickerTarget("add")}
+                          className="px-2.5 py-1 rounded-lg bg-primary text-white text-[11px] font-bold hover:bg-primary/90 transition-all flex items-center gap-1">
+                          <MapPin size={12} /> Pick on Map
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-slate-600 font-mono">
+                        <span className="bg-white border border-slate-200 px-2 py-1 rounded-lg">
+                          Lat: {Number(addWarehouseForm.lat).toFixed(5)}
+                        </span>
+                        <span className="bg-white border border-slate-200 px-2 py-1 rounded-lg">
+                          Lng: {Number(addWarehouseForm.lng).toFixed(5)}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-medium">
+                        Riders will navigate to these exact coordinates when
+                        delivering outstation parcels.
+                      </p>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">
+                        Notes (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={addWarehouseForm.notes}
+                        onChange={(e) =>
+                          setAddWarehouseForm((f) => ({
+                            ...f,
+                            notes: e.target.value,
+                          }))
+                        }
+                        placeholder="Gate number, delivery instructions..."
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary"
+                      />
+                    </div>
+
+                    <label className="flex items-center gap-2 text-sm font-bold text-slate-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={addWarehouseForm.isActive}
+                        onChange={(e) =>
+                          setAddWarehouseForm((f) => ({
+                            ...f,
+                            isActive: e.target.checked,
+                          }))
+                        }
+                        className="accent-primary h-4 w-4"
+                      />
+                      Active (available for outstation drop-off)
+                    </label>
+
+                    <button
+                      type="submit"
+                      disabled={warehouseSaving}
+                      className="w-full bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all">
+                      <Save size={16} />
+                      {warehouseSaving ? "Saving..." : "Add Warehouse"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              <div className="lg:col-span-3 bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden">
+                <div className="p-5 border-b border-slate-100 flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-base font-black text-slate-800 flex items-center gap-2">
+                      <WarehouseIcon className="text-primary" size={18} />{" "}
+                      Warehouses
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {warehouses.length} warehouses · riders deliver outstation
+                      parcels here
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={fetchWarehouses}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold border border-slate-200 text-slate-600 hover:bg-slate-50">
+                    Refresh
+                  </button>
+                </div>
+
+                <div className="p-5 space-y-3">
+                  {warehouseLoading ? (
+                    <div className="py-12 text-center text-sm text-slate-400">
+                      Loading warehouses...
+                    </div>
+                  ) : warehouses.length === 0 ? (
+                    <div className="py-12 text-center text-sm text-slate-400">
+                      No warehouses added yet. Add a warehouse on the left with
+                      map coordinates.
+                    </div>
+                  ) : (
+                    warehouses.map((w) => (
+                      <div
+                        key={w._id}
+                        className="p-4 rounded-2xl border border-slate-100 bg-slate-50/60 hover:bg-slate-50 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div className="space-y-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-black text-slate-800">
+                              {w.name}
+                            </span>
+                            {w.city && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700">
+                                {w.city}
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleToggleWarehouseActive(w)}
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                w.isActive !== false
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : "bg-red-100 text-red-600"
+                              }`}>
+                              {w.isActive !== false ? "Active" : "Inactive"}
+                            </button>
+                          </div>
+                          <p className="text-xs text-slate-500 line-clamp-1">
+                            {w.address}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400 font-mono">
+                            {w.phone && <span>📞 {w.phone}</span>}
+                            {w.contactPerson && (
+                              <span>👤 {w.contactPerson}</span>
+                            )}
+                            <span>
+                              📍 {Number(w.lat).toFixed(4)},{" "}
+                              {Number(w.lng).toFixed(4)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+                          <button
+                            type="button"
+                            onClick={() => startEditWarehouse(w)}
+                            className="p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-white border border-slate-200/80 shadow-sm transition-all"
+                            title="Edit Warehouse">
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setWarehouseToDelete(w)}
+                            className="p-2 rounded-xl text-red-500 hover:text-red-700 hover:bg-red-50 border border-red-100 shadow-sm transition-all"
+                            title="Delete Warehouse">
+                            <Trash2 size={15} />
+                          </button>
                         </div>
                       </div>
                     ))
@@ -1612,7 +2373,9 @@ const AdminParcelDashboard = () => {
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-black text-slate-800">Parcel Reviews</h2>
+                  <h2 className="text-lg font-black text-slate-800">
+                    Parcel Reviews
+                  </h2>
                   <p className="text-xs text-slate-500 font-medium mt-0.5">
                     Ratings submitted after completed parcel deliveries
                   </p>
@@ -1620,8 +2383,7 @@ const AdminParcelDashboard = () => {
                 <button
                   type="button"
                   onClick={fetchParcelReviews}
-                  className="px-3 py-2 rounded-xl text-xs font-bold border border-slate-200 text-slate-600 hover:bg-white"
-                >
+                  className="px-3 py-2 rounded-xl text-xs font-bold border border-slate-200 text-slate-600 hover:bg-white">
                   Refresh
                 </button>
               </div>
@@ -1639,8 +2401,7 @@ const AdminParcelDashboard = () => {
                   {parcelReviews.map((review) => (
                     <div
                       key={review._id}
-                      className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm flex flex-col sm:flex-row sm:items-start gap-4 justify-between"
-                    >
+                      className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm flex flex-col sm:flex-row sm:items-start gap-4 justify-between">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap mb-1">
                           <div className="flex items-center gap-0.5">
@@ -1661,15 +2422,17 @@ const AdminParcelDashboard = () => {
                               review.status === "approved"
                                 ? "bg-emerald-50 text-emerald-700"
                                 : "bg-slate-100 text-slate-500"
-                            }`}
-                          >
+                            }`}>
                             {review.status}
                           </span>
                         </div>
                         <p className="text-sm font-bold text-slate-800">
                           {review.customerId?.name || "Customer"}
                           {review.customerId?.phone ? (
-                            <span className="text-slate-400 font-medium"> · {review.customerId.phone}</span>
+                            <span className="text-slate-400 font-medium">
+                              {" "}
+                              · {review.customerId.phone}
+                            </span>
                           ) : null}
                         </p>
                         <p className="text-sm text-slate-600 mt-1 leading-relaxed">
@@ -1688,17 +2451,19 @@ const AdminParcelDashboard = () => {
                         {review.status === "approved" ? (
                           <button
                             type="button"
-                            onClick={() => handleReviewStatus(review._id, "hidden")}
-                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-slate-200 text-slate-600 hover:bg-slate-50"
-                          >
+                            onClick={() =>
+                              handleReviewStatus(review._id, "hidden")
+                            }
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-slate-200 text-slate-600 hover:bg-slate-50">
                             <EyeOff size={14} /> Hide
                           </button>
                         ) : (
                           <button
                             type="button"
-                            onClick={() => handleReviewStatus(review._id, "approved")}
-                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
-                          >
+                            onClick={() =>
+                              handleReviewStatus(review._id, "approved")
+                            }
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100">
                             <Eye size={14} /> Publish
                           </button>
                         )}
@@ -1720,7 +2485,9 @@ const AdminParcelDashboard = () => {
                     <ClipboardList size={24} />
                   </div>
                   <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Bookings</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      Total Bookings
+                    </span>
                     <span className="text-2xl font-black text-slate-800 mt-1 block">
                       {reports.totalDeliveries}
                     </span>
@@ -1732,7 +2499,9 @@ const AdminParcelDashboard = () => {
                     <CheckCircle2 size={24} />
                   </div>
                   <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Completed</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      Completed
+                    </span>
                     <span className="text-2xl font-black text-slate-800 mt-1 block">
                       {reports.completed}
                     </span>
@@ -1744,7 +2513,9 @@ const AdminParcelDashboard = () => {
                     <XCircle size={24} />
                   </div>
                   <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Cancelled</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      Cancelled
+                    </span>
                     <span className="text-2xl font-black text-slate-800 mt-1 block">
                       {reports.cancelled}
                     </span>
@@ -1756,7 +2527,9 @@ const AdminParcelDashboard = () => {
                     <DollarSign size={24} />
                   </div>
                   <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Revenue</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      Total Revenue
+                    </span>
                     <span className="text-2xl font-black text-slate-800 mt-1 block">
                       ₹{reports.revenue}
                     </span>
@@ -1766,7 +2539,9 @@ const AdminParcelDashboard = () => {
 
               {/* Extra details card */}
               <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm max-w-2xl mx-auto space-y-4">
-                <h3 className="text-base font-black text-slate-800">Financial Insights</h3>
+                <h3 className="text-base font-black text-slate-800">
+                  Financial Insights
+                </h3>
                 <p className="text-xs text-slate-400 font-medium">
                   Summary calculations based on all completed parcel deliveries.
                 </p>
@@ -1781,7 +2556,13 @@ const AdminParcelDashboard = () => {
                   </div>
                   <div className="bg-slate-50 p-4 rounded-2xl">
                     <span className="text-slate-400 font-bold block uppercase">
-                      Riders Payout (base {reports.riderBaseFareSharePercent ?? pricing.riderBaseFareSharePercent}% + distance {reports.riderDistanceFareSharePercent ?? pricing.riderDistanceFareSharePercent}%)
+                      Riders Payout (base{" "}
+                      {reports.riderBaseFareSharePercent ??
+                        pricing.riderBaseFareSharePercent}
+                      % + distance{" "}
+                      {reports.riderDistanceFareSharePercent ??
+                        pricing.riderDistanceFareSharePercent}
+                      %)
                     </span>
                     <span className="text-lg font-black text-slate-800 mt-1 block">
                       ₹{Number(reports.riderPayout || 0).toFixed(2)}
@@ -1799,8 +2580,7 @@ const AdminParcelDashboard = () => {
         <div
           ref={parcelDetailModalRef}
           className="fixed inset-0 z-[1000] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 overflow-hidden overscroll-none"
-          data-lenis-prevent
-        >
+          data-lenis-prevent>
           <style>{`
             .modal-scroll-pad::-webkit-scrollbar {
               width: 10px;
@@ -1828,13 +2608,13 @@ const AdminParcelDashboard = () => {
                   Parcel Request Details
                 </h3>
                 <p className="text-xs text-slate-400 mt-1">
-                  Full logs, addresses, OTP validation, and uploaded proofs for booking ID: #{selectedParcel._id.slice(-6)}
+                  Full logs, addresses, OTP validation, and uploaded proofs for
+                  booking ID: #{selectedParcel._id.slice(-6)}
                 </p>
               </div>
               <button
                 onClick={() => setSelectedParcel(null)}
-                className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
-              >
+                className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
                 <XCircle size={22} />
               </button>
             </div>
@@ -1845,8 +2625,10 @@ const AdminParcelDashboard = () => {
               data-lenis-prevent
               data-lenis-prevent-wheel
               className="p-6 overflow-y-auto overscroll-contain space-y-6 flex-1 min-h-0 modal-scroll-pad"
-              style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}
-            >
+              style={{
+                WebkitOverflowScrolling: "touch",
+                overscrollBehavior: "contain",
+              }}>
               {selectedParcel.lateRefundRequest?.status === "requested" && (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 space-y-3">
                   <div>
@@ -1854,8 +2636,10 @@ const AdminParcelDashboard = () => {
                       Late pickup refund pending
                     </p>
                     <p className="text-sm text-amber-900 mt-1">
-                      Customer requested wallet compensation because Normal pickup exceeded 30 minutes.
-                      {String(selectedParcel.paymentMethod).toUpperCase() === "COD"
+                      Customer requested wallet compensation because Normal
+                      pickup exceeded 30 minutes.
+                      {String(selectedParcel.paymentMethod).toUpperCase() ===
+                      "COD"
                         ? " COD full cash collection stays as-is."
                         : ""}
                     </p>
@@ -1869,9 +2653,12 @@ const AdminParcelDashboard = () => {
                           "Late"}
                       </p>
                       <p className="text-[11px] text-amber-800/90 font-medium">
-                        SLA {selectedParcel.pickupSla?.minutes || 30} min from accept
+                        SLA {selectedParcel.pickupSla?.minutes || 30} min from
+                        accept
                         {selectedParcel.acceptedAt
-                          ? ` · accepted ${new Date(selectedParcel.acceptedAt).toLocaleString("en-IN", {
+                          ? ` · accepted ${new Date(
+                              selectedParcel.acceptedAt,
+                            ).toLocaleString("en-IN", {
                               day: "numeric",
                               month: "short",
                               hour: "2-digit",
@@ -1951,8 +2738,7 @@ const AdminParcelDashboard = () => {
                           setLateRefundSaving(false);
                         }
                       }}
-                      className="px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
-                    >
+                      className="px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60">
                       {lateRefundSaving ? "Saving..." : "Approve → Wallet"}
                     </button>
                     <button
@@ -1980,8 +2766,7 @@ const AdminParcelDashboard = () => {
                           setLateRefundSaving(false);
                         }
                       }}
-                      className="px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider bg-white border border-amber-200 text-slate-700 hover:bg-amber-100 disabled:opacity-60"
-                    >
+                      className="px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider bg-white border border-amber-200 text-slate-700 hover:bg-amber-100 disabled:opacity-60">
                       Reject
                     </button>
                   </div>
@@ -1991,7 +2776,9 @@ const AdminParcelDashboard = () => {
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 font-semibold space-y-1">
                   <p>
                     Late refund approved: ₹
-                    {Number(selectedParcel.lateRefundRequest.approvedAmount || 0).toFixed(2)}{" "}
+                    {Number(
+                      selectedParcel.lateRefundRequest.approvedAmount || 0,
+                    ).toFixed(2)}{" "}
                     credited to customer wallet.
                   </p>
                   {(selectedParcel.lateRefundRequest.lateByLabel ||
@@ -2014,38 +2801,54 @@ const AdminParcelDashboard = () => {
               {/* Grid details */}
               <div className="grid grid-cols-2 gap-4 text-xs">
                 <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Status</span>
-                  <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase block w-fit mt-1.5 ${
-                    selectedParcel.status === "DELIVERED" ? "bg-green-100 text-green-700" :
-                    selectedParcel.status === "CANCELLED" ? "bg-red-100 text-red-600" :
-                    "bg-blue-100 text-blue-700"
-                  }`}>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Status
+                  </span>
+                  <span
+                    className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase block w-fit mt-1.5 ${
+                      selectedParcel.status === "DELIVERED"
+                        ? "bg-green-100 text-green-700"
+                        : selectedParcel.status === "CANCELLED"
+                          ? "bg-red-100 text-red-600"
+                          : "bg-blue-100 text-blue-700"
+                    }`}>
                     {selectedParcel.status}
                   </span>
                 </div>
 
                 <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Delivery Speed</span>
-                  <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase block w-fit mt-1.5 ${
-                    selectedParcel.deliverySpeed === 'express'
-                      ? 'bg-amber-100 text-amber-700'
-                      : 'bg-slate-200 text-slate-600'
-                  }`}>
-                    {selectedParcel.deliverySpeed === 'express' ? 'Express · 10 min' : 'Normal · 30 min'}
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Delivery Speed
+                  </span>
+                  <span
+                    className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase block w-fit mt-1.5 ${
+                      selectedParcel.deliverySpeed === "express"
+                        ? "bg-amber-100 text-amber-700"
+                        : "bg-slate-200 text-slate-600"
+                    }`}>
+                    {selectedParcel.deliverySpeed === "express"
+                      ? "Express · 10 min"
+                      : "Normal · 30 min"}
                   </span>
                 </div>
 
                 <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Payment</span>
-                  <span className="text-sm font-black text-slate-800 mt-1 block">
-                    {selectedParcel.paymentMethod || "—"} · {selectedParcel.paymentStatus || "—"}
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Payment
                   </span>
-                  {String(selectedParcel.paymentMethod).toUpperCase() === "COD" && (
+                  <span className="text-sm font-black text-slate-800 mt-1 block">
+                    {selectedParcel.paymentMethod || "—"} ·{" "}
+                    {selectedParcel.paymentStatus || "—"}
+                  </span>
+                  {String(selectedParcel.paymentMethod).toUpperCase() ===
+                    "COD" && (
                     <div className="mt-2 text-[11px] text-slate-600 space-y-0.5 font-medium">
                       <p>
                         Collect: ₹
                         {Number(
-                          selectedParcel.codSettlement?.collectAmount || selectedParcel.fare || 0,
+                          selectedParcel.codSettlement?.collectAmount ||
+                            selectedParcel.fare ||
+                            0,
                         ).toFixed(2)}
                       </p>
                       <p>
@@ -2059,20 +2862,31 @@ const AdminParcelDashboard = () => {
                 </div>
 
                 <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Fare & Weight</span>
-                  <span className="text-sm font-black text-slate-800 mt-1 block">₹{selectedParcel.fare} ({selectedParcel.weight} KG)</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Fare & Weight
+                  </span>
+                  <span className="text-sm font-black text-slate-800 mt-1 block">
+                    ₹{selectedParcel.fare} ({selectedParcel.weight} KG)
+                  </span>
                 </div>
 
                 <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Verification OTP</span>
-                  <span className="text-sm font-black text-slate-800 mt-1 block tracking-wider">{selectedParcel.otp || "N/A"}</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Verification OTP
+                  </span>
+                  <span className="text-sm font-black text-slate-800 mt-1 block tracking-wider">
+                    {selectedParcel.otp || "N/A"}
+                  </span>
                 </div>
 
                 <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Payment Details</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Payment Details
+                  </span>
                   <span className="text-xs font-bold text-slate-800 mt-1.5 block">
-                    {selectedParcel.paymentMethod?.toUpperCase() || "N/A"} — 
-                    <span className={`ml-1 font-extrabold ${selectedParcel.paymentStatus === 'PAID' ? 'text-green-600' : 'text-amber-600'}`}>
+                    {selectedParcel.paymentMethod?.toUpperCase() || "N/A"} —
+                    <span
+                      className={`ml-1 font-extrabold ${selectedParcel.paymentStatus === "PAID" ? "text-green-600" : "text-amber-600"}`}>
                       {selectedParcel.paymentStatus || "PENDING"}
                     </span>
                   </span>
@@ -2082,21 +2896,40 @@ const AdminParcelDashboard = () => {
               {/* Address Details */}
               <div className="space-y-4 text-xs">
                 <div className="border-t border-slate-100 pt-4">
-                  <strong className="text-slate-800 block text-xs mb-1 uppercase tracking-wider">Pickup Address</strong>
-                  <p className="font-bold text-slate-700">{selectedParcel.pickupAddress?.name} ({selectedParcel.pickupAddress?.phone})</p>
-                  <p className="text-slate-500 mt-0.5 leading-relaxed">{selectedParcel.pickupAddress?.fullAddress}</p>
+                  <strong className="text-slate-800 block text-xs mb-1 uppercase tracking-wider">
+                    Pickup Address
+                  </strong>
+                  <p className="font-bold text-slate-700">
+                    {selectedParcel.pickupAddress?.name} (
+                    {selectedParcel.pickupAddress?.phone})
+                  </p>
+                  <p className="text-slate-500 mt-0.5 leading-relaxed">
+                    {selectedParcel.pickupAddress?.fullAddress}
+                  </p>
                 </div>
 
                 <div className="border-t border-slate-100 pt-4">
-                  <strong className="text-slate-800 block text-xs mb-1 uppercase tracking-wider">Dropoff Address</strong>
-                  <p className="font-bold text-slate-700">{selectedParcel.dropAddress?.name} ({selectedParcel.dropAddress?.phone})</p>
-                  <p className="text-slate-500 mt-0.5 leading-relaxed">{selectedParcel.dropAddress?.fullAddress}</p>
+                  <strong className="text-slate-800 block text-xs mb-1 uppercase tracking-wider">
+                    Dropoff Address
+                  </strong>
+                  <p className="font-bold text-slate-700">
+                    {selectedParcel.dropAddress?.name} (
+                    {selectedParcel.dropAddress?.phone})
+                  </p>
+                  <p className="text-slate-500 mt-0.5 leading-relaxed">
+                    {selectedParcel.dropAddress?.fullAddress}
+                  </p>
                 </div>
 
                 {selectedParcel.deliveryPartnerId && (
                   <div className="border-t border-slate-100 pt-4">
-                    <strong className="text-slate-800 block text-xs mb-1 uppercase tracking-wider">Assigned Rider</strong>
-                    <p className="font-bold text-slate-700">{selectedParcel.deliveryPartnerId.name} ({selectedParcel.deliveryPartnerId.phone})</p>
+                    <strong className="text-slate-800 block text-xs mb-1 uppercase tracking-wider">
+                      Assigned Rider
+                    </strong>
+                    <p className="font-bold text-slate-700">
+                      {selectedParcel.deliveryPartnerId.name} (
+                      {selectedParcel.deliveryPartnerId.phone})
+                    </p>
                   </div>
                 )}
               </div>
@@ -2111,17 +2944,24 @@ const AdminParcelDashboard = () => {
                     </span>
                   ) : null}
                 </h4>
-                
+
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Pickup at Customer</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      Pickup at Customer
+                    </span>
                     {selectedParcel.pickupProofImage ? (
                       <div className="h-40 w-full rounded-2xl overflow-hidden border border-slate-100 shadow-sm bg-slate-50">
                         <img
                           src={selectedParcel.pickupProofImage}
                           alt="Pickup Proof"
                           className="h-full w-full object-cover cursor-pointer hover:scale-105 transition-transform"
-                          onClick={() => window.open(selectedParcel.pickupProofImage, "_blank")}
+                          onClick={() =>
+                            window.open(
+                              selectedParcel.pickupProofImage,
+                              "_blank",
+                            )
+                          }
                           onError={(e) => {
                             e.currentTarget.style.display = "none";
                             const fallback = e.currentTarget.nextElementSibling;
@@ -2140,14 +2980,21 @@ const AdminParcelDashboard = () => {
                   </div>
 
                   <div className="space-y-1.5">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Hub Drop Proof</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      Hub Drop Proof
+                    </span>
                     {selectedParcel.deliveryProofImage ? (
                       <div className="h-40 w-full rounded-2xl overflow-hidden border border-slate-100 shadow-sm bg-slate-50">
                         <img
                           src={selectedParcel.deliveryProofImage}
                           alt="Hub Drop Proof"
                           className="h-full w-full object-cover cursor-pointer hover:scale-105 transition-transform"
-                          onClick={() => window.open(selectedParcel.deliveryProofImage, "_blank")}
+                          onClick={() =>
+                            window.open(
+                              selectedParcel.deliveryProofImage,
+                              "_blank",
+                            )
+                          }
                           onError={(e) => {
                             e.currentTarget.style.display = "none";
                             const fallback = e.currentTarget.nextElementSibling;
@@ -2173,8 +3020,7 @@ const AdminParcelDashboard = () => {
               <button
                 type="button"
                 onClick={() => setSelectedParcel(null)}
-                className="w-full py-2.5 bg-white border border-slate-200 hover:bg-slate-50 font-bold text-xs text-slate-700 rounded-xl transition-all uppercase tracking-wider"
-              >
+                className="w-full py-2.5 bg-white border border-slate-200 hover:bg-slate-50 font-bold text-xs text-slate-700 rounded-xl transition-all uppercase tracking-wider">
                 Close Details
               </button>
             </div>
@@ -2187,8 +3033,7 @@ const AdminParcelDashboard = () => {
         createPortal(
           <div
             ref={courierEditModalRef}
-            className="fixed inset-0 z-[1000] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 overflow-hidden overscroll-none touch-none"
-          >
+            className="fixed inset-0 z-[1000] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 overflow-hidden overscroll-none touch-none">
             <style>{`
               .modal-scroll-pad::-webkit-scrollbar {
                 width: 10px;
@@ -2216,157 +3061,188 @@ const AdminParcelDashboard = () => {
               data-courier-edit-dialog
               className="relative z-10 bg-white rounded-3xl border border-slate-100 shadow-xl max-w-lg w-full overflow-hidden flex flex-col touch-auto"
               style={{ height: "min(90vh, calc(100dvh - 2rem))" }}
-              onClick={(e) => e.stopPropagation()}
-            >
+              onClick={(e) => e.stopPropagation()}>
               <div className="p-5 border-b border-slate-100 flex justify-between items-start shrink-0">
                 <div>
                   <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
                     <Pencil className="text-primary" size={18} />
-                    {editingCourierIsOther ? 'Edit “Other” Option' : 'Edit Courier Company'}
+                    {editingCourierIsOther
+                      ? "Edit “Other” Option"
+                      : "Edit Courier Company"}
                   </h3>
                   <p className="text-xs text-slate-400 mt-1">
                     {editingCourierIsOther
-                      ? 'Set the platform charge for the customer-typed courier option.'
-                      : 'Update name, charges, office address, and visibility.'}
+                      ? "Set the platform charge for the customer-typed courier option."
+                      : "Update name, charges, office address, and visibility."}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={closeCourierEditModal}
-                  className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
-                >
+                  className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
                   <XCircle size={22} />
                 </button>
               </div>
 
-              <form onSubmit={handleUpdateCourier} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <form
+                onSubmit={handleUpdateCourier}
+                className="flex flex-col flex-1 min-h-0 overflow-hidden">
                 <div
                   ref={courierEditScrollRef}
                   className="p-5 space-y-4 overflow-y-auto overscroll-contain flex-1 min-h-0 modal-scroll-pad"
-                  style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}
-                >
-                {editingCourierIsOther ? (
-                  <div className="rounded-xl bg-primary/5 border border-primary/20 px-3 py-2.5">
-                    <p className="text-xs font-bold text-slate-700">“Other” courier option</p>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Customers who pick this option type their own courier company
-                      name. You only control the platform charge below.
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">Company Name</label>
-                      <input
-                        type="text"
-                        required
-                        value={editCourierForm.name}
-                        onChange={(e) => setEditCourierForm((f) => ({ ...f, name: e.target.value }))}
-                        placeholder="e.g. Blue Dart"
-                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
-                      />
-                    </div>
-
-                    <CourierLocationFields
-                      location={editCourierForm.location}
-                      onFieldChange={(field, value) =>
-                        updateCourierFormLocation(setEditCourierForm, field, value)
-                      }
-                      onOpenMap={() => setCourierMapPickerTarget("edit")}
-                    />
-                  </>
-                )}
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">
-                    Platform Charge (₹)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    required
-                    value={editCourierForm.platformCharge}
-                    onChange={(e) =>
-                      setEditCourierForm((f) => ({ ...f, platformCharge: e.target.value }))
-                    }
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
-                  />
-                  <p className="text-[10px] text-slate-400 font-medium">
-                    Extra platform fee added to customer fare when this courier is selected.
-                  </p>
-                </div>
-
-                {!editingCourierIsOther && (
-                  <>
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">
-                        Courier Company Charge (₹)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        required
-                        value={editCourierForm.companyCharge}
-                        onChange={(e) =>
-                          setEditCourierForm((f) => ({ ...f, companyCharge: e.target.value }))
-                        }
-                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
-                      />
-                      <p className="text-[10px] text-slate-400 font-medium">
-                        How much this courier company itself charges.
+                  style={{
+                    WebkitOverflowScrolling: "touch",
+                    overscrollBehavior: "contain",
+                  }}>
+                  {editingCourierIsOther ? (
+                    <div className="rounded-xl bg-primary/5 border border-primary/20 px-3 py-2.5">
+                      <p className="text-xs font-bold text-slate-700">
+                        “Other” courier option
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Customers who pick this option type their own courier
+                        company name. You only control the platform charge
+                        below.
                       </p>
                     </div>
+                  ) : (
+                    <>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">
+                          Company Name
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editCourierForm.name}
+                          onChange={(e) =>
+                            setEditCourierForm((f) => ({
+                              ...f,
+                              name: e.target.value,
+                            }))
+                          }
+                          placeholder="e.g. Blue Dart"
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
+                        />
+                      </div>
 
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">Sort Order</label>
-                      <input
-                        type="number"
-                        step="1"
-                        value={editCourierForm.sortOrder}
-                        onChange={(e) =>
-                          setEditCourierForm((f) => ({ ...f, sortOrder: e.target.value }))
+                      <CourierLocationFields
+                        location={editCourierForm.location}
+                        onFieldChange={(field, value) =>
+                          updateCourierFormLocation(
+                            setEditCourierForm,
+                            field,
+                            value,
+                          )
                         }
-                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
+                        onOpenMap={() => setCourierMapPickerTarget("edit")}
                       />
-                    </div>
-                  </>
-                )}
+                    </>
+                  )}
 
-                <label className="flex items-center gap-2 text-sm font-bold text-slate-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={editCourierForm.isActive}
-                    onChange={(e) =>
-                      setEditCourierForm((f) => ({ ...f, isActive: e.target.checked }))
-                    }
-                    className="accent-primary h-4 w-4"
-                  />
-                  Active (shown on customer booking form)
-                </label>
-              </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">
+                      Platform Charge (₹)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      required
+                      value={editCourierForm.platformCharge}
+                      onChange={(e) =>
+                        setEditCourierForm((f) => ({
+                          ...f,
+                          platformCharge: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
+                    />
+                    <p className="text-[10px] text-slate-400 font-medium">
+                      Extra platform fee added to customer fare when this
+                      courier is selected.
+                    </p>
+                  </div>
 
-              <div className="p-5 border-t border-slate-100 shrink-0 flex gap-2 bg-white">
-                <button
-                  type="button"
-                  onClick={closeCourierEditModal}
-                  className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={courierSaving}
-                  className="flex-1 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all"
-                >
-                  <Save size={16} />
-                  {courierSaving ? "Saving..." : "Update"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>,
+                  {!editingCourierIsOther && (
+                    <>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">
+                          Courier Company Charge (₹)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          required
+                          value={editCourierForm.companyCharge}
+                          onChange={(e) =>
+                            setEditCourierForm((f) => ({
+                              ...f,
+                              companyCharge: e.target.value,
+                            }))
+                          }
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
+                        />
+                        <p className="text-[10px] text-slate-400 font-medium">
+                          How much this courier company itself charges.
+                        </p>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">
+                          Sort Order
+                        </label>
+                        <input
+                          type="number"
+                          step="1"
+                          value={editCourierForm.sortOrder}
+                          onChange={(e) =>
+                            setEditCourierForm((f) => ({
+                              ...f,
+                              sortOrder: e.target.value,
+                            }))
+                          }
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  <label className="flex items-center gap-2 text-sm font-bold text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editCourierForm.isActive}
+                      onChange={(e) =>
+                        setEditCourierForm((f) => ({
+                          ...f,
+                          isActive: e.target.checked,
+                        }))
+                      }
+                      className="accent-primary h-4 w-4"
+                    />
+                    Active (shown on customer booking form)
+                  </label>
+                </div>
+
+                <div className="p-5 border-t border-slate-100 shrink-0 flex gap-2 bg-white">
+                  <button
+                    type="button"
+                    onClick={closeCourierEditModal}
+                    className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50">
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={courierSaving}
+                    className="flex-1 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all">
+                    <Save size={16} />
+                    {courierSaving ? "Saving..." : "Update"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>,
           document.body,
         )}
 
@@ -2380,17 +3256,21 @@ const AdminParcelDashboard = () => {
           />
           <div
             className="relative z-10 bg-white rounded-3xl border border-slate-100 shadow-xl max-w-sm w-full overflow-hidden p-6 space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
+            onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start gap-3">
               <div className="h-10 w-10 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center shrink-0">
                 <Trash2 size={18} />
               </div>
               <div>
-                <h3 className="text-base font-black text-slate-800">Delete Courier?</h3>
+                <h3 className="text-base font-black text-slate-800">
+                  Delete Courier?
+                </h3>
                 <p className="text-sm text-slate-500 font-medium mt-1">
-                  Remove <span className="font-black text-slate-800">{courierToDelete.name}</span> from
-                  the booking list. This cannot be undone.
+                  Remove{" "}
+                  <span className="font-black text-slate-800">
+                    {courierToDelete.name}
+                  </span>{" "}
+                  from the booking list. This cannot be undone.
                 </p>
               </div>
             </div>
@@ -2400,8 +3280,7 @@ const AdminParcelDashboard = () => {
                 type="button"
                 disabled={courierDeleting}
                 onClick={() => setCourierToDelete(null)}
-                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 disabled:opacity-50"
-              >
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 disabled:opacity-50">
                 Cancel
               </button>
               <button
@@ -2412,8 +3291,7 @@ const AdminParcelDashboard = () => {
                   e.stopPropagation();
                   confirmDeleteCourier();
                 }}
-                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm disabled:opacity-50"
-              >
+                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm disabled:opacity-50">
                 {courierDeleting ? "Deleting..." : "Delete"}
               </button>
             </div>
@@ -2427,11 +3305,299 @@ const AdminParcelDashboard = () => {
         onConfirm={handleCourierMapConfirm}
         initialLocation={
           activeCourierMapLocation?.lat && activeCourierMapLocation?.lng
-            ? { lat: activeCourierMapLocation.lat, lng: activeCourierMapLocation.lng }
+            ? {
+                lat: activeCourierMapLocation.lat,
+                lng: activeCourierMapLocation.lng,
+              }
             : null
         }
         title="Select Courier Office Location"
         searchPlaceholder="Search courier branch area..."
+        showRadius={false}
+        preferCurrentLocationOnOpen={false}
+      />
+
+      {/* Edit Warehouse Modal */}
+      {warehouseEditModalOpen &&
+        createPortal(
+          <div className="fixed inset-0 z-[1000] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 overflow-hidden overscroll-none touch-none">
+            <div
+              className="absolute inset-0 z-0"
+              onClick={closeWarehouseEditModal}
+              aria-hidden="true"
+            />
+            <div
+              className="relative z-10 bg-white rounded-3xl border border-slate-100 shadow-xl max-w-lg w-full overflow-hidden flex flex-col touch-auto max-h-[90vh]"
+              onClick={(e) => e.stopPropagation()}>
+              <div className="p-5 border-b border-slate-100 flex justify-between items-start shrink-0">
+                <div>
+                  <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                    <Pencil className="text-primary" size={18} />
+                    Edit Warehouse
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Update warehouse location, contact, and operational status.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeWarehouseEditModal}
+                  className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
+                  <XCircle size={22} />
+                </button>
+              </div>
+
+              <form
+                onSubmit={handleUpdateWarehouse}
+                className="flex flex-col flex-1 min-h-0 overflow-hidden">
+                <div className="p-5 space-y-4 overflow-y-auto overscroll-contain flex-1 min-h-0 modal-scroll-pad">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">
+                      Warehouse Name *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editWarehouseForm.name}
+                      onChange={(e) =>
+                        setEditWarehouseForm((f) => ({
+                          ...f,
+                          name: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">
+                      Address *
+                    </label>
+                    <textarea
+                      rows={2}
+                      required
+                      value={editWarehouseForm.address}
+                      onChange={(e) =>
+                        setEditWarehouseForm((f) => ({
+                          ...f,
+                          address: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary resize-none"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">
+                        City
+                      </label>
+                      <input
+                        type="text"
+                        value={editWarehouseForm.city}
+                        onChange={(e) =>
+                          setEditWarehouseForm((f) => ({
+                            ...f,
+                            city: e.target.value,
+                          }))
+                        }
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">
+                        Pincode
+                      </label>
+                      <input
+                        type="text"
+                        value={editWarehouseForm.pincode}
+                        onChange={(e) =>
+                          setEditWarehouseForm((f) => ({
+                            ...f,
+                            pincode: e.target.value,
+                          }))
+                        }
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">
+                        Phone
+                      </label>
+                      <input
+                        type="text"
+                        value={editWarehouseForm.phone}
+                        onChange={(e) =>
+                          setEditWarehouseForm((f) => ({
+                            ...f,
+                            phone: e.target.value,
+                          }))
+                        }
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">
+                        Contact Person
+                      </label>
+                      <input
+                        type="text"
+                        value={editWarehouseForm.contactPerson}
+                        onChange={(e) =>
+                          setEditWarehouseForm((f) => ({
+                            ...f,
+                            contactPerson: e.target.value,
+                          }))
+                        }
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                        <MapPin size={14} className="text-primary" /> Map
+                        Coordinates *
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setWarehouseMapPickerTarget("edit")}
+                        className="px-2.5 py-1 rounded-lg bg-primary text-white text-[11px] font-bold hover:bg-primary/90 transition-all flex items-center gap-1">
+                        <MapPin size={12} /> Update on Map
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-slate-600 font-mono">
+                      <span className="bg-white border border-slate-200 px-2 py-1 rounded-lg">
+                        Lat: {Number(editWarehouseForm.lat).toFixed(5)}
+                      </span>
+                      <span className="bg-white border border-slate-200 px-2 py-1 rounded-lg">
+                        Lng: {Number(editWarehouseForm.lng).toFixed(5)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">
+                      Notes
+                    </label>
+                    <input
+                      type="text"
+                      value={editWarehouseForm.notes}
+                      onChange={(e) =>
+                        setEditWarehouseForm((f) => ({
+                          ...f,
+                          notes: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary"
+                    />
+                  </div>
+
+                  <label className="flex items-center gap-2 text-sm font-bold text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editWarehouseForm.isActive}
+                      onChange={(e) =>
+                        setEditWarehouseForm((f) => ({
+                          ...f,
+                          isActive: e.target.checked,
+                        }))
+                      }
+                      className="accent-primary h-4 w-4"
+                    />
+                    Active (available for outstation drop-off)
+                  </label>
+                </div>
+
+                <div className="p-4 border-t border-slate-100 flex gap-2 justify-end shrink-0 bg-slate-50/50">
+                  <button
+                    type="button"
+                    onClick={closeWarehouseEditModal}
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-100 transition-all">
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={warehouseSaving}
+                    className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold text-sm flex items-center gap-1.5 transition-all shadow-sm">
+                    <Save size={15} />
+                    {warehouseSaving ? "Saving..." : "Save Changes"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* Delete Warehouse Confirmation Modal */}
+      {warehouseToDelete && (
+        <div className="fixed inset-0 z-[1000] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div
+            className="bg-white rounded-3xl border border-slate-100 shadow-xl max-w-sm w-full p-5 space-y-4"
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start gap-3">
+              <div className="h-10 w-10 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+                <AlertCircle size={22} />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-800">
+                  Delete Warehouse?
+                </h3>
+                <p className="text-sm text-slate-500 font-medium mt-1">
+                  Remove{" "}
+                  <span className="font-black text-slate-800">
+                    {warehouseToDelete.name}
+                  </span>
+                  . This cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                disabled={warehouseDeleting}
+                onClick={() => setWarehouseToDelete(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 disabled:opacity-50">
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={warehouseDeleting}
+                onClick={handleDeleteWarehouse}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm disabled:opacity-50">
+                {warehouseDeleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Warehouse MapPicker */}
+      <MapPicker
+        isOpen={Boolean(warehouseMapPickerTarget)}
+        onClose={() => setWarehouseMapPickerTarget(null)}
+        onConfirm={handleWarehouseMapConfirm}
+        initialLocation={
+          warehouseMapPickerTarget === "edit"
+            ? {
+                lat: Number(editWarehouseForm.lat),
+                lng: Number(editWarehouseForm.lng),
+              }
+            : warehouseMapPickerTarget === "add"
+              ? {
+                  lat: Number(addWarehouseForm.lat),
+                  lng: Number(addWarehouseForm.lng),
+                }
+              : null
+        }
+        title="Select Warehouse Location on Map"
+        searchPlaceholder="Search warehouse area or address..."
         showRadius={false}
         preferCurrentLocationOnOpen={false}
       />

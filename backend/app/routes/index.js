@@ -24,6 +24,7 @@ import metricsRoute from "./metricsRoutes.js";
 import authOtpRoute from "../modules/otp/otp.routes.js";
 import parcelRoute from "./parcelRoutes.js";
 import cityParcelRoute from "./cityParcelRoutes.js";
+import warehouseRoute from "./warehouseRoutes.js";
 // CAR WASH DISABLED — re-enable by uncommenting import + mount below
 // import carWashRoute from "./carWashRoutes.js";
 
@@ -77,6 +78,7 @@ const setupRoutes = (app) => {
     // City Parcel is a separate module on its own prefix. /parcel keeps its
     // exact existing contract — nothing here shadows or overrides it.
     router.use("/city-parcel", cityParcelRoute);
+    router.use("/warehouse", warehouseRoute);
     // CAR WASH DISABLED
     // router.use("/car-wash", carWashRoute);
 

@@ -38,6 +38,15 @@ export const parcelApi = {
   adminUpdateReviewStatus: (id, data) =>
     axiosInstance.put(`/parcel/admin/reviews/${id}`, data),
 
+  // Warehouse APIs
+  getNearestWarehouse: (lat, lng) =>
+    axiosInstance.get("/warehouse/nearest", { params: { lat, lng } }),
+  getActiveWarehouses: () => axiosInstance.get("/warehouse/active"),
+  adminGetWarehouses: () => axiosInstance.get("/warehouse"),
+  adminCreateWarehouse: (data) => axiosInstance.post("/warehouse", data),
+  adminUpdateWarehouse: (id, data) => axiosInstance.put(`/warehouse/${id}`, data),
+  adminDeleteWarehouse: (id) => axiosInstance.delete(`/warehouse/${id}`),
+
   // Rider/Delivery Partner APIs
   riderGetAssigned: (options = {}) =>
     getWithDedupe("/parcel/rider/assigned", {}, {

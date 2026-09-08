@@ -4,6 +4,8 @@ import CourierCompany from "../models/courierCompany.js";
 import Delivery from "../models/delivery.js";
 import User from "../models/customer.js";
 import Admin from "../models/admin.js";
+import Warehouse from "../models/warehouse.js";
+import { distanceMeters } from "../utils/geoUtils.js";
 import handleResponse from "../utils/helper.js";
 import Notification from "../models/notification.js";
 import { emitNotificationEvent } from "../modules/notifications/notification.emitter.js";
@@ -99,6 +101,9 @@ async function notifyParcelRequested(parcel, userId) {
 async function activateParcelAfterPayment(parcel) {
   emitToAdmins("parcel:new", parcel);
   await emitParcelNewToNearbySellers(parcel);
+  if (parcel?.parcelType === "local") {
+    await emitParcelNewToNearbySellers(parcel);
+  }
   const searchingParcel = await startParcelBroadcast(parcel);
   return searchingParcel || parcel;
 }
@@ -377,9 +382,64 @@ export const createParcel = async (req, res) => {
         res,
         400,
         "No parcel hub seller is available near your pickup location",
+    const parcelType =
+      String(req.body.parcelType || "outstation").toLowerCase() === "local"
+        ? "local"
+        : "outstation";
+    const isOutstation = parcelType !== "local";
+
+    let distanceKm = 5;
+    let warehouse = null;
+    let nearest = null;
+
+    if (isOutstation) {
+      warehouse = await Warehouse.findNearestActive(
+        Number(pickupAddress.lat),
+        Number(pickupAddress.lng),
       );
+      if (warehouse) {
+        const dM = distanceMeters(
+          Number(pickupAddress.lat),
+          Number(pickupAddress.lng),
+          Number(warehouse.lat),
+          Number(warehouse.lng),
+        );
+        distanceKm = Math.max(1, Math.round((dM / 1000) * 10) / 10);
+      } else {
+        nearest = await findNearestParcelSellerWithDistance(
+          Number(pickupAddress.lat),
+          Number(pickupAddress.lng),
+        );
+        distanceKm = nearest?.distanceKm || 5;
+      }
+    } else {
+      nearest = await findNearestParcelSellerWithDistance(
+        Number(pickupAddress.lat),
+        Number(pickupAddress.lng),
+      );
+      if (!nearest) {
+        return handleResponse(
+          res,
+          400,
+          "No parcel hub seller is available near your pickup location",
+        );
+      }
+      distanceKm = nearest.distanceKm;
     }
     const distanceKm = nearest.distanceKm;
+
+    const resolvedDropAddress =
+      isOutstation && warehouse
+        ? {
+            name: warehouse.name,
+            phone: warehouse.phone || dropAddress?.phone || "0000000000",
+            fullAddress:
+              warehouse.address + (warehouse.city ? `, ${warehouse.city}` : ""),
+            lat: Number(warehouse.lat),
+            lng: Number(warehouse.lng),
+          }
+        : dropAddress;
+
     const platformCharge =
       Math.round((Number(courierDoc.platformCharge) || 0) * 100) / 100;
     const daily = computeParcelDailyFare({
@@ -404,10 +464,15 @@ export const createParcel = async (req, res) => {
       customerId: req.user.id,
       pickupAddress,
       dropAddress,
+      dropAddress: resolvedDropAddress,
       packageDetails,
       courierCompany: courier,
       courierCompanyId: courierDoc._id,
       sellerId: nearest.seller._id,
+      sellerId: isOutstation ? null : nearest?.seller?._id,
+      warehouseId: isOutstation && warehouse ? warehouse._id : null,
+      parcelType,
+      deliveryInstruction: isOutstation ? "deliver_to_warehouse" : "deliver_to_receiver",
       deliverySpeed: speedValue,
       destinationCity: city,
       preferredPickupDate: pickupDate,
@@ -558,6 +623,8 @@ export const trackParcel = async (req, res) => {
       .populate("customerId", "name phone email")
       .populate("deliveryPartnerId", "name phone vehicleType vehicleNumber profileImage location")
       .populate("sellerId", "shopName location");
+      .populate("sellerId", "shopName location")
+      .populate("warehouseId", "name address city phone lat lng");
 
     if (!parcel) {
       return handleResponse(res, 404, "Parcel not found");
@@ -706,6 +773,8 @@ export const adminGetParcelById = async (req, res) => {
       .populate("customerId", "name phone email")
       .populate("deliveryPartnerId", "name phone vehicleType vehicleNumber profileImage")
       .populate("sellerId", "name shopName phone address location");
+      .populate("sellerId", "name shopName phone address location")
+      .populate("warehouseId", "name address city phone lat lng");
 
     if (!parcel) {
       return handleResponse(res, 404, "Parcel not found");
@@ -1220,6 +1289,7 @@ export const riderGetAssignedParcels = async (req, res) => {
       .select("-otp")
       .populate("customerId", "name phone")
       .populate("sellerId", "name shopName phone address location")
+      .populate("warehouseId", "name address city phone lat lng")
       .sort({ createdAt: -1 });
 
     return handleResponse(res, 200, "Assigned parcels retrieved successfully", parcels);
@@ -1232,6 +1302,8 @@ export const riderGetAssignedParcels = async (req, res) => {
  * Road route for assigned parcel task map.
  * Query: phase=pickup|seller|agency|drop|full, originLat, originLng.
  * Rider job is pickup (user) → parcel hub seller; courier city is not the map destination.
+ * Query: phase=pickup|seller|agency|drop|warehouse|full, originLat, originLng.
+ * For outstation parcels, the destination is the warehouse (dropAddress), not the seller.
  */
 export const getParcelRoute = async (req, res) => {
   try {
@@ -1246,6 +1318,7 @@ export const getParcelRoute = async (req, res) => {
 
     const parcel = await Parcel.findById(parcelId)
       .populate("sellerId", "location shopName")
+      .populate("warehouseId", "name address city phone lat lng")
       .lean();
     if (!parcel) {
       return handleResponse(res, 404, "Parcel not found");
@@ -1279,6 +1352,19 @@ export const getParcelRoute = async (req, res) => {
     if (phase === "seller" || phase === "agency") {
       if (!seller || !Number.isFinite(seller.lat) || !Number.isFinite(seller.lng)) {
         return handleResponse(res, 400, "Seller hub location missing");
+    const isOutstation = parcel.parcelType === "outstation" || !!parcel.warehouseId || !seller;
+
+    if (phase === "seller" || phase === "agency" || phase === "warehouse") {
+      if (isOutstation) {
+        if (!Number.isFinite(drop.lat) || !Number.isFinite(drop.lng)) {
+          return handleResponse(res, 400, "Warehouse drop location missing");
+        }
+        dest = drop;
+      } else {
+        if (!seller || !Number.isFinite(seller.lat) || !Number.isFinite(seller.lng)) {
+          return handleResponse(res, 400, "Seller hub location missing");
+        }
+        dest = seller;
       }
       dest = seller;
     } else if (phase === "drop" || phase === "full") {
@@ -1370,6 +1456,8 @@ export const riderUpdateStatus = async (req, res) => {
     const populated = await Parcel.findById(parcel._id)
       .populate("deliveryPartnerId", "name phone vehicleType vehicleNumber profileImage location")
       .populate("sellerId", "name shopName phone address location");
+      .populate("sellerId", "name shopName phone address location")
+      .populate("warehouseId", "name address city phone lat lng");
 
     emitToAdmins("parcel:status:update", populated || parcel);
     emitToCustomer(parcel.customerId, {
@@ -1498,6 +1586,8 @@ export const riderCompleteDelivery = async (req, res) => {
     const populated = await Parcel.findById(parcel._id)
       .populate("deliveryPartnerId", "name phone vehicleType vehicleNumber profileImage location")
       .populate("sellerId", "name shopName phone address location");
+      .populate("sellerId", "name shopName phone address location")
+      .populate("warehouseId", "name address city phone lat lng");
 
     emitToAdmins("parcel:status:update", populated || parcel);
     emitToCustomer(parcel.customerId, {

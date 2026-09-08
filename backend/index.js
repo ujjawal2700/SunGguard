@@ -260,6 +260,26 @@ async function startHttpServer() {
   }
   
   return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    server.once("error", (err) => {
+      if (err.code === "EADDRINUSE") {
+        const isAirPlayPort = PORT === 7000 || PORT === 5000;
+        const airPlayHint = isAirPlayPort
+          ? "\n\n" +
+            "=".repeat(60) +
+            "\n[PORT CONFLICT] Port 7000 is occupied by macOS AirPlay Receiver by default!\n" +
+            "To free it immediately:\n" +
+            "  1. Open macOS System Settings\n" +
+            "  2. Go to General > AirDrop & AirPlay (or AirDrop & Handoff)\n" +
+            "  3. Toggle 'AirPlay Receiver' to OFF\n" +
+            "Alternatively, set PORT=7001 in backend/.env\n" +
+            "=".repeat(60)
+          : `\n\nPort ${PORT} is already in use by another process.`;
+        logger.error(`Failed to start HTTP server: ${err.message}${airPlayHint}`);
+      }
+      reject(err);
+    });
+
     server.listen(PORT, "0.0.0.0", () => {
       logger.info('HTTP server started', {
         port: PORT,

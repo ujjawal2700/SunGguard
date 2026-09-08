@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Parcel from "../models/parcel.js";
 import ParcelConfig from "../models/parcelConfig.js";
 import Delivery from "../models/delivery.js";
+import Warehouse from "../models/warehouse.js";
 import { distanceMeters } from "../utils/geoUtils.js";
 import { getParcelRiderIdsNearPickup } from "./deliveryNearbyService.js";
 import {
@@ -164,6 +165,13 @@ export function parcelBroadcastPayloadFromDoc(parcel, extra = {}, settingsOrPerc
       paymentMethod,
       collectAmount,
       type: "PARCEL",
+      parcelType: parcel.parcelType || "outstation",
+      deliveryInstruction:
+        parcel.deliveryInstruction ||
+        (parcel.parcelType === "local"
+          ? "deliver_to_receiver"
+          : "deliver_to_warehouse"),
+      warehouseId: parcel.warehouseId || null,
     },
     searchExpiresAt: parcel.searchExpiresAt,
     ...extra,
@@ -201,6 +209,49 @@ async function emitParcelBroadcastForPickup(parcel, extra = {}) {
     radiusKm,
     parcelBroadcastPayloadFromDoc(parcel, extra, settings),
   );
+}
+
+/**
+ * Attach nearest warehouse for outstation parcels.
+ * Updates warehouseId, dropAddress, and deliveryInstruction.
+ * Never emits to seller!
+ */
+export async function tryAutoAssignParcelToWarehouse(parcelDoc) {
+  const lat = Number(parcelDoc.pickupAddress?.lat);
+  const lng = Number(parcelDoc.pickupAddress?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+  const warehouse = await Warehouse.findNearestActive(lat, lng);
+  if (!warehouse?._id) return null;
+
+  const dropAddress = {
+    name: warehouse.name,
+    phone: warehouse.phone || parcelDoc.dropAddress?.phone || "0000000000",
+    fullAddress: warehouse.address + (warehouse.city ? `, ${warehouse.city}` : ""),
+    lat: Number(warehouse.lat),
+    lng: Number(warehouse.lng),
+  };
+
+  const updated = await Parcel.findOneAndUpdate(
+    {
+      _id: parcelDoc._id,
+      status: { $in: ["REQUESTED", "SEARCHING"] },
+    },
+    {
+      $set: {
+        warehouseId: warehouse._id,
+        dropAddress,
+        deliveryInstruction: "deliver_to_warehouse",
+      },
+    },
+    { new: true },
+  );
+
+  if (updated) {
+    emitToAdmins("parcel:status:update", updated);
+  }
+
+  return updated;
 }
 
 /**
@@ -303,6 +354,13 @@ export async function fetchParcelsForSeller(sellerId) {
 export async function startParcelBroadcast(parcelDoc) {
   // Attach nearby parcel hub seller (if any), but always continue rider search.
   await tryAutoAssignParcelToSeller(parcelDoc);
+  // Only local parcels attach to nearby seller hubs.
+  // Outstation parcels attach to nearest warehouse and NEVER emit to seller app!
+  if (parcelDoc.parcelType === "local") {
+    await tryAutoAssignParcelToSeller(parcelDoc);
+  } else {
+    await tryAutoAssignParcelToWarehouse(parcelDoc);
+  }
 
   const parcelId = parcelDoc._id?.toString?.() || String(parcelDoc._id);
   const now = new Date();
@@ -509,6 +567,7 @@ export async function parcelAcceptAtomic(deliveryId, parcelId, idempotencyKey) {
           const parcel = await Parcel.findById(parcelId)
             .populate("customerId", "name phone")
             .populate("sellerId", "name shopName phone address location")
+            .populate("warehouseId", "name address city phone lat lng")
             .lean();
           return { parcel, duplicate: true };
         }
@@ -540,6 +599,8 @@ export async function parcelAcceptAtomic(deliveryId, parcelId, idempotencyKey) {
     .populate("customerId", "name phone")
     .populate("deliveryPartnerId", "name phone vehicleType vehicleNumber profileImage location")
     .populate("sellerId", "name shopName phone address location");
+    .populate("sellerId", "name shopName phone address location")
+    .populate("warehouseId", "name address city phone lat lng");
 
   if (!updated) {
     const existing = await Parcel.findById(parcelId).lean();

@@ -62,6 +62,7 @@ import "../models/heroConfig.js";
 import "../models/offer.js";
 import "../models/offerSection.js";
 import "../models/setting.js";
+import "../models/warehouse.js";
 
 // Read-optimized / cache models
 import "../models/dashboardStats.js";
