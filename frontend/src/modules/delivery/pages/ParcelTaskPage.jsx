@@ -199,20 +199,6 @@ const ParcelTaskPage = () => {
     () => toLatLng(parcel?.pickupAddress),
     [parcel?.pickupAddress?.lat, parcel?.pickupAddress?.lng],
   );
-  const sellerPoint = useMemo(
-    () => sellerToLatLng(parcel?.sellerId),
-    [
-      parcel?.sellerId?.location?.coordinates?.[0],
-      parcel?.sellerId?.location?.coordinates?.[1],
-    ],
-  );
-  const sellerName =
-    parcel?.sellerId?.shopName ||
-    parcel?.sellerId?.name ||
-    "Seller hub";
-  const sellerAddress =
-    parcel?.sellerId?.address ||
-    "";
   const isOutstation =
     parcel?.parcelType === "outstation" ||
     Boolean(parcel?.warehouseId) ||
@@ -239,7 +225,6 @@ const ParcelTaskPage = () => {
   const courierCity = parcel?.destinationCity || "";
   const customerName = parcel?.pickupAddress?.name || "Customer";
 
-  // Primary job: go to customer and collect parcel. After pickup, route to seller hub.
   // Primary job: go to customer and collect parcel. After pickup, route to warehouse (outstation) or seller hub.
   const routeEndpoints = useMemo(() => {
     if (!riderLocation) return null;
@@ -247,9 +232,6 @@ const ParcelTaskPage = () => {
       if (!pickupPoint) return null;
       return { origin: riderLocation, destination: pickupPoint, phase: "pickup" };
     }
-    if (!sellerPoint) return null;
-    return { origin: riderLocation, destination: sellerPoint, phase: "seller" };
-  }, [riderLocation, goingToCustomer, parcel?.status, pickupPoint, sellerPoint]);
     if (!dropPoint) return null;
     return {
       origin: riderLocation,
@@ -290,7 +272,6 @@ const ParcelTaskPage = () => {
     (path || []).forEach((point) => bounds.extend(point));
     if (riderLocation) bounds.extend(riderLocation);
     if (goingToCustomer && pickupPoint) bounds.extend(pickupPoint);
-    if (!goingToCustomer && sellerPoint) bounds.extend(sellerPoint);
     if (!goingToCustomer && dropPoint) bounds.extend(dropPoint);
     if (!goingToCustomer && pickupPoint) bounds.extend(pickupPoint);
     map.fitBounds(bounds, {
@@ -299,7 +280,6 @@ const ParcelTaskPage = () => {
       bottom: Math.round(window.innerHeight * 0.42),
       left: 36,
     });
-  }, [riderLocation, goingToCustomer, pickupPoint, sellerPoint]);
   }, [riderLocation, goingToCustomer, pickupPoint, dropPoint]);
 
   const fetchRoute = useCallback(async () => {
@@ -403,11 +383,11 @@ const ParcelTaskPage = () => {
 
   const mapCenter = useMemo(() => {
     if (goingToCustomer && pickupPoint) return pickupPoint;
-    if (!goingToCustomer && sellerPoint) return sellerPoint;
+    if (!goingToCustomer && dropPoint) return dropPoint;
     if (riderLocation) return riderLocation;
     if (pickupPoint) return pickupPoint;
     return { lat: 22.7196, lng: 75.8577 };
-  }, [goingToCustomer, pickupPoint, sellerPoint, riderLocation]);
+  }, [goingToCustomer, pickupPoint, dropPoint, riderLocation]);
 
   const handleAdvance = async () => {
     if (!parcel || !statusStep || saving) return;
@@ -590,19 +570,14 @@ const ParcelTaskPage = () => {
                 )}
               </>
             )}
-            {!goingToCustomer && sellerPoint && (
             {!goingToCustomer && dropPoint && (
               <>
                 <Marker
-                  position={sellerPoint}
-                  title={sellerName}
-                  label={{ text: "S", color: "white", fontWeight: "700" }}
                   position={dropPoint}
                   title={dropName}
                   label={{ text: isOutstation ? "W" : "S", color: "white", fontWeight: "700" }}
                 />
                 <OverlayView
-                  position={sellerPoint}
                   position={dropPoint}
                   mapPaneName={OverlayView.FLOAT_PANE}
                   getPixelPositionOffset={(width, height) => ({
@@ -611,7 +586,6 @@ const ParcelTaskPage = () => {
                   })}
                 >
                   <div className="rounded-lg bg-white px-2.5 py-1 shadow-md border border-slate-200 text-[10px] font-black text-slate-800 whitespace-nowrap max-w-[160px] truncate">
-                    {sellerName}
                     {dropName}
                   </div>
                 </OverlayView>
@@ -654,7 +628,6 @@ const ParcelTaskPage = () => {
       )}
 
       <div className="absolute top-4 left-4 right-4 z-20 rounded-2xl bg-white/90 backdrop-blur-md px-4 py-3 shadow">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Parcel Task</p>
         <div className="flex items-center justify-between gap-2">
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Parcel Task</p>
           {isOutstation ? (
@@ -687,7 +660,6 @@ const ParcelTaskPage = () => {
         <p className="text-[11px] font-semibold text-slate-500 mt-1">
           {goingToCustomer
             ? `Go to customer · collect parcel${distanceLabel ? ` · ${distanceLabel}` : ""}`
-            : `Drop at ${sellerName}${distanceLabel ? ` · ${distanceLabel}` : ""}`}
             : `Drop at ${dropName}${distanceLabel ? ` · ${distanceLabel}` : ""}`}
           {parcel.deliverySpeed === "express" ? " · 10 min" : " · 30 min"}
         </p>
@@ -700,7 +672,6 @@ const ParcelTaskPage = () => {
               ₹{Number(parcel.codSettlement?.collectAmount || parcel.fare || 0).toFixed(2)}
             </p>
             <p className="text-[10px] font-semibold text-amber-700/80">
-              Collect at customer pickup, then hand cash to seller hub
               {isOutstation
                 ? "Collect at customer pickup, then hand cash at warehouse"
                 : "Collect at customer pickup, then hand cash to seller hub"}
@@ -770,10 +741,6 @@ const ParcelTaskPage = () => {
               <div className="flex items-start gap-2 pt-1 border-t border-slate-200/80">
                 <MapPin className="h-4 w-4 mt-0.5 text-primary" />
                 <div>
-                  <p className="text-[11px] font-black text-slate-700">Seller hub drop</p>
-                  <p className="text-xs font-semibold text-slate-800">{sellerName}</p>
-                  {sellerAddress ? (
-                    <p className="text-[11px] text-slate-500 mt-0.5">{sellerAddress}</p>
                   <p className="text-[11px] font-black text-slate-700">
                     {isOutstation ? "Warehouse drop" : "Seller hub drop"}
                   </p>
@@ -813,9 +780,9 @@ const ParcelTaskPage = () => {
               Waiting for your GPS… Enable location so the route to the customer can load.
             </div>
           )}
-          {!goingToCustomer && !sellerPoint && (
+          {!goingToCustomer && !dropPoint && (
             <div className="rounded-xl border border-amber-100 bg-amber-50/80 px-3 py-2 text-[11px] text-amber-900">
-              Seller hub location is missing for this parcel.
+              {isOutstation ? "Warehouse location is missing for this parcel." : "Seller hub location is missing for this parcel."}
             </div>
           )}
 
@@ -859,19 +826,15 @@ const ParcelTaskPage = () => {
             !completed &&
             !cancelled && (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-2.5 space-y-3">
-              <p className="text-xs font-bold text-slate-800">Drop at seller hub</p>
               <p className="text-xs font-bold text-slate-800">
                 {isOutstation ? `Drop at ${dropName}` : "Drop at seller hub"}
               </p>
               <p className="text-[11px] text-slate-600 leading-snug">
-                No OTP needed here. Upload a hub photo, hand the parcel (and COD cash if any) to the hub, then confirm.
                 {isOutstation
                   ? "No OTP needed here. Upload a warehouse photo, hand the parcel (and COD cash if any) at the warehouse, then confirm."
                   : "No OTP needed here. Upload a hub photo, hand the parcel (and COD cash if any) to the hub, then confirm."}
               </p>
               <ParcelProofCapture
-                label="Hub drop photo proof"
-                hint="Photo of parcel handed over at the seller hub"
                 label={isOutstation ? "Warehouse drop photo proof" : "Hub drop photo proof"}
                 hint={isOutstation ? "Photo of parcel handed over at the warehouse" : "Photo of parcel handed over at the seller hub"}
                 value={hubProofUrl}
@@ -885,7 +848,6 @@ const ParcelTaskPage = () => {
                   disabled={saving}
                   className="w-full py-2 rounded-xl bg-primary text-white text-[13px] font-black disabled:opacity-70"
                 >
-                  {saving ? "Updating..." : "Start Hub Drop"}
                   {saving ? "Updating..." : (isOutstation ? "Start Warehouse Drop" : "Start Hub Drop")}
                 </button>
               )}
@@ -896,7 +858,6 @@ const ParcelTaskPage = () => {
                 className="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-black flex items-center justify-center gap-2 disabled:opacity-70"
               >
                 <CheckCircle2 size={16} />
-                {saving ? "Dropping..." : "Confirm Hub Drop"}
                 {saving ? "Dropping..." : (isOutstation ? "Confirm Warehouse Drop" : "Confirm Hub Drop")}
               </button>
             </div>

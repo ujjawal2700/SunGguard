@@ -372,22 +372,14 @@ export const createParcel = async (req, res) => {
       return handleResponse(res, 400, "Please select a valid delivery speed");
     }
 
-    // Fare distance = pickup (user) → nearest parcel-hub seller (delivery location).
-    const nearest = await findNearestParcelSellerWithDistance(
-      Number(pickupAddress.lat),
-      Number(pickupAddress.lng),
-    );
-    if (!nearest) {
-      return handleResponse(
-        res,
-        400,
-        "No parcel hub seller is available near your pickup location",
     const parcelType =
       String(req.body.parcelType || "outstation").toLowerCase() === "local"
         ? "local"
         : "outstation";
     const isOutstation = parcelType !== "local";
 
+    // Fare distance: outstation routes to the nearest active warehouse when
+    // one exists, otherwise falls back to the nearest parcel-hub seller.
     let distanceKm = 5;
     let warehouse = null;
     let nearest = null;
@@ -426,7 +418,6 @@ export const createParcel = async (req, res) => {
       }
       distanceKm = nearest.distanceKm;
     }
-    const distanceKm = nearest.distanceKm;
 
     const resolvedDropAddress =
       isOutstation && warehouse
@@ -463,12 +454,10 @@ export const createParcel = async (req, res) => {
     const parcel = await Parcel.create({
       customerId: req.user.id,
       pickupAddress,
-      dropAddress,
       dropAddress: resolvedDropAddress,
       packageDetails,
       courierCompany: courier,
       courierCompanyId: courierDoc._id,
-      sellerId: nearest.seller._id,
       sellerId: isOutstation ? null : nearest?.seller?._id,
       warehouseId: isOutstation && warehouse ? warehouse._id : null,
       parcelType,
@@ -622,7 +611,6 @@ export const trackParcel = async (req, res) => {
     const parcel = await Parcel.findById(req.params.id)
       .populate("customerId", "name phone email")
       .populate("deliveryPartnerId", "name phone vehicleType vehicleNumber profileImage location")
-      .populate("sellerId", "shopName location");
       .populate("sellerId", "shopName location")
       .populate("warehouseId", "name address city phone lat lng");
 
@@ -772,7 +760,6 @@ export const adminGetParcelById = async (req, res) => {
     const parcel = await Parcel.findById(parcelId)
       .populate("customerId", "name phone email")
       .populate("deliveryPartnerId", "name phone vehicleType vehicleNumber profileImage")
-      .populate("sellerId", "name shopName phone address location");
       .populate("sellerId", "name shopName phone address location")
       .populate("warehouseId", "name address city phone lat lng");
 
@@ -1349,9 +1336,6 @@ export const getParcelRoute = async (req, res) => {
 
     const origin = { lat: originLat, lng: originLng };
     let dest = pickup;
-    if (phase === "seller" || phase === "agency") {
-      if (!seller || !Number.isFinite(seller.lat) || !Number.isFinite(seller.lng)) {
-        return handleResponse(res, 400, "Seller hub location missing");
     const isOutstation = parcel.parcelType === "outstation" || !!parcel.warehouseId || !seller;
 
     if (phase === "seller" || phase === "agency" || phase === "warehouse") {
@@ -1366,7 +1350,6 @@ export const getParcelRoute = async (req, res) => {
         }
         dest = seller;
       }
-      dest = seller;
     } else if (phase === "drop" || phase === "full") {
       if (!Number.isFinite(drop.lat) || !Number.isFinite(drop.lng)) {
         return handleResponse(res, 400, "Drop location missing");
@@ -1455,7 +1438,6 @@ export const riderUpdateStatus = async (req, res) => {
 
     const populated = await Parcel.findById(parcel._id)
       .populate("deliveryPartnerId", "name phone vehicleType vehicleNumber profileImage location")
-      .populate("sellerId", "name shopName phone address location");
       .populate("sellerId", "name shopName phone address location")
       .populate("warehouseId", "name address city phone lat lng");
 
@@ -1585,7 +1567,6 @@ export const riderCompleteDelivery = async (req, res) => {
 
     const populated = await Parcel.findById(parcel._id)
       .populate("deliveryPartnerId", "name phone vehicleType vehicleNumber profileImage location")
-      .populate("sellerId", "name shopName phone address location");
       .populate("sellerId", "name shopName phone address location")
       .populate("warehouseId", "name address city phone lat lng");
 

@@ -259,7 +259,6 @@ async function startHttpServer() {
     registerOrderQueueProcessors();
   }
   
-  return new Promise((resolve) => {
   return new Promise((resolve, reject) => {
     server.once("error", (err) => {
       if (err.code === "EADDRINUSE") {

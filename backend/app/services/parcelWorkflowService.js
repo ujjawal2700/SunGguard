@@ -352,8 +352,6 @@ export async function fetchParcelsForSeller(sellerId) {
 }
 
 export async function startParcelBroadcast(parcelDoc) {
-  // Attach nearby parcel hub seller (if any), but always continue rider search.
-  await tryAutoAssignParcelToSeller(parcelDoc);
   // Only local parcels attach to nearby seller hubs.
   // Outstation parcels attach to nearest warehouse and NEVER emit to seller app!
   if (parcelDoc.parcelType === "local") {
@@ -598,7 +596,6 @@ export async function parcelAcceptAtomic(deliveryId, parcelId, idempotencyKey) {
   )
     .populate("customerId", "name phone")
     .populate("deliveryPartnerId", "name phone vehicleType vehicleNumber profileImage location")
-    .populate("sellerId", "name shopName phone address location");
     .populate("sellerId", "name shopName phone address location")
     .populate("warehouseId", "name address city phone lat lng");
 

@@ -1,4 +1,3 @@
-const DEFAULT_API_PORT = "7000";
 const DEFAULT_API_PORT = import.meta.env.VITE_API_PORT || "7000";
 const DEFAULT_API_PATH = "/api";
 

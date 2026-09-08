@@ -258,9 +258,6 @@ const AdminParcelDashboard = () => {
   const parcelDetailModalRef = useRef(null);
 
   const modalOpen = Boolean(
-    selectedParcel || courierEditModalOpen || courierToDelete,
-  );
-  const modalOpen = Boolean(
     selectedParcel ||
     courierEditModalOpen ||
     courierToDelete ||

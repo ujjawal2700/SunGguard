@@ -8,10 +8,6 @@ const mockOrderOtpHashCode = jest.fn();
 const mockHasActiveJob = jest.fn();
 const mockMarkBusy = jest.fn();
 const mockSyncBusy = jest.fn();
-const mockOrderFindOne = jest.fn().mockImplementation((query) => ({
-  select: jest.fn().mockReturnThis(),
-  lean: jest.fn().mockResolvedValue({ orderId: query?.orderId || "ORD-TEST" }),
-}));
 const mockOrderFindOne = jest.fn().mockImplementation((query) => {
   const orderObj = {
     orderId: query?.orderId || "ORD-TEST",
