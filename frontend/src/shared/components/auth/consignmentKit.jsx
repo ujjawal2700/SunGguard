@@ -382,7 +382,9 @@ export const NoteSwitch = ({ options, value, onChange, name = 'note-switch' }) =
 
 export const NoteField = ({ label, hint, filled, error, children, className }) => (
     <div className={cn('space-y-2', className)}>
-        <Caption tone={error ? 'alert' : filled ? 'brand' : 'ink'}>{label}</Caption>
+        {label ? (
+            <Caption tone={error ? 'alert' : filled ? 'brand' : 'ink'}>{label}</Caption>
+        ) : null}
         {children}
         {hint && !error && (
             <p className="text-[11px] leading-snug text-slate-400 font-medium">{hint}</p>
@@ -479,7 +481,7 @@ export const DeliveryCode = ({
                 type="text"
                 inputMode="numeric"
                 autoComplete="one-time-code"
-                aria-label={`Delivery code, ${length} digits`}
+                aria-label={`Verification code, ${length} digits`}
                 aria-invalid={error || undefined}
                 maxLength={length}
                 disabled={disabled}

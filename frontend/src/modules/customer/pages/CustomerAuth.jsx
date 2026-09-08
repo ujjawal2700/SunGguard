@@ -358,8 +358,6 @@ const CustomerAuth = () => {
 
                                     <form onSubmit={verifyCode} className="space-y-5">
                                         <NoteField
-                                            label="Delivery code"
-                                            filled={code.length === CODE_LENGTH}
                                             error={codeError}
                                         >
                                             <DeliveryCode
