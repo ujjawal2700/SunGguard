@@ -228,7 +228,6 @@ const Dashboard = () => {
       offAssigned();
       offOrderStatus();
     };
-  }, [isOnline, fetchCityParcels]);
   }, [isOnline, fetchCityParcels, fetchAssignedOrder, refreshUser]);
 
   useEffect(() => {
@@ -242,8 +241,6 @@ const Dashboard = () => {
       fetchAssignedParcel();
       fetchCityParcels();
     }
-    if (isOnline && !user?.isBusy) fetchAvailableOrders();
-    else if (user?.isBusy) setAvailableOrders([]);
     if (isOnline && !user?.isBusy) {
       fetchAvailableOrders();
     } else if (user?.isBusy) {
@@ -252,7 +249,6 @@ const Dashboard = () => {
     }
     // Layout already polls available for offer modals; this only fills the dashboard list.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: avoid user-object churn
-  }, [isOnline, activeTab, user?.isBusy, fetchAssignedParcel, fetchCityParcels]);
   }, [isOnline, activeTab, user?.isBusy, fetchAssignedOrder, fetchAssignedParcel, fetchCityParcels]);
 
   const handleOnlineToggle = async () => {
@@ -726,7 +722,6 @@ const Dashboard = () => {
               </p>
             </motion.div>
           ) : activeTab === 'delivery' ? (
-            availableOrders.length > 0 ? (
             assignedStoreOrder ? (
               <motion.div
                 key="active-store-job"
