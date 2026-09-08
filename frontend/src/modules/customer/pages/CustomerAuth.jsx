@@ -13,7 +13,6 @@ import {
     ConsignmentNumber,
     DeliveryCode,
     DepotGround,
-    InkBarcode,
     NoteAction,
     NoteField,
     NoteFooter,
@@ -26,6 +25,7 @@ import {
     stackIn,
     stackItem,
 } from '@shared/components/auth/consignmentKit';
+import LegalSheet from '@shared/components/auth/LegalSheet';
 import { MONO, STILL } from '@shared/design/tokens';
 
 /**
@@ -39,13 +39,27 @@ import { MONO, STILL } from '@shared/design/tokens';
  */
 
 const PHONE_LENGTH = 10;
+/** Indian mobile numbers are 10 digits and never start below 6. */
+const PHONE_PATTERN = /^[6-9]\d{9}$/;
 const CODE_LENGTH = 4;
 const RESEND_SECONDS = 30;
 
 const MODES = [
     { value: 'login', label: 'Sign in' },
-    { value: 'signup', label: 'Open account' },
+    { value: 'signup', label: 'Sign up' },
 ];
+
+/**
+ * Keeps the field to the 10 national digits no matter what gets pasted in.
+ * A pasted "+91 98765 43210" or a leading 0 would otherwise be read as the
+ * first digits of the number itself and silently truncate the real one.
+ */
+const normalizePhone = (raw) => {
+    let digits = String(raw).replace(/\D/g, '');
+    if (digits.length > PHONE_LENGTH && digits.startsWith('91')) digits = digits.slice(2);
+    if (digits.length > PHONE_LENGTH && digits.startsWith('0')) digits = digits.slice(1);
+    return digits.slice(0, PHONE_LENGTH);
+};
 
 const formatPhone = (digits) =>
     digits.length > 5 ? `${digits.slice(0, 5)} ${digits.slice(5)}` : digits;
@@ -74,9 +88,16 @@ const CustomerAuth = () => {
      * account. Offers the other mode rather than leaving someone stuck.
      */
     const [wrongMode, setWrongMode] = useState(null);
+    /* 'terms' | 'privacy' | null — read and accepted without leaving the note. */
+    const [legal, setLegal] = useState(null);
 
     const isLogin = mode === 'login';
-    const phoneReady = phone.length === PHONE_LENGTH;
+    const phoneReady = PHONE_PATTERN.test(phone);
+    /* Only worth saying once they have typed a full-length number. */
+    const phoneError =
+        phone.length === PHONE_LENGTH && !phoneReady
+            ? 'Enter a valid mobile number starting with 6, 7, 8 or 9.'
+            : '';
     const nameReady = isLogin || name.trim().length > 1;
     const identityReady = phoneReady && nameReady;
 
@@ -107,7 +128,7 @@ const CustomerAuth = () => {
     const sendCode = async (event) => {
         event?.preventDefault();
         if (!phoneReady) {
-            toast.error(`Enter all ${PHONE_LENGTH} digits of your mobile number`);
+            toast.error(`Enter a valid ${PHONE_LENGTH}-digit mobile number`);
             return;
         }
         if (!nameReady) {
@@ -227,7 +248,7 @@ const CustomerAuth = () => {
 
                                     <motion.div variants={reduce ? undefined : stackItem}>
                                         <h1 className="text-[22px] font-extrabold tracking-tight text-slate-900 leading-tight">
-                                            {isLogin ? 'Sign in' : 'Open an account'}
+                                            {isLogin ? 'Sign in' : 'Sign up'}
                                         </h1>
                                         <p className="mt-1 text-[13px] leading-snug text-slate-500">
                                             {isLogin
@@ -266,7 +287,8 @@ const CustomerAuth = () => {
                                             <NoteField
                                                 label="Contact number"
                                                 filled={phoneReady}
-                                                hint="Riders call this number for pickup and drop."
+                                                error={phoneError}
+                                                hint={`Enter ${PHONE_LENGTH}-digit mobile number. Riders call this for pickup and drop.`}
                                             >
                                                 <div className="relative">
                                                     <span
@@ -282,13 +304,10 @@ const CustomerAuth = () => {
                                                         autoComplete="tel-national"
                                                         maxLength={PHONE_LENGTH + 1}
                                                         placeholder="98765 43210"
+                                                        aria-describedby="phone-hint"
                                                         value={formatPhone(phone)}
                                                         onChange={(event) =>
-                                                            setPhone(
-                                                                event.target.value
-                                                                    .replace(/\D/g, '')
-                                                                    .slice(0, PHONE_LENGTH),
-                                                            )
+                                                            setPhone(normalizePhone(event.target.value))
                                                         }
                                                         className={`${noteInput(phoneReady)} pl-[68px] tabular-nums`}
                                                         style={{ fontFamily: MONO }}
@@ -309,8 +328,8 @@ const CustomerAuth = () => {
 
                                     <motion.div variants={reduce ? undefined : stackItem}>
                                         <NoteFooter
-                                            onTerms={() => navigate('/terms')}
-                                            onPrivacy={() => navigate('/privacy')}
+                                            onTerms={() => setLegal('terms')}
+                                            onPrivacy={() => setLegal('privacy')}
                                         />
                                     </motion.div>
                                 </motion.div>
@@ -329,10 +348,10 @@ const CustomerAuth = () => {
                                         </button>
                                         <div className="min-w-0">
                                             <h1 className="text-[22px] font-extrabold tracking-tight text-slate-900 leading-tight">
-                                                Enter the code
+                                                Enter the verification code
                                             </h1>
                                             <Caption className="mt-1.5">
-                                                Sent to +91 {formatPhone(phone)}
+                                                Code sent to +91 {formatPhone(phone)}
                                             </Caption>
                                         </div>
                                     </div>
@@ -367,7 +386,7 @@ const CustomerAuth = () => {
                                                     disabled={code.length !== CODE_LENGTH}
                                                 >
                                                     <span className="inline-flex items-center gap-2.5">
-                                                        Verify code
+                                                        Verify &amp; Continue
                                                         <ArrowRight size={15} strokeWidth={2.6} />
                                                     </span>
                                                 </NoteAction>
@@ -395,7 +414,6 @@ const CustomerAuth = () => {
 
                     {/* ── Machine-readable footer ──────────────────────────── */}
                     <div className="mt-7 border-t border-dashed border-slate-200 pt-4">
-                        <InkBarcode ratio={progress} seed={phone || 'SG'} />
                         <div className="mt-2 flex items-center justify-between">
                             <Caption>{isLogin ? 'Returning sender' : 'New sender'}</Caption>
                             <Caption>{accepted ? 'Accepted' : 'Awaiting verification'}</Caption>
@@ -464,7 +482,7 @@ const CustomerAuth = () => {
                                     onClick={acceptWrongMode}
                                     className="w-full rounded-xl bg-slate-900 py-3.5 text-[14px] font-bold text-white transition active:scale-[0.99]"
                                 >
-                                    {wrongMode === 'signup' ? 'Create an account' : 'Sign in'}
+                                    {wrongMode === 'signup' ? 'Sign up' : 'Sign in'}
                                 </button>
                                 <button
                                     type="button"
@@ -478,6 +496,12 @@ const CustomerAuth = () => {
                     </motion.div>
                 ) : null}
             </AnimatePresence>
+
+            <LegalSheet
+                kind={legal}
+                onClose={() => setLegal(null)}
+                onAccept={() => setLegal(null)}
+            />
         </DepotGround>
     );
 };

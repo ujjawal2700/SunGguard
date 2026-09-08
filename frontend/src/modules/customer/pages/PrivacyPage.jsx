@@ -2,6 +2,7 @@ import React from 'react';
 import { ChevronLeft, Shield } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useSettings } from '@core/context/SettingsContext';
+import { LEGAL_UPDATED, PrivacyBody } from '@shared/components/legal/legalContent';
 
 const PrivacyPage = () => {
     const navigate = useNavigate();
@@ -28,40 +29,11 @@ const PrivacyPage = () => {
                         </div>
                         <div>
                             <h2 className="text-xl font-bold text-slate-800">Privacy Policy</h2>
-                            <p className="text-xs text-slate-500 font-medium">Last updated: Oct 2025</p>
+                            <p className="text-xs text-slate-500 font-medium">Last updated: {LEGAL_UPDATED}</p>
                         </div>
                     </div>
 
-                    <div className="prose prose-slate prose-sm max-w-none text-slate-600 space-y-4">
-                        <p>
-                            At {appName}, we take your privacy seriously. This Privacy Policy explains how we collect, use, and protect your personal information.
-                        </p>
-
-                        <h3 className="text-slate-800 font-bold text-base mt-6">1. Information We Collect</h3>
-                        <p>
-                            We collect information you provide directly, such as your name, address, phone number, and payment details. We also collect usage data automatically.
-                        </p>
-
-                        <h3 className="text-slate-800 font-bold text-base mt-6">2. How We Use Information</h3>
-                        <p>
-                            We use your data to process orders, improve our services, and communicate with you about promotions and updates.
-                        </p>
-
-                        <h3 className="text-slate-800 font-bold text-base mt-6">3. Data Security</h3>
-                        <p>
-                            We implement industry-standard security measures to protect your data. However, no method of transmission is 100% secure.
-                        </p>
-
-                        <h3 className="text-slate-800 font-bold text-base mt-6">4. Sharing of Information</h3>
-                        <p>
-                            We do not sell your personal data. We may share data with service providers (e.g., delivery partners) as necessary to fulfill your orders.
-                        </p>
-
-                        <h3 className="text-slate-800 font-bold text-base mt-6">5. Your Rights</h3>
-                        <p>
-                            You have the right to access, correct, or delete your personal data. Contact our support team for assistance.
-                        </p>
-                    </div>
+                    <PrivacyBody appName={appName} />
                 </div>
             </div>
         </div>

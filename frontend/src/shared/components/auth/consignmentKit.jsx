@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion, useSpring, useTransform, useMotionTemplate } from 'motion/react';
 import { animate, createTimeline, stagger, utils } from 'animejs';
 import { cn } from '@/lib/utils';
@@ -166,12 +166,6 @@ export const NoteStub = ({ carrier, logoUrl, children }) => {
                     </Caption>
                 </span>
             </div>
-            <span
-                className="shrink-0 rounded-md border border-white/20 px-2 py-1 text-[9px] uppercase tracking-[0.2em] text-white/60"
-                style={{ fontFamily: MONO }}
-            >
-                Copy 1
-            </span>
         </div>
         {children}
     </div>
@@ -245,12 +239,6 @@ export const ConsignmentNumber = ({ digits = '', settled = false }) => {
         <div className="mt-5 flex items-baseline gap-[3px]" aria-hidden>
             <span className="text-[13px] font-bold text-white/35 tracking-[0.1em]" style={{ fontFamily: MONO }}>
                 SG
-            </span>
-            <span className="mx-1 text-[13px] text-white/20" style={{ fontFamily: MONO }}>
-                ·
-            </span>
-            <span className="text-[13px] font-bold text-white/35 tracking-[0.1em]" style={{ fontFamily: MONO }}>
-                91
             </span>
             <span className="mx-1 text-[13px] text-white/20" style={{ fontFamily: MONO }}>
                 ·
@@ -502,7 +490,7 @@ export const DeliveryCode = ({
                 className="absolute inset-0 z-10 h-full w-full cursor-pointer bg-transparent text-transparent caret-transparent outline-none disabled:cursor-not-allowed"
                 style={{ fontFamily: MONO }}
             />
-            <div className="flex gap-3" aria-hidden>
+            <div className="flex gap-2" aria-hidden>
                 {Array.from({ length }).map((_, index) => {
                     const char = value[index] || '';
                     const isActive = focused && index === active && !disabled;
@@ -513,7 +501,7 @@ export const DeliveryCode = ({
                                 boxes.current[index] = node;
                             }}
                             className={cn(
-                                'grid h-16 flex-1 place-items-center rounded-2xl border-2 text-[26px] font-bold tabular-nums',
+                                'grid h-12 flex-1 place-items-center rounded-xl border-2 text-[20px] font-bold tabular-nums',
                                 'transition-colors duration-200',
                                 disabled && 'opacity-60',
                                 error
@@ -540,76 +528,6 @@ export const DeliveryCode = ({
 const CaretTick = () => (
     <span className="h-7 w-px animate-pulse bg-[color:var(--primary)]" aria-hidden />
 );
-
-/* ── Barcode ─────────────────────────────────────────────────────────────────
-   The bars ink in as the note's fields are answered, so the code is only
-   complete when the booking is. Driven by anime.js so newly-inked bars stagger
-   left-to-right the way a thermal printer lays them down.                   */
-
-const barWidths = (seed, count) => {
-    let h = 0;
-    for (let i = 0; i < seed.length; i += 1) h = (h * 31 + seed.charCodeAt(i)) | 0;
-    return Array.from({ length: count }, (_, i) => {
-        h = (h * 1103515245 + 12345) & 0x7fffffff;
-        return ((h >> (i % 5)) % 3) + 1;
-    });
-};
-
-export const InkBarcode = ({ ratio = 0, seed = 'SG', bars = 46, className }) => {
-    const reduce = useReducedMotion();
-    const widths = useMemo(() => barWidths(seed, bars), [seed, bars]);
-    const nodes = useRef([]);
-    const inkedBefore = useRef(-1);
-
-    useLayoutEffect(() => {
-        const inked = Math.round(Math.min(Math.max(ratio, 0), 1) * bars);
-        const before = inkedBefore.current;
-        inkedBefore.current = inked;
-
-        const live = nodes.current.filter(Boolean);
-        if (!live.length) return;
-
-        const paint = (on) => ({
-            backgroundColor: on ? 'rgba(15,23,42,0.88)' : 'rgba(15,23,42,0.10)',
-            scaleY: on ? 1 : 0.55,
-        });
-
-        if (reduce || before < 0) {
-            live.forEach((node, i) => utils.set(node, paint(i < inked)));
-            return;
-        }
-
-        const changed = live.filter((_, i) => (i < inked) !== (i < before));
-        if (!changed.length) return;
-
-        animate(changed, {
-            ...paint(inked > before),
-            duration: DUR.base,
-            delay: stagger(10),
-            ease: EASE.out,
-        });
-    }, [ratio, bars, reduce]);
-
-    return (
-        <div className={cn('flex h-6 items-end gap-[2px]', className)} aria-hidden>
-            {widths.map((w, i) => (
-                <span
-                    key={i}
-                    ref={(node) => {
-                        nodes.current[i] = node;
-                    }}
-                    className="rounded-[1px] origin-bottom"
-                    style={{
-                        width: w,
-                        height: '100%',
-                        backgroundColor: 'rgba(15,23,42,0.10)',
-                        transform: 'scaleY(0.55)',
-                    }}
-                />
-            ))}
-        </div>
-    );
-};
 
 /* ── Action ──────────────────────────────────────────────────────────────────
    One button, one job, named for what it does. While it is working the label

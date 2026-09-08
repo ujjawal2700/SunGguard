@@ -2,6 +2,7 @@ import React from 'react';
 import { ChevronLeft, ScrollText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useSettings } from '@core/context/SettingsContext';
+import { LEGAL_UPDATED, TermsBody } from '@shared/components/legal/legalContent';
 
 const TermsPage = () => {
     const navigate = useNavigate();
@@ -29,40 +30,11 @@ const TermsPage = () => {
                         </div>
                         <div>
                             <h2 className="text-xl font-bold text-slate-800">Terms of Use</h2>
-                            <p className="text-xs text-slate-500 font-medium">Last updated: Oct 2025</p>
+                            <p className="text-xs text-slate-500 font-medium">Last updated: {LEGAL_UPDATED}</p>
                         </div>
                     </div>
 
-                    <div className="prose prose-slate prose-sm max-w-none text-slate-600 space-y-4">
-                        <p>
-                            Welcome to {appName}. By accessing or using our mobile application and services, you agree to be bound by these Terms and Conditions.
-                        </p>
-
-                        <h3 className="text-slate-800 font-bold text-base mt-6">1. Acceptance of Terms</h3>
-                        <p>
-                            By creating an account or using our services, you agree to comply with these terms. If you do not agree, you may not use our services.
-                        </p>
-
-                        <h3 className="text-slate-800 font-bold text-base mt-6">2. Use of Service</h3>
-                        <p>
-                            You must be at least 18 years old to use our services. You agree to provide accurate information during registration and to keep your account secure.
-                        </p>
-
-                        <h3 className="text-slate-800 font-bold text-base mt-6">3. Orders and Payments</h3>
-                        <p>
-                            All orders are subject to availability. Prices are subject to change without notice. We reserve the right to cancel orders at our discretion.
-                        </p>
-
-                        <h3 className="text-slate-800 font-bold text-base mt-6">4. Intellectual Property</h3>
-                        <p>
-                            All content, trademarks, and data on this app are the property of {companyName} and are protected by law.
-                        </p>
-
-                        <h3 className="text-slate-800 font-bold text-base mt-6">5. Termination</h3>
-                        <p>
-                            We reserve the right to end or suspend your account at any time for violation of these terms.
-                        </p>
-                    </div>
+                    <TermsBody appName={appName} companyName={companyName} />
                 </div>
             </div>
         </div>
