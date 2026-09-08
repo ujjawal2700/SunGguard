@@ -1813,6 +1813,8 @@ export const getAssignedOrder = async (req, res) => {
         tip: order.paymentBreakdown.tipTotal || 0,
         total: order.paymentBreakdown.grandTotal || 0,
       };
+    }
+
     // Normalize pricing fallback
     const pb = order.paymentBreakdown || {};
     const pr = order.pricing || {};
@@ -1863,6 +1865,8 @@ export const getAssignedOrder = async (req, res) => {
         method: order.paymentMode?.toLowerCase() || "cash",
         status: order.paymentStatus?.toLowerCase() || "pending",
       };
+    }
+
     // Normalize seller location coordinates
     if (order.seller?.location) {
       if (Array.isArray(order.seller.location.coordinates)) {
