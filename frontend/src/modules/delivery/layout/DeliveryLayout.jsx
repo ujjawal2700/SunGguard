@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import { createPortal } from "react-dom";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import BottomNav from "../components/BottomNav";
@@ -69,7 +75,10 @@ const DeliveryLayout = () => {
   const userBusyRef = useRef(Boolean(user?.isBusy));
   const canReceiveParcelBroadcastRef = useRef(canReceiveParcelBroadcast);
   const suppressIncomingModalRef = useRef(false);
-  const availableOrdersRequestRef = useRef({ inFlight: false, controller: null });
+  const availableOrdersRequestRef = useRef({
+    inFlight: false,
+    controller: null,
+  });
   const availablePollLastAtRef = useRef(0);
   const notificationsRequestRef = useRef({ inFlight: false, controller: null });
   const locationRequestRef = useRef({ inFlight: false, controller: null });
@@ -117,7 +126,7 @@ const DeliveryLayout = () => {
     audio.preload = "auto";
     audio.muted = false;
     audio.volume = 1;
-    audio.play().catch(() => { });
+    audio.play().catch(() => {});
 
     if (!ringtoneRetryTimerRef.current) {
       ringtoneRetryTimerRef.current = setInterval(() => {
@@ -125,7 +134,7 @@ const DeliveryLayout = () => {
         if (!activeOrderRef.current && !activeParcelOfferRef.current) return;
         const currentAudio = getOrderRingtone();
         if (!currentAudio.paused) return;
-        currentAudio.play().catch(() => { });
+        currentAudio.play().catch(() => {});
       }, 1200);
     }
 
@@ -139,7 +148,7 @@ const DeliveryLayout = () => {
         if (!activeOrderRef.current && !activeParcelOfferRef.current) return;
         const currentAudio = getOrderRingtone();
         if (!currentAudio.paused) return;
-        currentAudio.play().catch(() => { });
+        currentAudio.play().catch(() => {});
       };
       ringtoneUnlockHandlerRef.current = unlockPlayback;
       window.addEventListener("focus", unlockPlayback);
@@ -163,9 +172,18 @@ const DeliveryLayout = () => {
       typeof document !== "undefined"
     ) {
       window.removeEventListener("focus", ringtoneUnlockHandlerRef.current);
-      document.removeEventListener("visibilitychange", ringtoneUnlockHandlerRef.current);
-      document.removeEventListener("pointerdown", ringtoneUnlockHandlerRef.current);
-      document.removeEventListener("touchstart", ringtoneUnlockHandlerRef.current);
+      document.removeEventListener(
+        "visibilitychange",
+        ringtoneUnlockHandlerRef.current,
+      );
+      document.removeEventListener(
+        "pointerdown",
+        ringtoneUnlockHandlerRef.current,
+      );
+      document.removeEventListener(
+        "touchstart",
+        ringtoneUnlockHandlerRef.current,
+      );
       document.removeEventListener("keydown", ringtoneUnlockHandlerRef.current);
       ringtoneUnlockHandlerRef.current = null;
     }
@@ -183,7 +201,9 @@ const DeliveryLayout = () => {
   /** While working an active order, do not stack the global incoming-offer modal. */
   const suppressIncomingModal = useMemo(
     () =>
-      /\/delivery\/(confirm-delivery|navigation|order-details|parcel-task)/.test(location.pathname),
+      /\/delivery\/(confirm-delivery|navigation|order-details|parcel-task)/.test(
+        location.pathname,
+      ),
     [location.pathname],
   );
 
@@ -202,14 +222,10 @@ const DeliveryLayout = () => {
     );
   }, []);
 
-  /** Parcel offers: allow multiple jobs; only block during quick-commerce order or open offer modal. */
+  /** Block incoming parcel offers if rider has any active job, open offer, or busy state. */
   const shouldBlockParcelOffers = useCallback(() => {
-    return (
-      Boolean(activeOrderRef.current) ||
-      Boolean(activeParcelOfferRef.current) ||
-      suppressIncomingModalRef.current
-    );
-  }, []);
+    return shouldBlockIncomingOffers();
+  }, [shouldBlockIncomingOffers]);
 
   useEffect(() => {
     if (!canReceiveOrders) return undefined;
@@ -228,7 +244,7 @@ const DeliveryLayout = () => {
 
   const applyFromBroadcastPayload = useCallback((payload) => {
     if (!payload?.orderId) return false;
-    if (riderOnJobRef.current || userBusyRef.current || activeOrderRef.current) return true;
+    if (shouldBlockIncomingOffers()) return true;
     if (shownOrderIdsRef.current.has(payload.orderId)) return true;
     const p = payload.preview;
     if (
@@ -243,10 +259,13 @@ const DeliveryLayout = () => {
     if (exp && secondsLeftUntilDeliveryExpiry(exp) <= 0) {
       return false;
     }
-    shownOrderIdsRef.current = new Set(shownOrderIdsRef.current).add(payload.orderId);
+    shownOrderIdsRef.current = new Set(shownOrderIdsRef.current).add(
+      payload.orderId,
+    );
     const total = typeof p.total === "number" ? p.total : Number(p.total) || 0;
     const dropLabel = typeof p.drop === "string" ? p.drop : String(p.drop);
-    const earnings = typeof p.earnings === "number" ? p.earnings : Math.round(total * 0.1);
+    const earnings =
+      typeof p.earnings === "number" ? p.earnings : Math.round(total * 0.1);
     setActiveOrder({
       id: payload.orderId,
       mongoId: undefined,
@@ -257,55 +276,62 @@ const DeliveryLayout = () => {
       value: total,
       earnings: earnings,
       expiresAt: payload.deliverySearchExpiresAt || null,
-      isReturnPickup: payload.type === "RETURN_PICKUP" || payload.isReturnPickup === true,
+      isReturnPickup:
+        payload.type === "RETURN_PICKUP" || payload.isReturnPickup === true,
       items: payload.items || [],
     });
     return true;
   }, []);
 
-  const applyFromParcelBroadcastPayload = useCallback((payload) => {
-    if (!payload?.parcelId) return false;
-    if (
-      activeOrderRef.current ||
-      activeParcelOfferRef.current
-    ) {
+  const applyFromParcelBroadcastPayload = useCallback(
+    (payload) => {
+      if (!payload?.parcelId) return false;
+      if (shouldBlockIncomingOffers()) {
+        return true;
+      }
+      if (shownParcelIdsRef.current.has(payload.parcelId)) return true;
+
+      const p = payload.preview;
+      if (!p || typeof p.pickup !== "string" || typeof p.drop !== "string") {
+        return false;
+      }
+
+      const exp = payload.searchExpiresAt;
+      if (exp && secondsLeftUntilParcelExpiry(exp) <= 0) {
+        return false;
+      }
+
+      shownParcelIdsRef.current = new Set(shownParcelIdsRef.current).add(
+        payload.parcelId,
+      );
+      const fare = typeof p.fare === "number" ? p.fare : Number(p.fare) || 0;
+      const share =
+        Math.min(100, Math.max(0, Number(p.riderSharePercent) ?? 80)) / 100;
+      const earnings =
+        typeof p.earnings === "number"
+          ? p.earnings
+          : Math.round(fare * share * 100) / 100;
+
+      setActiveParcelOffer({
+        parcelId: payload.parcelId,
+        pickup: p.pickup,
+        drop: p.drop,
+        fare,
+        earnings,
+        riderSharePercent:
+          Number(p.riderSharePercent) || Math.round(share * 100),
+        weight: p.weight,
+        distance: p.distance,
+        deliverySpeed: p.deliverySpeed === "express" ? "express" : "normal",
+        paymentMethod: String(p.paymentMethod || "").toUpperCase() || "COD",
+        collectAmount: Number(p.collectAmount) || 0,
+        expiresAt: payload.searchExpiresAt || null,
+        isBroadcast: true,
+      });
       return true;
-    }
-    if (shownParcelIdsRef.current.has(payload.parcelId)) return true;
-
-    const p = payload.preview;
-    if (!p || typeof p.pickup !== "string" || typeof p.drop !== "string") {
-      return false;
-    }
-
-    const exp = payload.searchExpiresAt;
-    if (exp && secondsLeftUntilParcelExpiry(exp) <= 0) {
-      return false;
-    }
-
-    shownParcelIdsRef.current = new Set(shownParcelIdsRef.current).add(payload.parcelId);
-    const fare = typeof p.fare === "number" ? p.fare : Number(p.fare) || 0;
-    const share = Math.min(100, Math.max(0, Number(p.riderSharePercent) ?? 80)) / 100;
-    const earnings =
-      typeof p.earnings === "number" ? p.earnings : Math.round(fare * share * 100) / 100;
-
-    setActiveParcelOffer({
-      parcelId: payload.parcelId,
-      pickup: p.pickup,
-      drop: p.drop,
-      fare,
-      earnings,
-      riderSharePercent: Number(p.riderSharePercent) || Math.round(share * 100),
-      weight: p.weight,
-      distance: p.distance,
-      deliverySpeed: p.deliverySpeed === "express" ? "express" : "normal",
-      paymentMethod: String(p.paymentMethod || "").toUpperCase() || "COD",
-      collectAmount: Number(p.collectAmount) || 0,
-      expiresAt: payload.searchExpiresAt || null,
-      isBroadcast: true,
-    });
-    return true;
-  }, []);
+    },
+    [shouldBlockIncomingOffers],
+  );
 
   /**
    * A City Parcel offer, shown through the same modal as a pickup-service one.
@@ -315,128 +341,146 @@ const DeliveryLayout = () => {
    * the rider on a different screen. Everything else about the presentation is
    * identical, and a rider should not have to learn two different alerts.
    */
-  const applyFromCityParcelBroadcast = useCallback((payload) => {
-    const id = payload?.cityParcelId;
-    if (!id) return false;
+  const applyFromCityParcelBroadcast = useCallback(
+    (payload) => {
+      const id = payload?.cityParcelId;
+      if (!id) return false;
 
-    // One offer at a time. A second alert over a live one is how riders end
-    // up accepting the job they did not mean to.
-    if (activeOrderRef.current || activeParcelOfferRef.current) return true;
-    if (shownParcelIdsRef.current.has(id)) return true;
+      // One offer at a time. A second alert over a live one is how riders end
+      // up accepting the job they did not mean to.
+      if (shouldBlockIncomingOffers()) return true;
+      if (shownParcelIdsRef.current.has(id)) return true;
 
-    const p = payload.preview;
-    if (!p || typeof p.pickup !== "string" || typeof p.drop !== "string") return false;
-
-    const exp = payload.searchExpiresAt;
-    if (exp && secondsLeftUntilParcelExpiry(exp) <= 0) return false;
-
-    shownParcelIdsRef.current = new Set(shownParcelIdsRef.current).add(id);
-
-    setActiveParcelOffer({
-      parcelId: id,
-      isCityParcel: true,
-      pickup: p.pickup,
-      drop: p.drop,
-      // City parcels quote the rider their own take directly, rather than a
-      // fare with a share applied to it.
-      fare: Number(p.earnings) || 0,
-      earnings: Number(p.earnings) || 0,
-      riderSharePercent: 100,
-      weight: p.weightKg,
-      distance: p.distanceKm,
-      deliverySpeed: p.deliverySpeed === "express" ? "express" : "normal",
-      paymentMethod: String(p.paymentMethod || "").toUpperCase() || "COD",
-      collectAmount: Number(p.collectAmount) || 0,
-      expiresAt: payload.searchExpiresAt || null,
-      isBroadcast: true,
-    });
-    return true;
-  }, []);
-
-  const applyAvailableParcelsList = useCallback((availableParcels) => {
-    if (
-      activeOrderRef.current ||
-      activeParcelOfferRef.current
-    ) {
-      return;
-    }
-    const nextParcel = availableParcels.find((parcel) => {
-      const parcelId = parcel._id?.toString?.() || String(parcel._id);
-      if (shownParcelIdsRef.current.has(parcelId)) return false;
-      if (
-        parcel.searchExpiresAt &&
-        secondsLeftUntilParcelExpiry(parcel.searchExpiresAt) <= 0
-      ) {
+      const p = payload.preview;
+      if (!p || typeof p.pickup !== "string" || typeof p.drop !== "string")
         return false;
-      }
-      return true;
-    });
-    if (!nextParcel) return;
 
-    const parcelId = nextParcel._id?.toString?.() || String(nextParcel._id);
-    shownParcelIdsRef.current = new Set(shownParcelIdsRef.current).add(parcelId);
-    const fare = Number(nextParcel.fare) || 0;
-    const sharePercent = Math.min(100, Math.max(0, Number(nextParcel.riderSharePercent) ?? 80));
-    const share = sharePercent / 100;
-    setActiveParcelOffer({
-      parcelId,
-      pickup: nextParcel.pickupAddress?.fullAddress || "Pickup location",
-      drop: nextParcel.dropAddress?.fullAddress || "Drop location",
-      fare,
-      earnings:
-        typeof nextParcel.earnings === "number"
-          ? nextParcel.earnings
-          : Math.round(fare * share * 100) / 100,
-      riderSharePercent: sharePercent,
-      weight: nextParcel.weight,
-      distance: nextParcel.distance,
-      deliverySpeed: nextParcel.deliverySpeed === "express" ? "express" : "normal",
-      paymentMethod: String(nextParcel.paymentMethod || "").toUpperCase() || "COD",
-      collectAmount:
-        String(nextParcel.paymentMethod || "").toUpperCase() === "COD"
-          ? Number(nextParcel.codSettlement?.collectAmount || nextParcel.fare) || 0
-          : 0,
-      expiresAt: nextParcel.searchExpiresAt || null,
-      isBroadcast: true,
-    });
-  }, []);
+      const exp = payload.searchExpiresAt;
+      if (exp && secondsLeftUntilParcelExpiry(exp) <= 0) return false;
 
-  const applyAvailableOrdersList = useCallback((availableOrders) => {
-    setAvailableOrdersCount(availableOrders.length);
-    if (riderOnJobRef.current || userBusyRef.current || activeOrderRef.current) return;
-    const newOrder = availableOrders.find((o) => {
-      if (shownOrderIdsRef.current.has(o.orderId)) return false;
-      if (
-        o.deliverySearchExpiresAt &&
-        secondsLeftUntilDeliveryExpiry(o.deliverySearchExpiresAt) <= 0
-      ) {
-        return false;
-      }
+      shownParcelIdsRef.current = new Set(shownParcelIdsRef.current).add(id);
+
+      setActiveParcelOffer({
+        parcelId: id,
+        isCityParcel: true,
+        pickup: p.pickup,
+        drop: p.drop,
+        // City parcels quote the rider their own take directly, rather than a
+        // fare with a share applied to it.
+        fare: Number(p.earnings) || 0,
+        earnings: Number(p.earnings) || 0,
+        riderSharePercent: 100,
+        weight: p.weightKg,
+        distance: p.distanceKm,
+        deliverySpeed: p.deliverySpeed === "express" ? "express" : "normal",
+        paymentMethod: String(p.paymentMethod || "").toUpperCase() || "COD",
+        collectAmount: Number(p.collectAmount) || 0,
+        expiresAt: payload.searchExpiresAt || null,
+        isBroadcast: true,
+      });
       return true;
-    });
-    if (!newOrder) return;
-    shownOrderIdsRef.current = new Set(shownOrderIdsRef.current).add(newOrder.orderId);
-    const total = newOrder.pricing?.total || 0;
-    const isReturnPickup = newOrder.isReturnPickup || false;
-    const earnings = newOrder.riderEarnings || Math.round(total * 0.1);
-    setActiveOrder({
-      id: newOrder.orderId,
-      mongoId: newOrder._id,
-      pickup: isReturnPickup
-        ? newOrder.address?.address || "Customer Address"
-        : newOrder.seller?.shopName || "Seller",
-      drop: isReturnPickup
-        ? newOrder.seller?.shopName || "Seller Store"
-        : newOrder.address?.address || "Customer Address",
-      distance: "Nearby",
-      estTime: "10-15 min",
-      value: total,
-      earnings: earnings,
-      expiresAt: newOrder.deliverySearchExpiresAt || null,
-      isReturnPickup,
-      items: newOrder.items || [],
-    });
-  }, []);
+    },
+    [shouldBlockIncomingOffers],
+  );
+
+  const applyAvailableParcelsList = useCallback(
+    (availableParcels) => {
+      if (shouldBlockIncomingOffers()) {
+        return;
+      }
+      const nextParcel = availableParcels.find((parcel) => {
+        const parcelId = parcel._id?.toString?.() || String(parcel._id);
+        if (shownParcelIdsRef.current.has(parcelId)) return false;
+        if (
+          parcel.searchExpiresAt &&
+          secondsLeftUntilParcelExpiry(parcel.searchExpiresAt) <= 0
+        ) {
+          return false;
+        }
+        return true;
+      });
+      if (!nextParcel) return;
+
+      const parcelId = nextParcel._id?.toString?.() || String(nextParcel._id);
+      shownParcelIdsRef.current = new Set(shownParcelIdsRef.current).add(
+        parcelId,
+      );
+      const fare = Number(nextParcel.fare) || 0;
+      const sharePercent = Math.min(
+        100,
+        Math.max(0, Number(nextParcel.riderSharePercent) ?? 80),
+      );
+      const share = sharePercent / 100;
+      setActiveParcelOffer({
+        parcelId,
+        pickup: nextParcel.pickupAddress?.fullAddress || "Pickup location",
+        drop: nextParcel.dropAddress?.fullAddress || "Drop location",
+        fare,
+        earnings:
+          typeof nextParcel.earnings === "number"
+            ? nextParcel.earnings
+            : Math.round(fare * share * 100) / 100,
+        riderSharePercent: sharePercent,
+        weight: nextParcel.weight,
+        distance: nextParcel.distance,
+        deliverySpeed:
+          nextParcel.deliverySpeed === "express" ? "express" : "normal",
+        paymentMethod:
+          String(nextParcel.paymentMethod || "").toUpperCase() || "COD",
+        collectAmount:
+          String(nextParcel.paymentMethod || "").toUpperCase() === "COD"
+            ? Number(
+                nextParcel.codSettlement?.collectAmount || nextParcel.fare,
+              ) || 0
+            : 0,
+        expiresAt: nextParcel.searchExpiresAt || null,
+        isBroadcast: true,
+      });
+    },
+    [shouldBlockIncomingOffers],
+  );
+
+  const applyAvailableOrdersList = useCallback(
+    (availableOrders) => {
+      setAvailableOrdersCount(availableOrders.length);
+      if (shouldBlockIncomingOffers()) return;
+      const newOrder = availableOrders.find((o) => {
+        if (shownOrderIdsRef.current.has(o.orderId)) return false;
+        if (
+          o.deliverySearchExpiresAt &&
+          secondsLeftUntilDeliveryExpiry(o.deliverySearchExpiresAt) <= 0
+        ) {
+          return false;
+        }
+        return true;
+      });
+      if (!newOrder) return;
+      shownOrderIdsRef.current = new Set(shownOrderIdsRef.current).add(
+        newOrder.orderId,
+      );
+      const total = newOrder.pricing?.total || 0;
+      const isReturnPickup = newOrder.isReturnPickup || false;
+      const earnings = newOrder.riderEarnings || Math.round(total * 0.1);
+      setActiveOrder({
+        id: newOrder.orderId,
+        mongoId: newOrder._id,
+        pickup: isReturnPickup
+          ? newOrder.address?.address || "Customer Address"
+          : newOrder.seller?.shopName || "Seller",
+        drop: isReturnPickup
+          ? newOrder.seller?.shopName || "Seller Store"
+          : newOrder.address?.address || "Customer Address",
+        distance: "Nearby",
+        estTime: "10-15 min",
+        value: total,
+        earnings: earnings,
+        expiresAt: newOrder.deliverySearchExpiresAt || null,
+        isReturnPickup,
+        items: newOrder.items || [],
+      });
+    },
+    [shouldBlockIncomingOffers],
+  );
 
   useEffect(() => {
     if (activeOrder || activeParcelOffer) {
@@ -482,10 +526,13 @@ const DeliveryLayout = () => {
     availableOrdersRequestRef.current.controller = controller;
 
     try {
-      return await deliveryApi.getAvailableOrders({}, {
-        signal: controller.signal,
-        timeout: 15000,
-      });
+      return await deliveryApi.getAvailableOrders(
+        {},
+        {
+          signal: controller.signal,
+          timeout: 15000,
+        },
+      );
     } catch (error) {
       if (
         error?.code === "ERR_CANCELED" ||
@@ -615,10 +662,14 @@ const DeliveryLayout = () => {
           }
         }
 
-        if (canReceiveParcelBroadcastRef.current && !shouldBlockParcelOffers()) {
+        if (
+          canReceiveParcelBroadcastRef.current &&
+          !shouldBlockParcelOffers()
+        ) {
           const parcelRes = await parcelApi.riderGetAvailable({ ttl: 20000 });
           if (!cancelled && parcelRes?.data?.success) {
-            const parcelList = parcelRes.data.results || parcelRes.data.result || [];
+            const parcelList =
+              parcelRes.data.results || parcelRes.data.result || [];
             applyAvailableParcelsList(parcelList);
           }
         }
@@ -639,7 +690,10 @@ const DeliveryLayout = () => {
 
     const computeDelay = () => {
       if (!consecutiveErrors) return BASE_DELAY_MS;
-      return Math.min(MAX_DELAY_MS, BASE_DELAY_MS * 2 ** (consecutiveErrors - 1));
+      return Math.min(
+        MAX_DELAY_MS,
+        BASE_DELAY_MS * 2 ** (consecutiveErrors - 1),
+      );
     };
 
     const schedule = () => {
@@ -775,7 +829,7 @@ const DeliveryLayout = () => {
           const list = res.data.results || res.data.result || [];
           applyAvailableOrdersList(list);
         })
-        .catch(() => { });
+        .catch(() => {});
     });
   }, [
     canReceiveOrders,
@@ -883,7 +937,9 @@ const DeliveryLayout = () => {
       const parcelId = payload?.parcelId;
       if (!parcelId) return;
 
-      shownParcelIdsRef.current = new Set(shownParcelIdsRef.current).add(parcelId);
+      shownParcelIdsRef.current = new Set(shownParcelIdsRef.current).add(
+        parcelId,
+      );
 
       if (activeParcelOfferRef.current?.parcelId === parcelId) {
         acceptInFlightRef.current = false;
@@ -968,7 +1024,7 @@ const DeliveryLayout = () => {
             orderId: oid,
             preview: n.data.preview,
             deliverySearchExpiresAt: n.data.deliverySearchExpiresAt,
-            type: n.data.type || (n.data.preview?.type),
+            type: n.data.type || n.data.preview?.type,
           });
           if (fromStored) return;
           const r2 = await fetchAvailableOrders();
@@ -994,7 +1050,10 @@ const DeliveryLayout = () => {
 
     const computeDelay = () => {
       if (!consecutiveErrors) return BASE_DELAY_MS;
-      return Math.min(MAX_DELAY_MS, BASE_DELAY_MS * 2 ** (consecutiveErrors - 1));
+      return Math.min(
+        MAX_DELAY_MS,
+        BASE_DELAY_MS * 2 ** (consecutiveErrors - 1),
+      );
     };
 
     const schedule = () => {
@@ -1058,7 +1117,9 @@ const DeliveryLayout = () => {
       } else {
         await deliveryApi.skipOrder(current.id);
       }
-      shownOrderIdsRef.current = new Set(shownOrderIdsRef.current).add(current.id);
+      shownOrderIdsRef.current = new Set(shownOrderIdsRef.current).add(
+        current.id,
+      );
       markIncomingOrderHandled(current.id);
       stopOrderRingtone();
       riderOnJobRef.current = false;
@@ -1087,7 +1148,9 @@ const DeliveryLayout = () => {
     setAcceptWindowTotal(left);
     setTimeLeft(left);
     const timer = setInterval(() => {
-      const next = secondsLeftUntilDeliveryExpiry(activeOrderRef.current?.expiresAt);
+      const next = secondsLeftUntilDeliveryExpiry(
+        activeOrderRef.current?.expiresAt,
+      );
       setTimeLeft(next);
       if (next <= 0) {
         clearInterval(timer);
@@ -1108,7 +1171,9 @@ const DeliveryLayout = () => {
     setActiveParcelOffer(null);
     try {
       await parcelApi.riderRejectParcel(current.parcelId);
-      shownParcelIdsRef.current = new Set(shownParcelIdsRef.current).add(current.parcelId);
+      shownParcelIdsRef.current = new Set(shownParcelIdsRef.current).add(
+        current.parcelId,
+      );
       stopOrderRingtone();
       await refreshUser().catch(() => {});
       toast.info("Parcel offer skipped");
@@ -1150,10 +1215,7 @@ const DeliveryLayout = () => {
   const handleAcceptParcelOffer = async () => {
     const offer = activeParcelOfferRef.current;
     if (!offer || acceptInFlightRef.current) return;
-    if (
-      offer.expiresAt &&
-      secondsLeftUntilParcelExpiry(offer.expiresAt) <= 0
-    ) {
+    if (offer.expiresAt && secondsLeftUntilParcelExpiry(offer.expiresAt) <= 0) {
       toast.error("This parcel request has expired.");
       stopOrderRingtone();
       setActiveParcelOffer(null);
@@ -1179,7 +1241,9 @@ const DeliveryLayout = () => {
       } else {
         await parcelApi.riderAcceptParcel(parcelId, idem);
       }
-      shownParcelIdsRef.current = new Set(shownParcelIdsRef.current).add(parcelId);
+      shownParcelIdsRef.current = new Set(shownParcelIdsRef.current).add(
+        parcelId,
+      );
       riderOnJobRef.current = true;
       await refreshUser();
       stopOrderRingtone();
@@ -1264,16 +1328,14 @@ const DeliveryLayout = () => {
                 className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-900/85 backdrop-blur-sm"
                 role="dialog"
                 aria-modal="true"
-                aria-labelledby="delivery-order-alert-title"
-              >
+                aria-labelledby="delivery-order-alert-title">
                 <motion.div
                   key={activeOrder.id}
                   initial={{ scale: 0.92, opacity: 0, y: 24 }}
                   animate={{ scale: 1, opacity: 1, y: 0 }}
                   exit={{ scale: 0.96, opacity: 0, y: 16 }}
                   transition={{ type: "spring", stiffness: 380, damping: 28 }}
-                  className="bg-white rounded-[32px] p-6 w-full max-w-[340px] shadow-2xl border-4 border-primary/20"
-                >
+                  className="bg-white rounded-[32px] p-6 w-full max-w-[340px] shadow-2xl border-4 border-primary/20">
                   <div className="flex flex-col items-center">
                     <div className="h-16 w-16 bg-primary/10 rounded-full flex items-center justify-center mb-4 animate-bounce">
                       <BellRing className="h-8 w-8 text-primary" />
@@ -1281,15 +1343,20 @@ const DeliveryLayout = () => {
 
                     <h2
                       id="delivery-order-alert-title"
-                      className="text-xl font-black text-slate-900 mb-1"
-                    >
-                      {activeOrder.isReturnPickup ? "Return pickup request" : "New order request"}
+                      className="text-xl font-black text-slate-900 mb-1">
+                      {activeOrder.isReturnPickup
+                        ? "Return pickup request"
+                        : "New order request"}
                     </h2>
                     <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-4">
-                      {activeOrder.isReturnPickup ? "Collect return item" : "Accept or reject"}
+                      {activeOrder.isReturnPickup
+                        ? "Collect return item"
+                        : "Accept or reject"}
                     </p>
                     <div className="flex items-center gap-2 mb-6">
-                      <span className="text-2xl font-black text-brand-600">₹{activeOrder.earnings}</span>
+                      <span className="text-2xl font-black text-brand-600">
+                        ₹{activeOrder.earnings}
+                      </span>
                       <span className="text-xs font-bold text-slate-400 uppercase tracking-wider font-outfit">
                         Earnings
                       </span>
@@ -1297,36 +1364,44 @@ const DeliveryLayout = () => {
 
                     <div className="w-full space-y-4 mb-6">
                       {/* Return Items "Small Cart" */}
-                      {activeOrder.isReturnPickup && activeOrder.items?.length > 0 && (
-                        <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100 flex flex-col gap-2">
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">
-                            Return Items ({activeOrder.items.length})
-                          </p>
-                          <div className="flex gap-2 overflow-x-auto no-scrollbar">
-                            {activeOrder.items.map((item, idx) => (
-                              <div key={idx} className="flex-shrink-0 flex items-center gap-3 bg-white p-2 rounded-xl border border-slate-100 shadow-sm min-w-[140px]">
-                                <div className="h-10 w-10 rounded-lg bg-slate-100 overflow-hidden flex-shrink-0">
-                                  {item.image ? (
-                                    <img src={item.image} alt="" className="h-full w-full object-cover" />
-                                  ) : (
-                                    <div className="h-full w-full flex items-center justify-center text-slate-300 font-bold text-[8px]">
-                                      NO IMG
-                                    </div>
-                                  )}
+                      {activeOrder.isReturnPickup &&
+                        activeOrder.items?.length > 0 && (
+                          <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100 flex flex-col gap-2">
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">
+                              Return Items ({activeOrder.items.length})
+                            </p>
+                            <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                              {activeOrder.items.map((item, idx) => (
+                                <div
+                                  key={idx}
+                                  className="flex-shrink-0 flex items-center gap-3 bg-white p-2 rounded-xl border border-slate-100 shadow-sm min-w-[140px]">
+                                  <div className="h-10 w-10 rounded-lg bg-slate-100 overflow-hidden flex-shrink-0">
+                                    {item.image ? (
+                                      <img
+                                        src={item.image}
+                                        alt=""
+                                        className="h-full w-full object-cover"
+                                      />
+                                    ) : (
+                                      <div className="h-full w-full flex items-center justify-center text-slate-300 font-bold text-[8px]">
+                                        NO IMG
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-[10px] font-bold text-slate-900 truncate mb-0.5">
+                                      {item.name}
+                                    </p>
+                                    <p className="text-[10px] font-black text-primary">
+                                      {item.quantity} Unit
+                                      {item.quantity > 1 ? "s" : ""}
+                                    </p>
+                                  </div>
                                 </div>
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-[10px] font-bold text-slate-900 truncate mb-0.5">
-                                    {item.name}
-                                  </p>
-                                  <p className="text-[10px] font-black text-primary">
-                                    {item.quantity} Unit{item.quantity > 1 ? 's' : ''}
-                                  </p>
-                                </div>
-                              </div>
-                            ))}
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
 
                       <div className="flex items-start gap-3">
                         <div className="w-5 h-5 rounded-full bg-brand-100 flex items-center justify-center mt-1">
@@ -1334,18 +1409,26 @@ const DeliveryLayout = () => {
                         </div>
                         <div>
                           <p className="text-[10px] font-bold text-slate-400 uppercase">
-                            {activeOrder.isReturnPickup ? "Customer Pickup" : "Pickup"}
+                            {activeOrder.isReturnPickup
+                              ? "Customer Pickup"
+                              : "Pickup"}
                           </p>
-                          <p className="text-sm font-bold text-slate-900">{activeOrder.pickup}</p>
+                          <p className="text-sm font-bold text-slate-900">
+                            {activeOrder.pickup}
+                          </p>
                         </div>
                       </div>
                       <div className="flex items-start gap-3">
                         <MapPin className="h-5 w-5 text-rose-500 mt-1 shrink-0" />
                         <div>
                           <p className="text-[10px] font-bold text-slate-400 uppercase">
-                            {activeOrder.isReturnPickup ? "Return To Seller" : "Drop"}
+                            {activeOrder.isReturnPickup
+                              ? "Return To Seller"
+                              : "Drop"}
                           </p>
-                          <p className="text-sm font-bold text-slate-900 line-clamp-2">{activeOrder.drop}</p>
+                          <p className="text-sm font-bold text-slate-900 line-clamp-2">
+                            {activeOrder.drop}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -1359,7 +1442,11 @@ const DeliveryLayout = () => {
                           duration: Math.max(1, acceptWindowTotal || 60),
                           ease: "linear",
                         }}
-                        className={timeLeft < 10 ? "bg-rose-500 h-full" : "bg-primary h-full"}
+                        className={
+                          timeLeft < 10
+                            ? "bg-rose-500 h-full"
+                            : "bg-primary h-full"
+                        }
                       />
                     </div>
                     <p className="text-[10px] font-bold text-slate-400 mb-4 w-full text-center">
@@ -1371,16 +1458,14 @@ const DeliveryLayout = () => {
                         type="button"
                         onClick={skipOrder}
                         disabled={isAcceptingOrder}
-                        className="py-4 rounded-2xl bg-slate-100 text-slate-700 font-black text-xs uppercase tracking-wider hover:bg-slate-200/80 disabled:opacity-50 disabled:pointer-events-none"
-                      >
+                        className="py-4 rounded-2xl bg-slate-100 text-slate-700 font-black text-xs uppercase tracking-wider hover:bg-slate-200/80 disabled:opacity-50 disabled:pointer-events-none">
                         Reject
                       </button>
                       <button
                         type="button"
                         onClick={handleAcceptOrder}
                         disabled={isAcceptingOrder}
-                        className="py-4 rounded-2xl bg-primary text-primary-foreground font-black text-xs uppercase tracking-wider shadow-lg shadow-primary/30 active:scale-95 disabled:opacity-60 disabled:pointer-events-none"
-                      >
+                        className="py-4 rounded-2xl bg-primary text-primary-foreground font-black text-xs uppercase tracking-wider shadow-lg shadow-primary/30 active:scale-95 disabled:opacity-60 disabled:pointer-events-none">
                         {isAcceptingOrder ? "Accepting…" : "Accept"}
                       </button>
                     </div>
@@ -1394,16 +1479,14 @@ const DeliveryLayout = () => {
                 className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-900/85 backdrop-blur-sm"
                 role="dialog"
                 aria-modal="true"
-                aria-labelledby="delivery-parcel-offer-title"
-              >
+                aria-labelledby="delivery-parcel-offer-title">
                 <motion.div
                   key={activeParcelOffer.parcelId}
                   initial={{ scale: 0.92, opacity: 0, y: 24 }}
                   animate={{ scale: 1, opacity: 1, y: 0 }}
                   exit={{ scale: 0.96, opacity: 0, y: 16 }}
                   transition={{ type: "spring", stiffness: 380, damping: 28 }}
-                  className="bg-white rounded-[32px] p-6 w-full max-w-[340px] shadow-2xl border-4 border-primary/20"
-                >
+                  className="bg-white rounded-[32px] p-6 w-full max-w-[340px] shadow-2xl border-4 border-primary/20">
                   <div className="flex flex-col items-center">
                     <div className="h-16 w-16 bg-primary/10 rounded-full flex items-center justify-center mb-4 animate-bounce">
                       <BellRing className="h-8 w-8 text-primary" />
@@ -1411,8 +1494,7 @@ const DeliveryLayout = () => {
 
                     <h2
                       id="delivery-parcel-offer-title"
-                      className="text-xl font-black text-slate-900 mb-1"
-                    >
+                      className="text-xl font-black text-slate-900 mb-1">
                       New parcel request
                     </h2>
                     {activeParcelOffer.deliverySpeed === "express" ? (
@@ -1437,14 +1519,16 @@ const DeliveryLayout = () => {
                       </span>
                     </div>
 
-                    {String(activeParcelOffer.paymentMethod).toUpperCase() === "COD" &&
+                    {String(activeParcelOffer.paymentMethod).toUpperCase() ===
+                      "COD" &&
                       Number(activeParcelOffer.collectAmount) > 0 && (
                         <div className="w-full mb-4 rounded-2xl border-2 border-amber-200 bg-amber-50 px-4 py-3 text-center">
                           <p className="text-[10px] font-black uppercase tracking-wider text-amber-700">
                             Collect from customer (COD)
                           </p>
                           <p className="text-2xl font-black text-amber-900 mt-0.5">
-                            ₹{Number(activeParcelOffer.collectAmount).toFixed(2)}
+                            ₹
+                            {Number(activeParcelOffer.collectAmount).toFixed(2)}
                           </p>
                           <p className="text-[10px] font-semibold text-amber-700/80 mt-1">
                             Hand this full cash to the seller hub
@@ -1454,16 +1538,26 @@ const DeliveryLayout = () => {
 
                     <div className="w-full bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-3 mb-6 text-left text-xs">
                       <div>
-                        <strong className="text-slate-800 block mb-0.5">Pickup:</strong>
-                        <p className="text-slate-500 font-medium line-clamp-2">{activeParcelOffer.pickup}</p>
+                        <strong className="text-slate-800 block mb-0.5">
+                          Pickup:
+                        </strong>
+                        <p className="text-slate-500 font-medium line-clamp-2">
+                          {activeParcelOffer.pickup}
+                        </p>
                       </div>
                       <div className="border-t border-slate-200/60 pt-2.5">
-                        <strong className="text-slate-800 block mb-0.5">Dropoff:</strong>
-                        <p className="text-slate-500 font-medium line-clamp-2">{activeParcelOffer.drop}</p>
+                        <strong className="text-slate-800 block mb-0.5">
+                          Dropoff:
+                        </strong>
+                        <p className="text-slate-500 font-medium line-clamp-2">
+                          {activeParcelOffer.drop}
+                        </p>
                       </div>
                       {activeParcelOffer.weight != null && (
                         <div className="border-t border-slate-200/60 pt-2.5">
-                          <span className="text-slate-600 font-bold">{activeParcelOffer.weight} KG</span>
+                          <span className="text-slate-600 font-bold">
+                            {activeParcelOffer.weight} KG
+                          </span>
                         </div>
                       )}
                     </div>
@@ -1477,7 +1571,11 @@ const DeliveryLayout = () => {
                           duration: Math.max(1, parcelAcceptWindowTotal || 60),
                           ease: "linear",
                         }}
-                        className={parcelTimeLeft < 10 ? "bg-rose-500 h-full" : "bg-primary h-full"}
+                        className={
+                          parcelTimeLeft < 10
+                            ? "bg-rose-500 h-full"
+                            : "bg-primary h-full"
+                        }
                       />
                     </div>
                     <p className="text-[10px] font-bold text-slate-400 mb-4 w-full text-center">
@@ -1489,16 +1587,14 @@ const DeliveryLayout = () => {
                         type="button"
                         disabled={isAcceptingOrder}
                         onClick={skipParcelOffer}
-                        className="py-4 rounded-2xl bg-slate-100 text-slate-700 font-black text-xs uppercase tracking-wider hover:bg-slate-200/80 disabled:opacity-50"
-                      >
+                        className="py-4 rounded-2xl bg-slate-100 text-slate-700 font-black text-xs uppercase tracking-wider hover:bg-slate-200/80 disabled:opacity-50">
                         Reject
                       </button>
                       <button
                         type="button"
                         disabled={isAcceptingOrder}
                         onClick={handleAcceptParcelOffer}
-                        className="py-4 rounded-2xl bg-primary text-primary-foreground font-black text-xs uppercase tracking-wider shadow-lg shadow-primary/30 active:scale-95 disabled:opacity-60"
-                      >
+                        className="py-4 rounded-2xl bg-primary text-primary-foreground font-black text-xs uppercase tracking-wider shadow-lg shadow-primary/30 active:scale-95 disabled:opacity-60">
                         {isAcceptingOrder ? "Accepting…" : "Accept"}
                       </button>
                     </div>
@@ -1512,16 +1608,14 @@ const DeliveryLayout = () => {
                 className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-900/85 backdrop-blur-sm"
                 role="dialog"
                 aria-modal="true"
-                aria-labelledby="delivery-parcel-alert-title"
-              >
+                aria-labelledby="delivery-parcel-alert-title">
                 <motion.div
                   key={activeParcel._id}
                   initial={{ scale: 0.92, opacity: 0, y: 24 }}
                   animate={{ scale: 1, opacity: 1, y: 0 }}
                   exit={{ scale: 0.96, opacity: 0, y: 16 }}
                   transition={{ type: "spring", stiffness: 380, damping: 28 }}
-                  className="bg-white rounded-[32px] p-6 w-full max-w-[340px] shadow-2xl border-4 border-primary/20"
-                >
+                  className="bg-white rounded-[32px] p-6 w-full max-w-[340px] shadow-2xl border-4 border-primary/20">
                   <div className="flex flex-col items-center">
                     <div className="h-16 w-16 bg-primary/10 rounded-full flex items-center justify-center mb-4 animate-bounce">
                       <BellRing className="h-8 w-8 text-primary" />
@@ -1529,8 +1623,7 @@ const DeliveryLayout = () => {
 
                     <h2
                       id="delivery-parcel-alert-title"
-                      className="text-xl font-black text-slate-900 mb-1"
-                    >
+                      className="text-xl font-black text-slate-900 mb-1">
                       New Parcel Assigned!
                     </h2>
                     {activeParcel.deliverySpeed === "express" ? (
@@ -1542,19 +1635,23 @@ const DeliveryLayout = () => {
                         Normal · 30 min
                       </span>
                     )}
-                    
+
                     <p className="text-xs text-slate-500 font-bold mb-4">
                       ID: #{activeParcel._id.slice(-6)}
                     </p>
 
-                    {String(activeParcel.paymentMethod).toUpperCase() === "COD" && (
+                    {String(activeParcel.paymentMethod).toUpperCase() ===
+                      "COD" && (
                       <div className="w-full mb-4 rounded-2xl border-2 border-amber-200 bg-amber-50 px-4 py-3 text-center">
                         <p className="text-[10px] font-black uppercase tracking-wider text-amber-700">
                           Collect from customer (COD)
                         </p>
                         <p className="text-2xl font-black text-amber-900 mt-0.5">
-                          ₹{Number(
-                            activeParcel.codSettlement?.collectAmount || activeParcel.fare || 0,
+                          ₹
+                          {Number(
+                            activeParcel.codSettlement?.collectAmount ||
+                              activeParcel.fare ||
+                              0,
                           ).toFixed(2)}
                         </p>
                         <p className="text-[10px] font-semibold text-amber-700/80 mt-1">
@@ -1565,27 +1662,49 @@ const DeliveryLayout = () => {
 
                     <div className="w-full bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-3 mb-6 text-left text-xs">
                       <div>
-                        <strong className="text-slate-800 block mb-0.5">Pickup Address:</strong>
-                        <p className="text-slate-600 font-medium">{activeParcel.pickupAddress.name} ({activeParcel.pickupAddress.phone})</p>
-                        <p className="text-slate-400 font-medium mt-0.5 truncate">{activeParcel.pickupAddress.fullAddress}</p>
+                        <strong className="text-slate-800 block mb-0.5">
+                          Pickup Address:
+                        </strong>
+                        <p className="text-slate-600 font-medium">
+                          {activeParcel.pickupAddress.name} (
+                          {activeParcel.pickupAddress.phone})
+                        </p>
+                        <p className="text-slate-400 font-medium mt-0.5 truncate">
+                          {activeParcel.pickupAddress.fullAddress}
+                        </p>
                       </div>
                       <div className="border-t border-slate-200/60 pt-2.5">
-                        <strong className="text-slate-800 block mb-0.5">Dropoff Address:</strong>
-                        <p className="text-slate-600 font-medium">{activeParcel.dropAddress.name} ({activeParcel.dropAddress.phone})</p>
-                        <p className="text-slate-400 font-medium mt-0.5 truncate">{activeParcel.dropAddress.fullAddress}</p>
+                        <strong className="text-slate-800 block mb-0.5">
+                          Dropoff Address:
+                        </strong>
+                        <p className="text-slate-600 font-medium">
+                          {activeParcel.dropAddress.name} (
+                          {activeParcel.dropAddress.phone})
+                        </p>
+                        <p className="text-slate-400 font-medium mt-0.5 truncate">
+                          {activeParcel.dropAddress.fullAddress}
+                        </p>
                       </div>
                       <div className="border-t border-slate-200/60 pt-2.5 flex justify-between items-center">
                         <div>
-                          <strong className="text-slate-800 block mb-0.5">You&apos;ll get:</strong>
+                          <strong className="text-slate-800 block mb-0.5">
+                            You&apos;ll get:
+                          </strong>
                           <span className="text-brand-600 font-black text-sm">
-                            ₹{Number(
+                            ₹
+                            {Number(
                               activeParcel.earnings != null
                                 ? activeParcel.earnings
                                 : Math.round(
                                     (Number(activeParcel.fare) || 0) *
                                       (Math.min(
                                         100,
-                                        Math.max(0, Number(activeParcel.riderSharePercent) ?? 80),
+                                        Math.max(
+                                          0,
+                                          Number(
+                                            activeParcel.riderSharePercent,
+                                          ) ?? 80,
+                                        ),
                                       ) /
                                         100) *
                                       100,
@@ -1594,8 +1713,12 @@ const DeliveryLayout = () => {
                           </span>
                         </div>
                         <div className="text-right">
-                          <strong className="text-slate-800 block mb-0.5">Weight:</strong>
-                          <span className="text-slate-600 font-bold">{activeParcel.weight} KG</span>
+                          <strong className="text-slate-800 block mb-0.5">
+                            Weight:
+                          </strong>
+                          <span className="text-slate-600 font-bold">
+                            {activeParcel.weight} KG
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -1608,22 +1731,28 @@ const DeliveryLayout = () => {
                         onClick={async () => {
                           try {
                             setIsAcceptingOrder(true);
-                            const res = await parcelApi.riderUpdateStatus({ parcelId: activeParcel._id, status: "ACCEPTED" });
+                            const res = await parcelApi.riderUpdateStatus({
+                              parcelId: activeParcel._id,
+                              status: "ACCEPTED",
+                            });
                             if (res.data?.success) {
                               toast.success("Parcel task accepted!");
-                              navigate(`/delivery/parcel-task/${activeParcel._id}`);
+                              navigate(
+                                `/delivery/parcel-task/${activeParcel._id}`,
+                              );
                             }
                           } catch (err) {
                             // Already assigned: open task directly (cancel after accept is not allowed).
                             toast.success("Opening assigned parcel task");
-                            navigate(`/delivery/parcel-task/${activeParcel._id}`);
+                            navigate(
+                              `/delivery/parcel-task/${activeParcel._id}`,
+                            );
                           } finally {
                             setIsAcceptingOrder(false);
                             setActiveParcel(null);
                             stopOrderRingtone();
                           }
-                        }}
-                      >
+                        }}>
                         Continue Task
                       </button>
                     </div>

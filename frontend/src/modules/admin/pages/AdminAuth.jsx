@@ -1,108 +1,119 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { motion, useReducedMotion } from 'motion/react';
+import { ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { toast } from 'sonner';
+
 import { useAuth } from '@core/context/AuthContext';
 import { useSettings } from '@core/context/SettingsContext';
-import { UserRole } from '@core/constants/roles';
-import {
-    Mail,
-    Lock,
-    User,
-    ShieldCheck,
-    ArrowRight,
-    Eye,
-    EyeOff
-} from 'lucide-react';
-import { toast } from 'sonner';
-import Lottie from 'lottie-react';
-import backendAnimation from '../../../assets/Backend Icon.json';
 import { adminApi } from '../services/adminApi';
+import {
+    Caption,
+    ConsignmentNote,
+    DepotGround,
+    NoteAction,
+    NoteField,
+    NotePane,
+    NoteStub,
+    NoteSwitch,
+    RouteLeader,
+    TearEdge,
+    noteInput,
+    stackIn,
+    stackItem,
+} from '@shared/components/auth/consignmentKit';
+import { MONO } from '@shared/design/tokens';
+
+/**
+ * Admin sign-in, filed as a consignment note.
+ *
+ * design.md §9 listed this surface as unconverted; this is that conversion,
+ * following the recipe there. The depot desk is reached through the same door
+ * as everything else — the operator is filing a note too, and the note happens
+ * to be their own credentials.
+ */
+
+const MODES = [
+    { value: 'login', label: 'Sign in' },
+    { value: 'signup', label: 'First admin' },
+];
+
+/** Mirrors the server's Joi passwordSchema in adminAuthValidation.js. */
+const PASSWORD_RULES = [
+    { test: (v) => v.length >= 10, label: 'At least 10 characters' },
+    { test: (v) => /[a-z]/.test(v), label: 'One lowercase letter' },
+    { test: (v) => /[A-Z]/.test(v), label: 'One uppercase letter' },
+    { test: (v) => /[0-9]/.test(v), label: 'One number' },
+];
 
 const AdminAuth = () => {
-    const [isLogin, setIsLogin] = useState(true);
-    const [isLoading, setIsLoading] = useState(false);
-    const [showPassword, setShowPassword] = useState(false);
+    const navigate = useNavigate();
+    const reduce = useReducedMotion();
     const { login } = useAuth();
     const { settings } = useSettings();
-    const navigate = useNavigate();
-    const appName = settings?.appName || 'App';
+
+    const carrier = settings?.appName || 'SunGguard';
     const logoUrl = settings?.logoUrl || '';
 
-    const [formData, setFormData] = useState({
-        email: '',
-        password: '',
-        name: '',
-        adminCode: '',
-        phone: ''
-    });
+    const [mode, setMode] = useState('login');
+    const [isLoading, setIsLoading] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+    const [formData, setFormData] = useState({ email: '', password: '', name: '' });
 
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setFormData({ ...formData, [name]: value });
+    const isLogin = mode === 'login';
+    const password = formData.password || '';
+    const unmetRules = PASSWORD_RULES.filter((rule) => !rule.test(password));
+
+    const emailReady = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(formData.email.trim());
+    const nameReady = isLogin || formData.name.trim().length > 1;
+    const passwordReady = isLogin ? password.length > 0 : unmetRules.length === 0;
+    const ready = emailReady && nameReady && passwordReady;
+
+    /* Progress is the note's completion, not a guess: each answered field is a
+       real step towards a filed credential. */
+    const progress = (() => {
+        const parts = isLogin
+            ? [emailReady, passwordReady]
+            : [nameReady, emailReady, passwordReady];
+        return parts.filter(Boolean).length / parts.length;
+    })();
+
+    const handleChange = (event) => {
+        const { name, value } = event.target;
+        setFormData((prev) => ({ ...prev, [name]: value }));
     };
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setIsLoading(true);
+    const switchMode = (next) => {
+        if (next === mode) return;
+        setMode(next);
+        setShowPassword(false);
+    };
 
-        // Debug logging
-        console.log('=== FRONTEND LOGIN ATTEMPT ===');
-        console.log('Email:', formData.email);
-        console.log('Password:', formData.password);
-        console.log('Password Length:', formData.password?.length);
-        console.log('Is Login:', isLogin);
-        console.log('==============================');
-
-        // Only validate password complexity for signup, not login
-        if (!isLogin) {
-            const pwd = (formData.password || '').trim();
-            if (pwd.length < 10) {
-                toast.error('Password must be at least 10 characters long.');
-                setIsLoading(false);
-                return;
-            }
-            if (!/[a-z]/.test(pwd)) {
-                toast.error('Password must contain at least one lowercase letter.');
-                setIsLoading(false);
-                return;
-            }
-            if (!/[A-Z]/.test(pwd)) {
-                toast.error('Password must contain at least one uppercase letter.');
-                setIsLoading(false);
-                return;
-            }
-            if (!/[0-9]/.test(pwd)) {
-                toast.error('Password must contain at least one number.');
-                setIsLoading(false);
-                return;
-            }
+    const handleSubmit = async (event) => {
+        event.preventDefault();
+        if (!ready) {
+            if (!emailReady) toast.error('Enter the email on the admin account.');
+            else if (!nameReady) toast.error('Enter the administrator name.');
+            else toast.error(unmetRules[0]?.label || 'Check the password.');
+            return;
         }
 
+        setIsLoading(true);
         try {
-            console.log('Sending request to API...');
             const response = isLogin
-                ? await adminApi.login({ email: formData.email, password: formData.password })
-                : await adminApi.signup({ name: formData.name, email: formData.email, password: formData.password });
-
-            console.log('API Response:', response);
+                ? await adminApi.login({ email: formData.email.trim(), password })
+                : await adminApi.signup({
+                      name: formData.name.trim(),
+                      email: formData.email.trim(),
+                      password,
+                  });
 
             const { token, admin } = response.data.result;
+            login({ ...admin, token, role: 'admin' });
 
-            const authData = {
-                ...admin,
-                token,
-                role: 'admin'
-            };
-
-            console.log('Login successful! Auth Data:', authData);
-
-            login(authData);
-
-            toast.success(isLogin ? 'Welcome back, Administrator.' : 'Administrator Account Created.');
+            toast.success(isLogin ? 'Signed in' : 'Admin account created');
             navigate('/admin');
         } catch (error) {
-            console.error('Login error:', error);
-            console.error('Error response:', error.response?.data);
             toast.error(error.response?.data?.message || 'Authentication failed');
         } finally {
             setIsLoading(false);
@@ -110,190 +121,135 @@ const AdminAuth = () => {
     };
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-[#f3f6ff] p-6 font-['Outfit',_sans-serif]">
-            {/* Background Decorations */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute top-[-20%] left-[-10%] w-[800px] h-[800px] bg-brand-50 opacity-40 rounded-full blur-[120px]"></div>
-                <div className="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-white opacity-60 rounded-full blur-[100px]"></div>
-            </div>
+        <DepotGround>
+            <ConsignmentNote>
+                <NoteStub carrier={carrier} logoUrl={logoUrl}>
+                    <div className="mt-5">
+                        <Caption tone="paper">Operations desk</Caption>
+                    </div>
+                    <RouteLeader progress={progress} from="Credentials" to="Admitted" />
+                </NoteStub>
 
-            <motion.div
-                layout
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.5, type: "spring", bounce: 0.3 }}
-                className="relative w-full max-w-[1050px] min-h-[650px] bg-white rounded-[50px] shadow-[0_40px_120px_rgba(0,0,0,0.06)] overflow-hidden flex flex-col md:flex-row border border-white"
-            >
-                {/* Left Side: Form */}
-                <div className="w-full md:w-[45%] p-12 md:p-20 flex flex-col justify-center relative z-10 bg-white">
-                    <AnimatePresence mode="wait">
+                <TearEdge />
+
+                <div className="relative px-6 pb-7 pt-5">
+                    <NotePane key="admin" paneKey="admin" direction={1}>
                         <motion.div
-                            key={isLogin ? 'login' : 'signup'}
-                            initial={{ x: -30, opacity: 0 }}
-                            animate={{ x: 0, opacity: 1 }}
-                            exit={{ x: 30, opacity: 0 }}
-                            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-                            className="space-y-10"
+                            variants={reduce ? undefined : stackIn}
+                            initial="hidden"
+                            animate="show"
+                            className="space-y-5"
                         >
-                            <div className="space-y-3">
-                                <motion.h1
-                                    className="text-5xl font-black text-brand-900 tracking-tight"
-                                    layoutId="auth-title"
-                                >
-                                    {isLogin ? 'Login' : 'Sign Up'}
-                                </motion.h1>
-                                <p className="text-gray-400 font-medium text-base">
-                                    {isLogin
-                                        ? `Welcome to ${appName} Admin Platform`
-                                        : 'Start managing your platform today'}
-                                </p>
-                            </div>
+                            <motion.div variants={reduce ? undefined : stackItem}>
+                                <NoteSwitch
+                                    name="admin-auth"
+                                    options={MODES}
+                                    value={mode}
+                                    onChange={switchMode}
+                                />
+                            </motion.div>
 
-                            <form onSubmit={handleSubmit} className="space-y-5">
-                                <AnimatePresence mode="popLayout">
-                                    {!isLogin && (
-                                        <motion.div
-                                            initial={{ height: 0, opacity: 0, y: -10 }}
-                                            animate={{ height: 'auto', opacity: 1, y: 0 }}
-                                            exit={{ height: 0, opacity: 0, y: -10 }}
-                                            className="group relative"
-                                        >
-                                            <div className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-brand-600 transition-colors">
-                                                <User size={20} />
-                                            </div>
+                            <motion.div variants={reduce ? undefined : stackItem}>
+                                <h1 className="text-[22px] font-extrabold leading-tight tracking-tight text-slate-900">
+                                    {isLogin ? 'Sign in' : 'First admin'}
+                                </h1>
+                                <p className="mt-1 text-[13px] leading-snug text-slate-500">
+                                    {isLogin
+                                        ? 'This desk manages parcels, partners and payouts.'
+                                        : 'Only available until the first admin exists.'}
+                                </p>
+                            </motion.div>
+
+                            <form onSubmit={handleSubmit} noValidate className="space-y-4">
+                                {!isLogin && (
+                                    <motion.div variants={reduce ? undefined : stackItem}>
+                                        <NoteField label="Administrator name" filled={nameReady}>
                                             <input
                                                 type="text"
                                                 name="name"
-                                                required
+                                                autoComplete="name"
+                                                placeholder="As it should appear on the desk"
                                                 value={formData.name}
                                                 onChange={handleChange}
-                                                placeholder="Full Name"
-                                                className="w-full pl-14 pr-5 py-5 bg-[#f8f9ff] border border-transparent rounded-[24px] text-sm font-medium text-gray-700 outline-none focus:bg-white focus:border-slate-200 focus:ring-2 focus:ring-slate-100 transition-all placeholder:text-gray-300 placeholder:font-normal"
+                                                className={noteInput(nameReady)}
                                             />
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
+                                        </NoteField>
+                                    </motion.div>
+                                )}
 
-                                <div className="group relative">
-                                    <div className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-brand-600 transition-colors">
-                                        <Mail size={20} />
-                                    </div>
-                                    <input
-                                        type="email"
-                                        name="email"
-                                        required
-                                        value={formData.email}
-                                        onChange={handleChange}
-                                        placeholder="Username or email"
-                                        className="w-full pl-14 pr-5 py-5 bg-[#f8f9ff] border border-transparent rounded-[24px] text-sm font-medium text-gray-700 outline-none focus:bg-white focus:border-slate-200 focus:ring-2 focus:ring-slate-100 transition-all placeholder:text-gray-300 placeholder:font-normal"
-                                    />
-                                </div>
-
-                                <div className="group relative">
-                                    <div className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-brand-600 transition-colors">
-                                        <Lock size={20} />
-                                    </div>
-                                    <input
-                                        type={showPassword ? "text" : "password"}
-                                        name="password"
-                                        required
-                                        minLength={10}
-                                        maxLength={128}
-                                        autoComplete="current-password"
-                                        value={formData.password}
-                                        onChange={handleChange}
-                                        placeholder="Password (min 10 chars)"
-                                        className="w-full pl-14 pr-14 py-5 bg-[#f8f9ff] border border-transparent rounded-[24px] text-sm font-medium text-gray-700 outline-none focus:bg-white focus:border-slate-200 focus:ring-2 focus:ring-slate-100 transition-all placeholder:text-gray-300 placeholder:font-normal"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPassword(!showPassword)}
-                                        className="absolute right-5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand-600 transition-colors focus:outline-none"
-                                    >
-                                        {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                                    </button>
-                                </div>
-
-                                <button
-                                    type="submit"
-                                    disabled={isLoading}
-                                    className="w-full bg-black  text-primary-foreground rounded-[24px] py-5 text-base font-black shadow-2xl shadow-brand-200 hover:bg-brand-700 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-3"
-                                >
-                                    {isLoading ? (
-                                        <motion.div
-                                            animate={{ rotate: 360 }}
-                                            transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
-                                            className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full"
+                                <motion.div variants={reduce ? undefined : stackItem}>
+                                    <NoteField label="Email" filled={emailReady}>
+                                        <input
+                                            type="email"
+                                            name="email"
+                                            autoComplete="username"
+                                            inputMode="email"
+                                            placeholder="you@company.com"
+                                            value={formData.email}
+                                            onChange={handleChange}
+                                            className={noteInput(emailReady)}
                                         />
-                                    ) : (
-                                        <>
-                                            <span>{isLogin ? 'Login Now' : 'Create Account'}</span>
-                                            <ArrowRight size={20} />
-                                        </>
+                                    </NoteField>
+                                </motion.div>
+
+                                <motion.div variants={reduce ? undefined : stackItem}>
+                                    <NoteField label="Password" filled={passwordReady}>
+                                        <div className="relative">
+                                            <input
+                                                type={showPassword ? 'text' : 'password'}
+                                                name="password"
+                                                autoComplete={isLogin ? 'current-password' : 'new-password'}
+                                                placeholder="••••••••••"
+                                                value={password}
+                                                onChange={handleChange}
+                                                className={`${noteInput(passwordReady)} pr-12`}
+                                                style={{ fontFamily: MONO }}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowPassword((v) => !v)}
+                                                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 outline-none transition-colors hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-[color:var(--primary)]"
+                                            >
+                                                {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                                            </button>
+                                        </div>
+                                    </NoteField>
+
+                                    {/* The rules are the server's, shown while they still
+                                        matter rather than as a toast after a rejection. */}
+                                    {!isLogin && password.length > 0 && unmetRules.length > 0 && (
+                                        <ul className="mt-2 space-y-1">
+                                            {unmetRules.map((rule) => (
+                                                <li
+                                                    key={rule.label}
+                                                    className="flex items-center gap-2 text-[11px] font-medium text-slate-400"
+                                                >
+                                                    <span
+                                                        aria-hidden
+                                                        className="h-1 w-1 rounded-full bg-slate-300"
+                                                    />
+                                                    {rule.label}
+                                                </li>
+                                            ))}
+                                        </ul>
                                     )}
-                                </button>
+                                </motion.div>
+
+                                <motion.div variants={reduce ? undefined : stackItem} className="pt-1">
+                                    <NoteAction type="submit" busy={isLoading} disabled={!ready}>
+                                        <span className="inline-flex items-center gap-2.5">
+                                            {isLogin ? 'Sign in' : 'Create admin'}
+                                            <ArrowRight size={15} strokeWidth={2.6} />
+                                        </span>
+                                    </NoteAction>
+                                </motion.div>
                             </form>
-
                         </motion.div>
-                    </AnimatePresence>
+                    </NotePane>
                 </div>
-
-                {/* Right Side: Illustration & Curve */}
-                <div className="hidden md:flex w-[55%] relative bg-[#f8f9ff] overflow-hidden items-center justify-center">
-                    <div className="absolute top-8 right-8 z-30">
-                        <div className="w-20 h-20 rounded-2xl bg-white/85 backdrop-blur-sm border border-brand-100 shadow-[0_12px_30px_rgba(79,70,229,0.18)] overflow-hidden">
-                            {logoUrl ? (
-                                <img
-                                    src={logoUrl}
-                                    alt={`${appName} logo`}
-                                    className="h-full w-full object-cover"
-                                />
-                            ) : (
-                                <div className="h-full w-full flex items-center justify-center">
-                                    <ShieldCheck size={30} className="text-brand-600" />
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                    {/* The Smooth Curve (SVG) */}
-                    <div className="absolute inset-y-0 -left-1 w-[200px] z-20">
-                        <svg className="h-full w-full fill-white" preserveAspectRatio="none" viewBox="0 0 100 100">
-                            <path d="M 0 0 C 40 0, 100 20, 100 50 C 100 80, 40 100, 0 100 Z"></path>
-                        </svg>
-                    </div>
-
-                    {/* Lottie Animation Scene */}
-                    <div className="relative z-10 w-full h-full flex flex-col items-center justify-center p-20">
-                        {/* Glow Effect Backdrop */}
-                        <div className="absolute w-64 h-64 bg-brand-400/20 rounded-full blur-[80px]" />
-
-                        <motion.div
-                            initial={{ scale: 0.8, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            transition={{ delay: 0.3, duration: 1, type: "spring" }}
-                            className="w-full max-w-[400px] relative z-10"
-                        >
-                            <Lottie
-                                animationData={backendAnimation}
-                                loop={true}
-                                className="w-full h-auto drop-shadow-[0_20px_40px_rgba(79,70,229,0.15)]"
-                            />
-                        </motion.div>
-
-                    </div>
-
-                    {/* Subtle Texture */}
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(79,70,229,0.05)_0%,transparent_100%)]"></div>
-                </div>
-            </motion.div>
-
-            {/* Verification Label */}
-            <div className="absolute bottom-8 text-gray-400 font-bold text-[10px] tracking-[5px] uppercase flex items-center gap-3">
-                <div className="w-8 h-[1px] bg-gray-200"></div>
-                {`Protected by ${appName} Security`}
-                <div className="w-8 h-[1px] bg-gray-200"></div>
-            </div>
-        </div>
+            </ConsignmentNote>
+        </DepotGround>
     );
 };
 

@@ -4,302 +4,330 @@ import { useAuth } from "@core/context/AuthContext";
 import { useSettings } from "@core/context/SettingsContext";
 import { cn } from "@/lib/utils";
 import { HiChevronDown } from "react-icons/hi2";
-import { motion, AnimatePresence } from "framer-motion";
-import { X, Sparkles, Shield, LogOut } from "lucide-react";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { X, LogOut } from "lucide-react";
+import { ParcelGlyph } from "@shared/components/auth/consignmentKit";
+import { INK, MONO, RULE_LIGHT, dashedRule } from "@shared/design/tokens";
 
-const SidebarItem = ({
-  item,
-  isOpen,
-  onToggle,
-  onMouseEnter,
-  onMouseLeave,
-}) => {
-  const location = useLocation();
-  const badgeCount = Number(item?.badgeCount || 0);
-  const badgeLabel = badgeCount > 99 ? "99+" : String(badgeCount);
+/**
+ * The depot's index — the spine of the operations desk.
+ *
+ * Built in the consignment language (design.md §2): ink stock, mono captions,
+ * dashed rules, no gradients and no coloured glows. The active row is marked
+ * the way a filed section is marked — a brand rule down its edge — rather than
+ * by a glowing pill, so the mark survives every theme preset.
+ */
 
-  const hasChildren = item.children && item.children.length > 0;
-  const isChildActive =
-    hasChildren &&
-    item.children.some((child) => location.pathname === child.path);
-
-  if (hasChildren) {
-    return (
-      <div className="space-y-1 my-1.5">
-        <button
-          onClick={onToggle}
-          onMouseEnter={onMouseEnter}
-          onMouseLeave={onMouseLeave}
-          className={cn(
-            "w-full flex items-center justify-between rounded-2xl px-4 py-3 transition-all duration-200 group relative select-none",
-            isChildActive || isOpen
-              ? "bg-slate-800/90 text-white font-bold border border-slate-700/80 shadow-md"
-              : "text-slate-400 hover:text-white hover:bg-slate-800/50",
-          )}
-        >
-          <div className="flex items-center space-x-3.5 min-w-0">
-            <div
-              className={cn(
-                "p-2 rounded-xl transition-all duration-200 flex items-center justify-center shrink-0 shadow-sm",
-                isChildActive || isOpen
-                  ? "bg-primary text-white shadow-primary/30"
-                  : "bg-slate-800/90 text-slate-400 group-hover:bg-slate-700 group-hover:text-slate-100",
-              )}
-            >
-              {item.icon && <item.icon className="h-5 w-5" />}
-            </div>
-            <span className="text-sm font-bold truncate tracking-tight">
-              {item.label}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            {badgeCount > 0 && !isOpen && (
-              <span className="min-w-5 h-5 px-1.5 rounded-full bg-rose-500 text-white text-[11px] font-black flex items-center justify-center shadow-md">
-                {badgeLabel}
-              </span>
-            )}
-            <div
-              className={cn(
-                "transition-transform duration-200 text-slate-400 group-hover:text-slate-200",
-                isOpen && "rotate-180 text-primary"
-              )}
-            >
-              <HiChevronDown className="h-4 w-4" />
-            </div>
-          </div>
-        </button>
-
-        {isOpen && (
-          <div className="pl-7 pr-2 py-1.5 space-y-1 relative before:absolute before:left-6 before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-800 animate-in slide-in-from-top-2 fade-in duration-200">
-            {item.children.map((child) => {
-              const showChildBadge =
-                badgeCount > 0 && String(child?.path || "") === "/admin/support-tickets";
-
-              return (
-                <NavLink
-                  key={child.path}
-                  to={child.path}
-                  end={child.end !== undefined ? child.end : false}
-                  className={({ isActive }) =>
-                    cn(
-                      "flex items-center justify-between text-sm py-2.5 px-3.5 rounded-xl transition-all duration-150 relative group",
-                      isActive
-                        ? "text-white font-bold bg-primary/20 text-primary border border-primary/30"
-                        : "text-slate-400 hover:text-slate-100 hover:bg-slate-800/50 font-medium",
-                    )
-                  }
-                >
-                  {({ isActive }) => (
-                    <>
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span className={cn(
-                          "w-2 h-2 rounded-full transition-colors shrink-0",
-                          isActive ? "bg-primary" : "bg-slate-600 group-hover:bg-slate-400"
-                        )} />
-                        <span className="truncate">{child.label}</span>
-                      </div>
-                      {showChildBadge && (
-                        <span className="min-w-5 h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
-                          {badgeLabel}
-                        </span>
-                      )}
-                    </>
-                  )}
-                </NavLink>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <NavLink
-      to={item.path}
-      end={item.end !== undefined ? item.end : false}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-      className={({ isActive }) =>
-        cn(
-          "flex items-center justify-between rounded-2xl px-4 py-3 my-1.5 transition-all duration-200 group relative select-none",
-          isActive
-            ? "bg-primary text-white font-bold shadow-md shadow-primary/25 border border-primary/30"
-            : "text-slate-400 hover:text-white hover:bg-slate-800/50",
-        )
-      }
+/** The 10px uppercase mono caption, on ink. */
+const RailCaption = ({ children, className }) => (
+    <span
+        className={cn("block text-[10px] font-medium uppercase leading-none text-white/40", className)}
+        style={{ fontFamily: MONO, letterSpacing: "0.18em" }}
     >
-      {({ isActive }) => (
-        <>
-          <div className="flex items-center space-x-3.5 min-w-0">
-            <div
-              className={cn(
-                "p-2 rounded-xl transition-all duration-200 flex items-center justify-center shrink-0",
-                isActive
-                  ? "bg-white/25 text-white"
-                  : "bg-slate-800/90 text-slate-400 group-hover:bg-slate-700 group-hover:text-slate-100",
-              )}
-            >
-              {item.icon && <item.icon className="h-5 w-5" />}
-            </div>
-            <span className="text-sm font-bold truncate tracking-tight">
-              {item.label}
-            </span>
-          </div>
+        {children}
+    </span>
+);
 
-          {badgeCount > 0 && (
-            <span className="min-w-5 h-5 px-1.5 rounded-full bg-rose-500 text-white text-[11px] font-black flex items-center justify-center shadow-md">
-              {badgeLabel}
-            </span>
-          )}
-        </>
-      )}
-    </NavLink>
-  );
+/**
+ * Work waiting on someone. Amber, not red: a queue is correctable, not broken
+ * (design.md §3). The number is mono because it is printed data.
+ */
+const Waiting = ({ count }) => {
+    if (!count) return null;
+    return (
+        <span
+            className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md border border-[#B45309]/50 bg-[#B45309]/15 px-1.5 text-[10px] font-bold tabular-nums text-[#FBBF24]"
+            style={{ fontFamily: MONO }}
+            title={`${count} awaiting action`}
+        >
+            {count > 99 ? "99+" : count}
+        </span>
+    );
 };
 
-const SidebarContent = ({ items, title, onClose, openMenu, handleToggle }) => {
-  const { settings } = useSettings();
-  const { user, logout } = useAuth();
-  const appName = settings?.appName || 'SunGguard';
+const rowBase =
+    "group relative flex w-full select-none items-center justify-between gap-3 rounded-xl py-2.5 pl-4 pr-3 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[color:var(--primary)]";
 
-  return (
-    <div className="flex flex-col h-full min-h-0 bg-[#0B0F19] text-slate-300">
-      {/* Brand Header */}
-      <div className="flex-shrink-0 flex h-20 items-center justify-between px-6 border-b border-slate-800/90 bg-slate-900/40">
-        <div className="flex items-center space-x-3.5 min-w-0">
-          <div className="h-11 w-11 rounded-2xl bg-gradient-to-tr from-primary to-orange-500 flex items-center justify-center text-white shadow-lg shadow-primary/25 shrink-0">
-            <Sparkles className="h-6 w-6" />
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-base font-black tracking-tight text-white leading-tight truncate">
-              {appName}
-            </h1>
-            <div className="flex items-center gap-1.5 mt-1">
-              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest truncate">
-                Admin Center
-              </span>
+/** The filed-section mark: a brand rule down the leading edge. */
+const ActiveEdge = () => (
+    <span
+        aria-hidden
+        className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-[color:var(--primary)]"
+    />
+);
+
+const SidebarItem = ({ item, isOpen, onToggle }) => {
+    const location = useLocation();
+    const badgeCount = Number(item?.badgeCount || 0);
+    const hasChildren = item.children && item.children.length > 0;
+    const isChildActive =
+        hasChildren && item.children.some((child) => location.pathname === child.path);
+
+    if (hasChildren) {
+        const expanded = isChildActive || isOpen;
+        return (
+            <div className="my-0.5">
+                <button
+                    type="button"
+                    onClick={onToggle}
+                    aria-expanded={expanded}
+                    className={cn(
+                        rowBase,
+                        expanded ? "bg-white/[0.06] text-white" : "text-white/55 hover:bg-white/[0.04] hover:text-white",
+                    )}
+                >
+                    {isChildActive && <ActiveEdge />}
+                    <span className="flex min-w-0 items-center gap-3">
+                        {item.icon && (
+                            <item.icon
+                                className={cn(
+                                    "h-[18px] w-[18px] shrink-0 transition-colors",
+                                    expanded ? "text-[color:var(--primary)]" : "text-white/40 group-hover:text-white/70",
+                                )}
+                            />
+                        )}
+                        <span className="truncate text-[13px] font-semibold tracking-tight">{item.label}</span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2">
+                        <Waiting count={!isOpen ? badgeCount : 0} />
+                        <HiChevronDown
+                            className={cn(
+                                "h-3.5 w-3.5 text-white/35 transition-transform duration-200",
+                                isOpen && "rotate-180 text-white/60",
+                            )}
+                        />
+                    </span>
+                </button>
+
+                {/* Children hang off a dashed rule, the way sub-lines hang off a
+                    manifest entry rather than sitting in their own box. */}
+                {isOpen && (
+                    <div className="relative py-1 pl-[26px] pr-1">
+                        <span
+                            aria-hidden
+                            className="absolute bottom-2 left-[19px] top-2 w-px"
+                            style={{ backgroundImage: dashedRule(RULE_LIGHT, 3, 4), backgroundSize: "1px 7px" }}
+                        />
+                        {item.children.map((child) => {
+                            const showChildBadge =
+                                badgeCount > 0 && String(child?.path || "") === "/admin/support-tickets";
+                            return (
+                                <NavLink
+                                    key={child.path}
+                                    to={child.path}
+                                    end={child.end !== undefined ? child.end : false}
+                                    className={({ isActive }) =>
+                                        cn(
+                                            "flex items-center justify-between gap-2 rounded-lg py-2 pl-3 pr-2.5 text-[12.5px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[color:var(--primary)]",
+                                            isActive
+                                                ? "bg-white/[0.07] font-bold text-white"
+                                                : "font-medium text-white/45 hover:bg-white/[0.04] hover:text-white/80",
+                                        )
+                                    }
+                                >
+                                    {({ isActive }) => (
+                                        <>
+                                            <span className="flex min-w-0 items-center gap-2.5">
+                                                <span
+                                                    aria-hidden
+                                                    className={cn(
+                                                        "h-1 w-1 shrink-0 rounded-full transition-colors",
+                                                        isActive ? "bg-[color:var(--primary)]" : "bg-white/25",
+                                                    )}
+                                                />
+                                                <span className="truncate">{child.label}</span>
+                                            </span>
+                                            {showChildBadge && <Waiting count={badgeCount} />}
+                                        </>
+                                    )}
+                                </NavLink>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
-          </div>
-        </div>
+        );
+    }
 
-        {/* Mobile Close Button */}
-        <button
-          onClick={onClose}
-          className="p-2 md:hidden text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors"
+    return (
+        <NavLink
+            to={item.path}
+            end={item.end !== undefined ? item.end : false}
+            className={({ isActive }) =>
+                cn(
+                    rowBase,
+                    "my-0.5",
+                    isActive
+                        ? "bg-white/[0.07] font-bold text-white"
+                        : "font-semibold text-white/55 hover:bg-white/[0.04] hover:text-white",
+                )
+            }
         >
-          <X className="h-6 w-6" />
-        </button>
-      </div>
+            {({ isActive }) => (
+                <>
+                    {isActive && <ActiveEdge />}
+                    <span className="flex min-w-0 items-center gap-3">
+                        {item.icon && (
+                            <item.icon
+                                className={cn(
+                                    "h-[18px] w-[18px] shrink-0 transition-colors",
+                                    isActive ? "text-[color:var(--primary)]" : "text-white/40 group-hover:text-white/70",
+                                )}
+                            />
+                        )}
+                        <span className="truncate text-[13px] tracking-tight">{item.label}</span>
+                    </span>
+                    <Waiting count={badgeCount} />
+                </>
+            )}
+        </NavLink>
+    );
+};
 
-      {/* Navigation Links */}
-      <nav
-        data-lenis-prevent
-        className="flex-1 px-4 py-5 space-y-1.5 overflow-y-auto overscroll-contain custom-scrollbar-dark min-h-0 relative z-20"
-        style={{ WebkitOverflowScrolling: 'touch' }}
-      >
-        <div className="px-3 pb-2 pt-1 flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
-          <span>Main Navigation</span>
-          <span className="text-[10px] font-mono text-slate-600">v2.0</span>
-        </div>
+const SidebarContent = ({ items, onClose, openMenu, handleToggle }) => {
+    const { settings } = useSettings();
+    const { user, role, logout } = useAuth();
+    const appName = settings?.appName || "SunGguard";
+    const logoUrl = settings?.logoUrl || "";
+    const [logoBroken, setLogoBroken] = useState(false);
+    const showLogo = Boolean(logoUrl) && !logoBroken;
 
-        <AnimatePresence>
-          {items.map((item, idx) => (
-            <SidebarItem
-              key={idx}
-              item={item}
-              isOpen={openMenu === item.label}
-              onToggle={() => handleToggle(item.label)}
-            />
-          ))}
-        </AnimatePresence>
-      </nav>
-
-      {/* Admin Profile Footer */}
-      <div className="p-4 border-t border-slate-800/90 bg-slate-900/60 flex-shrink-0">
-        <div className="bg-slate-800/80 rounded-2xl p-3.5 border border-slate-700/60 flex items-center justify-between gap-3 shadow-sm">
-          <div className="flex items-center space-x-3 min-w-0">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-primary/30 to-purple-500/30 border border-primary/50 flex items-center justify-center text-primary font-bold text-base shrink-0">
-              {user?.name?.[0] || 'A'}
+    return (
+        <div className="flex h-full min-h-0 flex-col text-white/80" style={{ background: INK }}>
+            {/* Carrier's mark. The carton glyph is the app's icon (design.md §2) —
+                not a sparkle, and never on a gradient. */}
+            <div className="flex h-[68px] shrink-0 items-center justify-between gap-3 px-5">
+                <div className="flex min-w-0 items-center gap-3">
+                    <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl border border-white/15 bg-white/10 text-white">
+                        {showLogo ? (
+                            <img
+                                src={logoUrl}
+                                alt=""
+                                className="h-full w-full object-cover"
+                                onError={() => setLogoBroken(true)}
+                            />
+                        ) : (
+                            <ParcelGlyph size={18} />
+                        )}
+                    </span>
+                    <span className="min-w-0">
+                        <span className="block truncate text-[14px] font-extrabold leading-none tracking-tight text-white">
+                            {appName}
+                        </span>
+                        <RailCaption className="mt-1.5">
+                            {role === "seller" ? "Seller desk" : "Operations desk"}
+                        </RailCaption>
+                    </span>
+                </div>
+                <button
+                    type="button"
+                    onClick={onClose}
+                    aria-label="Close navigation"
+                    className="rounded-lg p-2 text-white/50 outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-[color:var(--primary)] md:hidden"
+                >
+                    <X className="h-5 w-5" />
+                </button>
             </div>
-            <div className="min-w-0">
-              <p className="text-sm font-bold text-white truncate">
-                {user?.name || "Admin"}
-              </p>
-              <p className="text-xs text-emerald-400 font-semibold truncate flex items-center gap-1.5 mt-0.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                Super Admin
-              </p>
+
+            <div className="px-5">
+                <div className="h-px w-full" style={{ backgroundImage: dashedRule(RULE_LIGHT) }} aria-hidden />
             </div>
-          </div>
-          <button
-            onClick={logout}
-            className="p-2 rounded-xl bg-slate-700/60 text-slate-300 hover:text-rose-400 hover:bg-slate-700 transition-colors"
-            title="Logout"
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
+
+            <nav
+                data-lenis-prevent
+                className="custom-scrollbar-dark relative z-20 min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4"
+                style={{ WebkitOverflowScrolling: "touch" }}
+            >
+                <RailCaption className="px-4 pb-3">Sections</RailCaption>
+                {items.map((item, idx) => (
+                    <SidebarItem
+                        key={item.path || item.label || idx}
+                        item={item}
+                        isOpen={openMenu === item.label}
+                        onToggle={() => handleToggle(item.label)}
+                    />
+                ))}
+            </nav>
+
+            {/* Who is filing. The role is read, not asserted — the old footer
+                said "Super Admin" to everyone. */}
+            <div className="shrink-0 px-5 pb-5 pt-1">
+                <div className="h-px w-full" style={{ backgroundImage: dashedRule(RULE_LIGHT) }} aria-hidden />
+                <div className="mt-4 flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                        <span
+                            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/15 bg-white/10 text-[13px] font-bold text-white"
+                            style={{ fontFamily: MONO }}
+                        >
+                            {(user?.name?.[0] || "A").toUpperCase()}
+                        </span>
+                        <span className="min-w-0">
+                            <span className="block truncate text-[13px] font-bold leading-none text-white">
+                                {user?.name || "Admin"}
+                            </span>
+                            <RailCaption className="mt-1.5">{role || "admin"}</RailCaption>
+                        </span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={logout}
+                        aria-label="Sign out"
+                        className="rounded-lg p-2 text-white/45 outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-[color:var(--primary)]"
+                    >
+                        <LogOut className="h-4 w-4" />
+                    </button>
+                </div>
+            </div>
         </div>
-      </div>
-    </div>
-  );
+    );
 };
 
 const Sidebar = ({ items, title, isOpen, onClose }) => {
-  const { role } = useAuth();
-  const [openMenu, setOpenMenu] = useState(null);
+    const { role } = useAuth();
+    const reduce = useReducedMotion();
+    const [openMenu, setOpenMenu] = useState(null);
 
-  const handleToggle = (label) => {
-    setOpenMenu((prev) => (prev === label ? null : label));
-  };
+    const handleToggle = (label) => {
+        setOpenMenu((prev) => (prev === label ? null : label));
+    };
 
-  const commonProps = {
-    items,
-    title,
-    onClose,
-    openMenu,
-    handleToggle,
-  };
+    const commonProps = { items, title, onClose, openMenu, handleToggle };
 
-  return (
-    <>
-      {/* Desktop Sidebar */}
-      <aside className={cn(
-        "fixed left-0 inset-y-0 w-72 bg-[#0B0F19] text-slate-300 border-r border-slate-800/90 shadow-2xl md:flex flex-col z-50 transition-all duration-300",
-        (role === "admin" || role === "seller") ? "hidden md:flex" : "flex",
-      )}>
-        <SidebarContent {...commonProps} />
-      </aside>
-
-      {/* Mobile Sidebar (Drawer) */}
-      <AnimatePresence mode="wait">
-        {isOpen && (
-          <div className="fixed inset-0 z-[100] md:hidden">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={onClose}
-              className="absolute inset-0 bg-black/70 backdrop-blur-sm pointer-events-auto"
-            />
-            <div className="absolute left-0 inset-y-0 w-72 flex flex-col pointer-events-none">
-              <motion.div
-                initial={{ x: "-100%" }}
-                animate={{ x: 0 }}
-                exit={{ x: "-100%" }}
-                transition={{ type: "spring", damping: 30, stiffness: 300, mass: 0.8 }}
-                className="flex-1 bg-[#0B0F19] shadow-2xl flex flex-col pointer-events-auto min-h-0"
-              >
+    return (
+        <>
+            <aside
+                className={cn(
+                    "fixed inset-y-0 left-0 z-50 w-[272px] flex-col border-r border-slate-900/60 md:flex",
+                    role === "admin" || role === "seller" ? "hidden md:flex" : "flex",
+                )}
+            >
                 <SidebarContent {...commonProps} />
-              </motion.div>
-            </div>
-          </div>
-        )}
-      </AnimatePresence>
-    </>
-  );
+            </aside>
+
+            <AnimatePresence mode="wait">
+                {isOpen && (
+                    <div className="fixed inset-0 z-[100] md:hidden">
+                        <motion.div
+                            initial={reduce ? false : { opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={reduce ? undefined : { opacity: 0 }}
+                            onClick={onClose}
+                            className="absolute inset-0 bg-slate-950/70"
+                        />
+                        <motion.div
+                            initial={reduce ? false : { x: "-100%" }}
+                            animate={{ x: 0 }}
+                            exit={reduce ? undefined : { x: "-100%" }}
+                            transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 320, damping: 34, mass: 0.8 }}
+                            className="absolute inset-y-0 left-0 flex w-[272px] flex-col"
+                        >
+                            <SidebarContent {...commonProps} />
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+        </>
+    );
 };
 
 export default Sidebar;

@@ -147,11 +147,26 @@ export async function emitDeliveryBroadcastForSeller(sellerId, payload) {
   const ids = await getDeliveryPartnerIdsWithinSellerRadius(sid);
   if (!ids.length) {
     if (process.env.NODE_ENV !== "production" && s) {
-      s.to("delivery:online").emit("delivery:broadcast", {
-        ...payload,
-        at: new Date().toISOString(),
-        _devFallback: true,
-      });
+      try {
+        const freeRiders = await Delivery.find({
+          isOnline: true,
+          isVerified: true,
+          isQuickCommerceService: true,
+          isBusy: { $ne: true },
+        })
+          .select("_id")
+          .lean();
+        const fallbackBody = {
+          ...payload,
+          at: new Date().toISOString(),
+          _devFallback: true,
+        };
+        for (const rider of freeRiders) {
+          s.to(`delivery:${rider._id}`).emit("delivery:broadcast", fallbackBody);
+        }
+      } catch (err) {
+        console.warn("[emitDeliveryBroadcastForSeller] dev fallback failed:", err.message);
+      }
     }
     return;
   }
@@ -270,14 +285,25 @@ export async function retractDeliveryBroadcastForOrder(orderId, winnerDeliveryId
   }
 }
 
-/** Broadcast to all sockets in delivery:online (legacy / dev only). */
-export function emitDeliveryBroadcast(payload) {
+/** Broadcast to free riders in dev/legacy. */
+export async function emitDeliveryBroadcast(payload) {
   const s = getIo();
   if (!s) return;
-  s.to("delivery:online").emit("delivery:broadcast", {
-    ...payload,
-    at: new Date().toISOString(),
-  });
+  try {
+    const freeRiders = await Delivery.find({
+      isOnline: true,
+      isVerified: true,
+      isBusy: { $ne: true },
+    })
+      .select("_id")
+      .lean();
+    const body = { ...payload, at: new Date().toISOString() };
+    for (const rider of freeRiders) {
+      s.to(`delivery:${rider._id}`).emit("delivery:broadcast", body);
+    }
+  } catch (err) {
+    console.warn("[emitDeliveryBroadcast] failed:", err.message);
+  }
 }
 
 export function emitToCustomer(customerId, { event, payload }) {
@@ -297,7 +323,26 @@ export async function emitReturnBroadcastForCustomer(customerLocation, payload) 
   const ids = await getDeliveryPartnerIdsWithinCustomerRadius(customerLocation);
   if (!ids.length) {
     if (process.env.NODE_ENV !== "production" && s) {
-      s.to("delivery:online").emit("delivery:broadcast", { ...payload, at: new Date().toISOString() });
+      try {
+        const freeRiders = await Delivery.find({
+          isOnline: true,
+          isVerified: true,
+          isQuickCommerceService: true,
+          isBusy: { $ne: true },
+        })
+          .select("_id")
+          .lean();
+        const fallbackBody = {
+          ...payload,
+          at: new Date().toISOString(),
+          _devFallback: true,
+        };
+        for (const rider of freeRiders) {
+          s.to(`delivery:${rider._id}`).emit("delivery:broadcast", fallbackBody);
+        }
+      } catch (err) {
+        console.warn("[emitReturnBroadcastForCustomer] dev fallback failed:", err.message);
+      }
     }
     return;
   }

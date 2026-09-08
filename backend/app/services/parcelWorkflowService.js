@@ -16,6 +16,10 @@ import { findNearestParcelSellerNearPickup, getApprovedParcelSeller } from "./se
 import { emitNotificationEvent } from "../modules/notifications/notification.emitter.js";
 import { NOTIFICATION_EVENTS } from "../modules/notifications/notification.constants.js";
 import { getRedisClient } from "../config/redis.js";
+import {
+  deliveryPartnerHasActiveJob,
+  markDeliveryPartnerBusy,
+} from "./deliveryBusyService.js";
 
 async function assertRiderWithinPickupRadius(deliveryOid, parcelId) {
   const [rider, parcel, settings] = await Promise.all([
@@ -430,6 +434,10 @@ export async function fetchAvailableParcelsForRider(deliveryId) {
     return [];
   }
 
+  if (await deliveryPartnerHasActiveJob(deliveryOid)) {
+    return [];
+  }
+
   const coords = rider.location?.coordinates;
   if (!Array.isArray(coords) || coords.length < 2) return [];
 
@@ -480,6 +488,12 @@ export async function parcelAcceptAtomic(deliveryId, parcelId, idempotencyKey) {
   if (!partner.isParcelService) {
     const err = new Error("Parcel delivery service is not enabled on your account.");
     err.statusCode = 403;
+    throw err;
+  }
+
+  if (await deliveryPartnerHasActiveJob(deliveryOid)) {
+    const err = new Error("Finish your current job before taking another.");
+    err.statusCode = 409;
     throw err;
   }
 
@@ -555,6 +569,7 @@ export async function parcelAcceptAtomic(deliveryId, parcelId, idempotencyKey) {
 
   clearParcelSearchTimeout(parcelId);
   await retractParcelBroadcast(String(parcelId), deliveryOid);
+  await markDeliveryPartnerBusy(deliveryOid);
 
   emitToAdmins("parcel:status:update", updated);
 

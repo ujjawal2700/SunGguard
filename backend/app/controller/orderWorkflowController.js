@@ -23,7 +23,7 @@ import { sendSmsIndiaHubOtp } from "../services/smsIndiaHubService.js";
 import { creditWallet } from "../services/finance/walletService.js";
 import { emitNotificationEvent } from "../modules/notifications/notification.emitter.js";
 import { NOTIFICATION_EVENTS } from "../modules/notifications/notification.constants.js";
-import { clearDeliveryPartnerBusy } from "../services/deliveryBusyService.js";
+import { syncDeliveryPartnerBusyFlag } from "../services/deliveryBusyService.js";
 
 export const confirmPickup = async (req, res) => {
   try {
@@ -510,7 +510,7 @@ export const verifyReturnDropOtp = async (req, res) => {
     order.returnDropVerifiedAt = new Date();
     order.returnDropVerifiedBy = userId;
     await order.save();
-    await clearDeliveryPartnerBusy(userId);
+    await syncDeliveryPartnerBusyFlag(userId);
 
     // Notify admin + seller + customer
     try {

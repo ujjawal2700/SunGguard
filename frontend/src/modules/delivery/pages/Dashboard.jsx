@@ -48,7 +48,7 @@ const Dashboard = () => {
   const [isOnline, setIsOnline] = useState(user?.isOnline || false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [activeTab, setActiveTab] = useState(
-    user?.isParcelService ? "delivery" : "delivery"
+    user?.isParcelService ? "delivery" : "delivery",
     // CAR WASH DISABLED — previously: user?.isCarWashService ? "car-wash" : "delivery"
   ); // 'delivery', 'return', 'parcel'
   const [availableOrders, setAvailableOrders] = useState([]);
@@ -65,7 +65,10 @@ const Dashboard = () => {
     cashCollected: 0,
   });
   const assignedOrderRequestRef = useRef({ inFlight: false, lastFetchedAt: 0 });
-  const assignedParcelRequestRef = useRef({ inFlight: false, lastFetchedAt: 0 });
+  const assignedParcelRequestRef = useRef({
+    inFlight: false,
+    lastFetchedAt: 0,
+  });
   const cityParcelRequestRef = useRef({ inFlight: false, lastFetchedAt: 0 });
 
   // Sync isOnline with user profile from context
@@ -122,11 +125,15 @@ const Dashboard = () => {
 
   const fetchAssignedOrder = useCallback(async (force = false) => {
     const now = Date.now();
-    if (!force && now - assignedOrderRequestRef.current.lastFetchedAt < 30000) return;
+    if (!force && now - assignedOrderRequestRef.current.lastFetchedAt < 30000)
+      return;
     if (assignedOrderRequestRef.current.inFlight) return;
     assignedOrderRequestRef.current.inFlight = true;
     try {
-      const res = await deliveryApi.getAssignedOrder({ ttl: 30000, forceRefresh: force });
+      const res = await deliveryApi.getAssignedOrder({
+        ttl: 30000,
+        forceRefresh: force,
+      });
       if (!res.data?.success) return;
       const order = res.data.result || null;
       setAssignedStoreOrder(order);
@@ -140,11 +147,15 @@ const Dashboard = () => {
 
   const fetchAssignedParcel = useCallback(async (force = false) => {
     const now = Date.now();
-    if (!force && now - assignedParcelRequestRef.current.lastFetchedAt < 30000) return;
+    if (!force && now - assignedParcelRequestRef.current.lastFetchedAt < 30000)
+      return;
     if (assignedParcelRequestRef.current.inFlight) return;
     assignedParcelRequestRef.current.inFlight = true;
     try {
-      const res = await parcelApi.riderGetAssigned({ ttl: 30000, forceRefresh: force });
+      const res = await parcelApi.riderGetAssigned({
+        ttl: 30000,
+        forceRefresh: force,
+      });
       if (!res.data?.success) return;
       const list = res.data.results || res.data.result || [];
       const active = list.find(
@@ -161,7 +172,8 @@ const Dashboard = () => {
 
   const fetchCityParcels = useCallback(async (force = false) => {
     const now = Date.now();
-    if (!force && now - cityParcelRequestRef.current.lastFetchedAt < 30000) return;
+    if (!force && now - cityParcelRequestRef.current.lastFetchedAt < 30000)
+      return;
     if (cityParcelRequestRef.current.inFlight) return;
     cityParcelRequestRef.current.inFlight = true;
     try {
@@ -174,7 +186,9 @@ const Dashboard = () => {
         const list = unwrapList(assigned.value, "parcels");
         setAssignedCityParcel(list[0] || null);
       }
-      if (available.status === "fulfilled") {
+      if (user?.isBusy) {
+        setOpenCityJobs([]);
+      } else if (available.status === "fulfilled") {
         // The endpoint now answers with { parcels, reason, hint }, so read the
         // collection out of the payload rather than the payload itself.
         setOpenCityJobs(unwrap(available.value)?.parcels || []);
@@ -186,7 +200,6 @@ const Dashboard = () => {
       cityParcelRequestRef.current.lastFetchedAt = Date.now();
     }
   }, []);
-
 
   /**
    * City Parcel offers arrive over their own socket channel, separate from
@@ -210,7 +223,9 @@ const Dashboard = () => {
     const offRetract = onCityParcelRetract(getToken, (payload) => {
       const id = payload?.cityParcelId;
       if (!id) return;
-      setOpenCityJobs((jobs) => jobs.filter((j) => String(j._id) !== String(id)));
+      setOpenCityJobs((jobs) =>
+        jobs.filter((j) => String(j._id) !== String(id)),
+      );
     });
 
     const offAssigned = onCityParcelAssigned(getToken, () => {
@@ -245,11 +260,19 @@ const Dashboard = () => {
       fetchAvailableOrders();
     } else if (user?.isBusy) {
       setAvailableOrders([]);
+      setOpenCityJobs([]);
       fetchAssignedOrder(true);
     }
     // Layout already polls available for offer modals; this only fills the dashboard list.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: avoid user-object churn
-  }, [isOnline, activeTab, user?.isBusy, fetchAssignedOrder, fetchAssignedParcel, fetchCityParcels]);
+  }, [
+    isOnline,
+    activeTab,
+    user?.isBusy,
+    fetchAssignedOrder,
+    fetchAssignedParcel,
+    fetchCityParcels,
+  ]);
 
   const handleOnlineToggle = async () => {
     const newStatus = !isOnline;
@@ -329,16 +352,23 @@ const Dashboard = () => {
       <div className="px-6 py-6">
         <div className="bg-white rounded-3xl p-4 shadow-sm border border-gray-100 group">
           <div className="flex items-center justify-between mb-3 px-1">
-            <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Service Status</span>
+            <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">
+              Service Status
+            </span>
             <div className="flex items-center gap-1.5">
-              <div className={cn(
-                "w-1.5 h-1.5 rounded-full animate-pulse",
-                isOnline ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]"
-              )} />
-              <span className={cn(
-                "text-[11px] font-bold uppercase tracking-wider",
-                isOnline ? "text-emerald-600" : "text-rose-600"
-              )}>
+              <div
+                className={cn(
+                  "w-1.5 h-1.5 rounded-full animate-pulse",
+                  isOnline
+                    ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"
+                    : "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]",
+                )}
+              />
+              <span
+                className={cn(
+                  "text-[11px] font-bold uppercase tracking-wider",
+                  isOnline ? "text-emerald-600" : "text-rose-600",
+                )}>
                 {isOnline ? "Receiving Orders" : "Currently Offline"}
               </span>
             </div>
@@ -346,21 +376,26 @@ const Dashboard = () => {
 
           <div
             className="relative w-full h-14 bg-gray-100/80 rounded-2xl flex items-center p-1.5 cursor-pointer shadow-inner overflow-hidden border border-gray-200/50"
-            onClick={handleOnlineToggle}
-          >
+            onClick={handleOnlineToggle}>
             {/* Background Labels */}
             <div className="absolute inset-0 flex w-full">
               <div className="w-1/2 flex items-center justify-center">
-                <span className={cn(
-                  "text-[10px] font-black tracking-widest transition-opacity duration-300",
-                  isOnline ? "opacity-0" : "opacity-40 text-gray-500"
-                )}>SLIDE TO GO ONLINE</span>
+                <span
+                  className={cn(
+                    "text-[10px] font-black tracking-widest transition-opacity duration-300",
+                    isOnline ? "opacity-0" : "opacity-40 text-gray-500",
+                  )}>
+                  SLIDE TO GO ONLINE
+                </span>
               </div>
               <div className="w-1/2 flex items-center justify-center">
-                <span className={cn(
-                  "text-[10px] font-black tracking-widest transition-opacity duration-300",
-                  !isOnline ? "opacity-0" : "opacity-40 text-gray-500"
-                )}>SLIDE TO GO OFFLINE</span>
+                <span
+                  className={cn(
+                    "text-[10px] font-black tracking-widest transition-opacity duration-300",
+                    !isOnline ? "opacity-0" : "opacity-40 text-gray-500",
+                  )}>
+                  SLIDE TO GO OFFLINE
+                </span>
               </div>
             </div>
 
@@ -379,18 +414,20 @@ const Dashboard = () => {
               whileTap={{ scale: 0.98 }}
               className={cn(
                 "w-1/2 h-full rounded-xl shadow-md flex items-center justify-center gap-2 z-10 border transition-all duration-500 cursor-grab active:cursor-grabbing",
-                isOnline 
-                  ? "bg-gradient-to-r from-primary to-[var(--brand-400)] border-[#389ecb] text-white" 
-                  : "bg-gradient-to-r from-slate-700 to-slate-800 border-slate-900 text-white"
+                isOnline
+                  ? "bg-gradient-to-r from-primary to-[var(--brand-400)] border-[#389ecb] text-white"
+                  : "bg-gradient-to-r from-slate-700 to-slate-800 border-slate-900 text-white",
               )}
               animate={{ x: isOnline ? "100%" : "0%" }}
-              transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            >
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}>
               <motion.div
                 initial={false}
-                animate={{ rotate: isOnline ? 0 : 0 }}
-              >
-                {isOnline ? <CheckCircle size={18} strokeWidth={3} /> : <XCircle size={18} strokeWidth={3} />}
+                animate={{ rotate: isOnline ? 0 : 0 }}>
+                {isOnline ? (
+                  <CheckCircle size={18} strokeWidth={3} />
+                ) : (
+                  <XCircle size={18} strokeWidth={3} />
+                )}
               </motion.div>
               <span className="text-xs font-black uppercase tracking-widest select-none">
                 {isOnline ? "ONLINE" : "OFFLINE"}
@@ -409,9 +446,8 @@ const Dashboard = () => {
               "flex-1 py-3 px-4 rounded-xl text-center text-xs font-black transition-all duration-300 uppercase tracking-widest",
               activeTab === "delivery"
                 ? "bg-white text-primary shadow-sm ring-1 ring-black/5"
-                : "text-gray-500 hover:text-gray-700 hover:bg-gray-200/50"
-            )}
-          >
+                : "text-gray-500 hover:text-gray-700 hover:bg-gray-200/50",
+            )}>
             Deliveries
           </button>
           <button
@@ -420,9 +456,8 @@ const Dashboard = () => {
               "flex-1 py-3 px-4 rounded-xl text-center text-xs font-black transition-all duration-300 uppercase tracking-widest",
               activeTab === "return"
                 ? "bg-white text-primary shadow-sm ring-1 ring-black/5"
-                : "text-gray-500 hover:text-gray-700 hover:bg-gray-200/50"
-            )}
-          >
+                : "text-gray-500 hover:text-gray-700 hover:bg-gray-200/50",
+            )}>
             Returns
           </button>
         </div>
@@ -501,8 +536,7 @@ const Dashboard = () => {
                     `/delivery/order-details/${assignedStoreOrder.orderId || assignedStoreOrder._id}`,
                   )
                 }
-                className="h-9 px-3 text-[11px] font-black uppercase tracking-wider shrink-0"
-              >
+                className="h-9 px-3 text-[11px] font-black uppercase tracking-wider shrink-0">
                 Open
               </Button>
             </div>
@@ -524,11 +558,14 @@ const Dashboard = () => {
                 <p className="text-xs text-slate-500 mt-0.5">
                   Status: {String(assignedCityParcel.status).replace(/_/g, " ")}
                 </p>
-                {String(assignedCityParcel.paymentMethod).toUpperCase() === "COD" &&
-                !assignedCityParcel.pickedUpAt ? (
+                {String(assignedCityParcel.paymentMethod).toUpperCase() ===
+                  "COD" && !assignedCityParcel.pickedUpAt ? (
                   <p className="text-xs font-black text-amber-700 mt-1.5">
                     Collect ₹
-                    {Number(assignedCityParcel.codCollection?.amount || 0).toFixed(2)} at pickup
+                    {Number(
+                      assignedCityParcel.codCollection?.amount || 0,
+                    ).toFixed(2)}{" "}
+                    at pickup
                   </p>
                 ) : null}
               </div>
@@ -538,8 +575,7 @@ const Dashboard = () => {
                 onClick={() =>
                   navigate(`/delivery/city-parcel/${assignedCityParcel._id}`)
                 }
-                className="h-9 px-3 text-[11px] font-black uppercase tracking-wider"
-              >
+                className="h-9 px-3 text-[11px] font-black uppercase tracking-wider">
                 Open
               </Button>
             </div>
@@ -550,8 +586,7 @@ const Dashboard = () => {
           <button
             type="button"
             onClick={() => navigate("/delivery/city-parcel-jobs")}
-            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm"
-          >
+            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm">
             <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
               City Deliveries
             </p>
@@ -568,8 +603,7 @@ const Dashboard = () => {
               <button
                 type="button"
                 onClick={() => navigate("/delivery/city-parcel-jobs")}
-                className="text-[11px] font-black uppercase tracking-wider text-slate-500 underline underline-offset-2"
-              >
+                className="text-[11px] font-black uppercase tracking-wider text-slate-500 underline underline-offset-2">
                 See all
               </button>
             </div>
@@ -577,12 +611,12 @@ const Dashboard = () => {
               {openCityJobs.slice(0, 3).map((job) => (
                 <div
                   key={job._id}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2.5"
-                >
+                  className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2.5">
                   <div className="min-w-0">
                     <p className="truncate text-xs font-bold text-slate-900">
-                      {job.pickupAddress?.fullAddress?.split(",")[0] || "Pickup"} →{" "}
-                      {job.dropAddress?.fullAddress?.split(",")[0] || "Drop"}
+                      {job.pickupAddress?.fullAddress?.split(",")[0] ||
+                        "Pickup"}{" "}
+                      → {job.dropAddress?.fullAddress?.split(",")[0] || "Drop"}
                     </p>
                     <p className="text-[11px] text-slate-500 font-mono">
                       {job.distanceKm} km · earn ₹
@@ -593,8 +627,7 @@ const Dashboard = () => {
                     variant="primary"
                     size="sm"
                     onClick={() => navigate(`/delivery/city-parcel/${job._id}`)}
-                    className="h-8 shrink-0 px-3 text-[11px] font-black uppercase tracking-wider"
-                  >
+                    className="h-8 shrink-0 px-3 text-[11px] font-black uppercase tracking-wider">
                     View
                   </Button>
                 </div>
@@ -607,9 +640,15 @@ const Dashboard = () => {
           <Card className="bg-brand-50/50 border border-brand-100 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-wider text-brand-600">Active Parcel Task</p>
-                <p className="text-sm font-bold text-slate-900">Continue parcel workflow</p>
-                <p className="text-xs text-slate-500 mt-0.5">Status: {assignedParcel.status}</p>
+                <p className="text-[10px] font-black uppercase tracking-wider text-brand-600">
+                  Active Parcel Task
+                </p>
+                <p className="text-sm font-bold text-slate-900">
+                  Continue parcel workflow
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Status: {assignedParcel.status}
+                </p>
                 {assignedParcel.deliverySpeed === "express" ? (
                   <span className="mt-1.5 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-800">
                     Express · 10 min
@@ -619,11 +658,14 @@ const Dashboard = () => {
                     Normal · 30 min
                   </span>
                 )}
-                {String(assignedParcel.paymentMethod).toUpperCase() === "COD" && (
+                {String(assignedParcel.paymentMethod).toUpperCase() ===
+                  "COD" && (
                   <p className="text-xs font-black text-amber-700 mt-1.5">
                     Collect COD ₹
                     {Number(
-                      assignedParcel.codSettlement?.collectAmount || assignedParcel.fare || 0,
+                      assignedParcel.codSettlement?.collectAmount ||
+                        assignedParcel.fare ||
+                        0,
                     ).toFixed(2)}
                   </p>
                 )}
@@ -631,9 +673,10 @@ const Dashboard = () => {
               <Button
                 variant="primary"
                 size="sm"
-                onClick={() => navigate(`/delivery/parcel-task/${assignedParcel._id}`)}
-                className="h-9 px-3 text-[11px] font-black uppercase tracking-wider"
-              >
+                onClick={() =>
+                  navigate(`/delivery/parcel-task/${assignedParcel._id}`)
+                }
+                className="h-9 px-3 text-[11px] font-black uppercase tracking-wider">
                 Open
               </Button>
             </div>
@@ -689,9 +732,9 @@ const Dashboard = () => {
               tabIndex={0}
               onClick={() => navigate("/delivery/cod-cash")}
               onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") navigate("/delivery/cod-cash");
-              }}
-            >
+                if (e.key === "Enter" || e.key === " ")
+                  navigate("/delivery/cod-cash");
+              }}>
               <div className="flex justify-center mb-2 text-brand-600 bg-brand-50 group-hover:bg-brand-100 transition-colors w-10 h-10 rounded-full items-center mx-auto">
                 <IndianRupee size={18} />
               </div>
@@ -721,14 +764,13 @@ const Dashboard = () => {
                 money.
               </p>
             </motion.div>
-          ) : activeTab === 'delivery' ? (
+          ) : activeTab === "delivery" ? (
             assignedStoreOrder ? (
               <motion.div
                 key="active-store-job"
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-2xl p-6 border-2 border-brand-200 shadow-md shadow-brand-500/5 text-center"
-              >
+                className="bg-white rounded-2xl p-6 border-2 border-brand-200 shadow-md shadow-brand-500/5 text-center">
                 <div className="flex justify-center mb-3">
                   <div className="w-12 h-12 rounded-full bg-brand-100 flex items-center justify-center">
                     <Package className="text-brand-600" size={24} />
@@ -741,7 +783,8 @@ const Dashboard = () => {
                   #{assignedStoreOrder.orderId}
                 </p>
                 <p className="text-sm text-gray-600 leading-relaxed px-2 mb-4">
-                  You have an active store order delivery in progress. Complete or continue this order to receive new assignments.
+                  You have an active store order delivery in progress. Complete
+                  or continue this order to receive new assignments.
                 </p>
                 <Button
                   variant="primary"
@@ -750,8 +793,7 @@ const Dashboard = () => {
                     navigate(
                       `/delivery/order-details/${assignedStoreOrder.orderId || assignedStoreOrder._id}`,
                     )
-                  }
-                >
+                  }>
                   Continue Delivery
                 </Button>
               </motion.div>
@@ -807,36 +849,51 @@ const Dashboard = () => {
                 </div>
               </motion.div>
             )
-          ) : activeTab === 'return' ? (
+          ) : activeTab === "return" ? (
             <motion.div
               key="returns-list"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="space-y-4"
-            >
+              className="space-y-4">
               <div className="flex justify-between items-center mb-1">
-                <h3 className="text-sm font-bold text-gray-800 tracking-tight">Available Return Pickups</h3>
-                <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full uppercase italic">Open for Acceptance</span>
+                <h3 className="text-sm font-bold text-gray-800 tracking-tight">
+                  Available Return Pickups
+                </h3>
+                <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full uppercase italic">
+                  Open for Acceptance
+                </span>
               </div>
               {availableOrders.length > 0 ? (
                 availableOrders.map((order) => (
-                  <Card key={order._id} className="p-4 border-2 border-primary/5 hover:border-primary/20 transition-all shadow-sm">
+                  <Card
+                    key={order._id}
+                    className="p-4 border-2 border-primary/5 hover:border-primary/20 transition-all shadow-sm">
                     <div className="flex justify-between items-start mb-4">
                       <div>
-                        <span className="text-[10px] font-black text-primary/60 uppercase tracking-widest mb-1 block">Return Task</span>
-                        <h4 className="font-bold text-gray-900">#{order.orderId}</h4>
+                        <span className="text-[10px] font-black text-primary/60 uppercase tracking-widest mb-1 block">
+                          Return Task
+                        </span>
+                        <h4 className="font-bold text-gray-900">
+                          #{order.orderId}
+                        </h4>
                       </div>
                       <div className="text-right">
-                        <span className="block font-black text-brand-600 text-lg">₹{order.returnDeliveryCommission || 0}</span>
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">Commission</span>
+                        <span className="block font-black text-brand-600 text-lg">
+                          ₹{order.returnDeliveryCommission || 0}
+                        </span>
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">
+                          Commission
+                        </span>
                       </div>
                     </div>
-                    
+
                     <div className="space-y-2 mb-5">
                       <div className="flex items-center text-xs text-gray-600">
                         <MapPin size={12} className="mr-2 text-gray-400" />
-                        <span className="truncate">{order.seller?.shopName || "Store"}</span>
+                        <span className="truncate">
+                          {order.seller?.shopName || "Store"}
+                        </span>
                       </div>
                       <div className="flex items-center text-[11px] text-gray-500 font-medium">
                         <Package size={12} className="mr-2 text-gray-400" />
@@ -845,20 +902,20 @@ const Dashboard = () => {
                     </div>
 
                     <div className="flex gap-2">
-                       <Button 
-                        variant="primary" 
-                        size="sm" 
+                      <Button
+                        variant="primary"
+                        size="sm"
                         className="flex-1 font-black text-[10px] tracking-widest uppercase h-10 shadow-lg shadow-primary/20"
-                        onClick={() => handleAcceptReturn(order.orderId)}
-                      >
+                        onClick={() => handleAcceptReturn(order.orderId)}>
                         Accept Pickup
                       </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         className="px-4 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-600 hover:bg-gray-100 h-10"
-                        onClick={() => navigate(`/delivery/order-details/${order.orderId}`)}
-                      >
+                        onClick={() =>
+                          navigate(`/delivery/order-details/${order.orderId}`)
+                        }>
                         View
                       </Button>
                     </div>
@@ -869,8 +926,12 @@ const Dashboard = () => {
                   <div className="w-14 h-14 bg-gray-50 rounded-full flex items-center justify-center mb-4 border border-gray-100 opacity-60">
                     <Package size={20} className="text-gray-400" />
                   </div>
-                  <h4 className="text-sm font-bold text-gray-800 mb-1">No returns nearby</h4>
-                  <p className="text-[11px] text-gray-400">Keep checking back for new return tasks.</p>
+                  <h4 className="text-sm font-bold text-gray-800 mb-1">
+                    No returns nearby
+                  </h4>
+                  <p className="text-[11px] text-gray-400">
+                    Keep checking back for new return tasks.
+                  </p>
                 </div>
               )}
             </motion.div>

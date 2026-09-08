@@ -16,6 +16,10 @@ import { getOrderSocket, onSellerOrderNew, onReturnDropOtp, onParcelNew } from '
 import { createSocketTokenReader } from '@core/utils/authStorage';
 import { STORAGE_KEYS } from '@core/utils/storage';
 import orderAlertSound from '@/assets/sounds/order_alert.mp3';
+import { COUNTER } from '@shared/design/tokens';
+
+/** Counter ink for the dot grid — 5.5%, per the DepotGround recipe. */
+const DOT = 'rgba(15,23,42,0.055)';
 
 const POLL_INTERVAL_MS = 15000;
 
@@ -90,10 +94,21 @@ const DashboardLayout = ({ children, navItems, title }) => {
     }, [location.pathname]);
 
     return (
-        <div className="min-h-screen bg-slate-50/60 dark:bg-slate-950 text-slate-900 dark:text-slate-100 relative antialiased selection:bg-primary/20 selection:text-primary">
-            {/* Background Ambient Glow */}
-            <div className="fixed top-0 left-0 w-full h-96 bg-gradient-to-b from-primary/[0.04] to-transparent pointer-events-none -z-10" />
-            <div className="fixed -top-40 right-0 w-96 h-96 bg-primary/[0.03] rounded-full blur-3xl pointer-events-none -z-10" />
+        <div
+            className="relative min-h-screen antialiased text-slate-900 selection:bg-[color:var(--primary)]/20"
+            style={{ background: COUNTER }}
+        >
+            {/* The counter the paperwork lies on: a dot grid at 5.5% ink, the
+                same ground the customer's note is filed against (design.md §6).
+                Replaces the ambient gradient glows, which §3 rules out. */}
+            <div
+                aria-hidden
+                className="pointer-events-none fixed inset-0 -z-10"
+                style={{
+                    backgroundImage: `radial-gradient(${DOT} 1px, transparent 1px)`,
+                    backgroundSize: '22px 22px',
+                }}
+            />
 
             <Sidebar
                 items={navItems}
@@ -103,12 +118,18 @@ const DashboardLayout = ({ children, navItems, title }) => {
             />
 
             <div className={cn(
-                "transition-all duration-300 min-h-screen flex flex-col",
-                (role === "admin" || role === "seller") ? "pl-0 md:pl-72" : "pl-72"
+                "flex min-h-screen flex-col",
+                // The topbar is fixed on mobile and sticky from md up, so only
+                // the mobile case needs to be cleared.
+                (role === "admin" || role === "seller")
+                    ? "pl-0 pt-[68px] md:pl-[272px] md:pt-0"
+                    // This branch's topbar is fixed at every width, so the
+                    // offset must not be dropped at md.
+                    : "pl-[272px] pt-[68px]"
             )}>
                 <Topbar onMenuClick={() => setIsSidebarOpen(true)} />
                 
-                <main className="flex-1 p-4 md:p-8 max-w-[1600px] w-full mx-auto">
+                <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 py-6 md:px-8 md:py-8">
                     <SellerOrdersContext.Provider
                         value={{
                             orders: role === 'seller' ? sellerOrders : [],

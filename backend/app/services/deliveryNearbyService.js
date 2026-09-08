@@ -23,6 +23,7 @@ function buildParcelDeliveryFilter() {
     isOnline: true,
     isVerified: true,
     isParcelService: true,
+    isBusy: { $ne: true },
   };
 }
 

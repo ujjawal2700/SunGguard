@@ -9,6 +9,8 @@ import Delivery from "../models/delivery.js";
 import {
   markDeliveryPartnerBusy,
   clearDeliveryPartnerBusy,
+  deliveryPartnerHasActiveJob,
+  syncDeliveryPartnerBusyFlag,
 } from "./deliveryBusyService.js";
 import {
   clearOrderTracking,
@@ -302,6 +304,12 @@ export async function deliveryAcceptAtomic(deliveryId, orderId, idempotencyKey) 
   if (!partner?.isVerified) {
     const err = new Error("Your account is pending admin approval.");
     err.statusCode = 403;
+    throw err;
+  }
+
+  if (await deliveryPartnerHasActiveJob(deliveryOid)) {
+    const err = new Error("Finish your current job before taking another.");
+    err.statusCode = 409;
     throw err;
   }
 
@@ -1562,7 +1570,7 @@ export async function verifyHandoffOtpAndDeliver(deliveryId, orderId, code) {
   // showing this rider as "live on order".
   clearOrderTracking(orderId).catch(() => {});
   clearRiderPresence(deliveryId).catch(() => {});
-  clearDeliveryPartnerBusy(deliveryId).catch(() => {});
+  syncDeliveryPartnerBusyFlag(deliveryId).catch(() => {});
 
   emitOrderStatusUpdate(
     orderId,

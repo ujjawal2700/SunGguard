@@ -6,6 +6,7 @@ import Seller from '../app/models/seller.js';
 dotenv.config();
 
 const admins = [
+    { name: 'Super Admin', email: 'superadmin@gmail.com', password: 'password123' },
     { name: 'Ankit Ahirwar', email: 'ankit@appzeto.com', password: 'Admin!@#123' },
     { name: 'Harshvardhan Panchal', email: 'harshvardhanpanc145@gmail.com', password: 'Admin!@#123' }
 ];
@@ -14,9 +15,20 @@ const sellers = [
     { name: 'Harsh', email: 'harsh@appzeto.com', password: 'Admin!@#123', shopName: 'Appzeto Store' }
 ];
 
+const DIRECT_MONGO_URI = 'mongodb://prachi:7694900512@ac-dpcwywl-shard-00-00.nd3xlri.mongodb.net:27017,ac-dpcwywl-shard-00-01.nd3xlri.mongodb.net:27017,ac-dpcwywl-shard-00-02.nd3xlri.mongodb.net:27017/SunGguard?ssl=true&authSource=admin&replicaSet=atlas-3rnco6-shard-0&retryWrites=true&w=majority';
+
 async function seed() {
     try {
-        await mongoose.connect(process.env.MONGO_URI);
+        try {
+            await mongoose.connect(process.env.MONGO_URI);
+        } catch (connErr) {
+            if (connErr.message && connErr.message.includes('EBADRESP')) {
+                console.log('SRV resolution failed (EBADRESP), connecting via direct replica set hosts...');
+                await mongoose.connect(DIRECT_MONGO_URI);
+            } else {
+                throw connErr;
+            }
+        }
         console.log('Connected to MongoDB');
 
         for (const adminData of admins) {

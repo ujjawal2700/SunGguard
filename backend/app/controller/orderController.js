@@ -27,6 +27,7 @@ import { compensateOrderCancellation } from "../services/orderCompensation.js";
 import {
   markDeliveryPartnerBusy,
   syncDeliveryPartnerBusyFlag,
+  deliveryPartnerHasActiveJob,
 } from "../services/deliveryBusyService.js";
 import { applyDeliveredSettlement } from "../services/orderSettlement.js";
 import {
@@ -474,6 +475,13 @@ export const approveCancelRefund = async (req, res) => {
       reason: updated.cancelReason || "Admin approved cancel refund to wallet",
     });
 
+    if (updated.deliveryBoy) {
+      await syncDeliveryPartnerBusyFlag(updated.deliveryBoy);
+    }
+    if (updated.returnDeliveryBoy) {
+      await syncDeliveryPartnerBusyFlag(updated.returnDeliveryBoy);
+    }
+
     emitOrderStatusUpdate(
       updated.orderId,
       { workflowStatus: WORKFLOW_STATUS.CANCELLED, cancelRequestStatus: "approved" },
@@ -719,6 +727,13 @@ export const updateOrderStatus = async (req, res) => {
             ? "Order cancelled. Online payment has been credited to your wallet."
             : "Your order has been cancelled.",
       });
+
+      if (order.deliveryBoy) {
+        await syncDeliveryPartnerBusyFlag(order.deliveryBoy);
+      }
+      if (order.returnDeliveryBoy) {
+        await syncDeliveryPartnerBusyFlag(order.returnDeliveryBoy);
+      }
     }
 
     // Handle Confirmation/Delivery (Settle Transaction for Demo)
@@ -730,6 +745,10 @@ export const updateOrderStatus = async (req, res) => {
       // - mark COD cash collected (system float)
       await order.save();
       await applyDeliveredSettlement(order, canonicalOrderId);
+
+      if (order.deliveryBoy) {
+        await syncDeliveryPartnerBusyFlag(order.deliveryBoy);
+      }
 
       emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_DELIVERED, {
         orderId: canonicalOrderId,
@@ -1054,6 +1073,13 @@ export const acceptReturnPickup = async (req, res) => {
           res,
           403,
           "Your account is pending admin approval.",
+        );
+      }
+      if (await deliveryPartnerHasActiveJob(userId)) {
+        return handleResponse(
+          res,
+          409,
+          "Finish your current job before taking another.",
         );
       }
     }
@@ -1604,6 +1630,14 @@ export const acceptOrder = async (req, res) => {
       );
     }
 
+    if (await deliveryPartnerHasActiveJob(userId)) {
+      return handleResponse(
+        res,
+        409,
+        "Finish your current job before taking another.",
+      );
+    }
+
     order.deliveryBoy = userId;
     if (order.status === "pending") {
       order.status = "confirmed";
@@ -1801,18 +1835,6 @@ export const getAssignedOrder = async (req, res) => {
         ...item,
         image: item.image || item.product?.mainImage || "",
       }));
-    }
-
-    // Normalize pricing fallback if missing
-    if (!order.pricing && order.paymentBreakdown) {
-      order.pricing = {
-        subtotal: order.paymentBreakdown.productSubtotal || 0,
-        deliveryFee: order.paymentBreakdown.deliveryFeeCharged || 0,
-        platformFee: order.paymentBreakdown.handlingFeeCharged || 0,
-        gst: order.paymentBreakdown.taxTotal || 0,
-        tip: order.paymentBreakdown.tipTotal || 0,
-        total: order.paymentBreakdown.grandTotal || 0,
-      };
     }
 
     // Normalize pricing fallback

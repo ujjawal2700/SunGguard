@@ -4,23 +4,34 @@ import Admin from '../app/models/admin.js';
 
 dotenv.config();
 
+const DIRECT_MONGO_URI = 'mongodb://prachi:7694900512@ac-dpcwywl-shard-00-00.nd3xlri.mongodb.net:27017,ac-dpcwywl-shard-00-01.nd3xlri.mongodb.net:27017,ac-dpcwywl-shard-00-02.nd3xlri.mongodb.net:27017/SunGguard?ssl=true&authSource=admin&replicaSet=atlas-3rnco6-shard-0&retryWrites=true&w=majority';
+
 const seedAdmin = async () => {
   try {
     // Connect to MongoDB
     const mongoUri = process.env.MONGO_URI;
     
-    if (!mongoUri) {
+    if (!mongoUri && !DIRECT_MONGO_URI) {
       throw new Error('MONGO_URI environment variable is not defined');
     }
 
-    await mongoose.connect(mongoUri);
+    try {
+      await mongoose.connect(mongoUri || DIRECT_MONGO_URI);
+    } catch (connErr) {
+      if (connErr.message && connErr.message.includes('EBADRESP')) {
+        console.log('SRV resolution failed (EBADRESP), connecting via direct replica set hosts...');
+        await mongoose.connect(DIRECT_MONGO_URI);
+      } else {
+        throw connErr;
+      }
+    }
     console.log('✓ Connected to MongoDB');
 
     // Admin details
     const adminData = {
-      name: process.env.ADMIN_SEED_NAME || 'Admin',
-      email: process.env.ADMIN_SEED_EMAIL || 'admin@admin.com',
-      password: process.env.ADMIN_SEED_PASSWORD || 'Admin!@#123', // Min 10 chars, uppercase, lowercase, number
+      name: process.env.ADMIN_SEED_NAME || 'Super Admin',
+      email: process.env.ADMIN_SEED_EMAIL || 'superadmin@gmail.com',
+      password: process.env.ADMIN_SEED_PASSWORD || 'password123',
       role: 'admin',
       isVerified: true,
     };
