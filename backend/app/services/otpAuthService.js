@@ -142,6 +142,22 @@ export async function issueCustomerOtp({
     throw err;
   }
 
+  // A deactivated account should not even receive an OTP — sending one and
+  // rejecting it only at verify time wastes an SMS and confuses the caller
+  // about why a code they clearly received doesn't work.
+  if (flow === "login" && customer && customer.isActive === false) {
+    otpAuditLog("customer_otp_login_deactivated", {
+      phone: maskPhone(phone),
+      ipAddress,
+    });
+    const err = new Error(
+      "Your account has been deactivated. Please contact support for help.",
+    );
+    err.statusCode = 403;
+    err.code = "ACCOUNT_DEACTIVATED";
+    throw err;
+  }
+
   if (!customer) {
     customer = await Customer.create({
       name: name || "Customer",
@@ -255,6 +271,21 @@ export async function verifyCustomerOtpCode({
   if (!customer) {
     const err = new Error("Invalid or expired OTP");
     err.statusCode = 400;
+    throw err;
+  }
+
+  // Covers the gap between an OTP being sent and the account being
+  // deactivated in between send and verify.
+  if (customer.isActive === false) {
+    otpAuditLog("customer_otp_verify_deactivated", {
+      phone: maskPhone(phone),
+      ipAddress,
+    });
+    const err = new Error(
+      "Your account has been deactivated. Please contact support for help.",
+    );
+    err.statusCode = 403;
+    err.code = "ACCOUNT_DEACTIVATED";
     throw err;
   }
 

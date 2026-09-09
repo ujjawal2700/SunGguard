@@ -57,6 +57,7 @@ const CityParcelTracking = lazy(() => import('../../modules/customer/pages/CityP
 const WaybillHistory = lazy(() => import('../../modules/customer/pages/WaybillHistory'));
 const ParcelDeliveryPage = lazy(() => import('../../modules/customer/pages/ParcelDeliveryPage'));
 const ParcelSearchTrackingPage = lazy(() => import('../../modules/customer/pages/ParcelSearchTrackingPage'));
+const ParcelDetail = lazy(() => import('../../modules/customer/pages/ParcelDetail'));
 // CAR WASH DISABLED
 // const CarWashBookingPage = lazy(() => import('../../modules/customer/pages/CarWashBookingPage'));
 // const CarWashTrackingPage = lazy(() => import('../../modules/customer/pages/CarWashTrackingPage'));
@@ -220,6 +221,7 @@ const AppRouter = () => {
                         { path: 'parcel/local', element: <ProtectedRoute><CityParcelBooking /></ProtectedRoute> },
                         { path: 'parcel/local/track/:cityParcelId', element: <ProtectedRoute><CityParcelTracking /></ProtectedRoute> },
                         { path: 'parcel/search/:id', element: <ProtectedRoute><ParcelSearchTrackingPage /></ProtectedRoute> },
+                        { path: 'parcel/outstation/:parcelId', element: <ProtectedRoute><ParcelDetail /></ProtectedRoute> },
                         // CAR WASH DISABLED — customer booking / tracking
                         // { path: 'car-wash', element: <ProtectedRoute><CarWashBookingPage /></ProtectedRoute> },
                         // { path: 'car-wash/track/:id', element: <ProtectedRoute><CarWashTrackingPage /></ProtectedRoute> },

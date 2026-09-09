@@ -161,6 +161,25 @@ const settingSchema = new mongoose.Schema(
                 default: false,
             },
         },
+
+        /**
+         * Where a rider sends COD cash back to the platform.
+         *
+         * The rider cash-deposit flow (see riderCashService.js) previously had
+         * no destination on screen at all — a rider picked "UPI" or "Bank" and
+         * typed a reference with no idea whose account it was supposed to go
+         * to. This is admin-editable (Porter → Cash Deposits) and rider-visible
+         * (read-only, via a dedicated endpoint) so the deposit form can show a
+         * real UPI ID / QR / account before the rider transfers anything.
+         */
+        cashDepositPayout: {
+            upiId: { type: String, trim: true, default: "" },
+            qrImageUrl: { type: String, trim: true, default: "" },
+            bankAccountHolder: { type: String, trim: true, default: "" },
+            bankAccountNumber: { type: String, trim: true, default: "" },
+            bankIfsc: { type: String, trim: true, default: "" },
+            bankName: { type: String, trim: true, default: "" },
+        },
     },
     {
         timestamps: true,

@@ -1,6 +1,9 @@
 import Parcel from "../models/parcel.js";
 import CityParcel from "../models/cityParcel.js";
 import DeliveryZone from "../models/deliveryZone.js";
+import Delivery from "../models/delivery.js";
+import ParcelReview from "../models/parcelReview.js";
+import CashDeposit from "../models/cashDeposit.js";
 import handleResponse from "../utils/helper.js";
 import { CITY_PARCEL_STATUS as S } from "../constants/cityParcelWorkflow.js";
 
@@ -99,6 +102,11 @@ export const adminGetPorterDashboard = async (req, res) => {
       cityUnassigned,
       cityFailed,
       cityWithheld,
+      riderTotal,
+      riderOnline,
+      riderVerified,
+      ratingAgg,
+      cashDepositsPending,
       recentPickup,
       recentCity,
     ] = await Promise.all([
@@ -153,6 +161,17 @@ export const adminGetPorterDashboard = async (req, res) => {
       }),
       CityParcel.countDocuments({ ...window, status: S.DELIVERY_FAILED }),
       CityParcel.countDocuments({ ...window, payoutWithheld: true }),
+
+      // Fleet snapshot is a point-in-time headcount, not windowed to `days` —
+      // "how many porters do we have right now", not "how many were created".
+      Delivery.countDocuments({ isParcelService: true }),
+      Delivery.countDocuments({ isParcelService: true, isOnline: true }),
+      Delivery.countDocuments({ isParcelService: true, isVerified: true }),
+      ParcelReview.aggregate([
+        { $match: { status: "approved" } },
+        { $group: { _id: null, average: { $avg: "$rating" }, count: { $sum: 1 } } },
+      ]),
+      CashDeposit.countDocuments({ status: "PENDING" }),
 
       Parcel.find(window)
         .sort({ createdAt: -1 })
@@ -210,6 +229,11 @@ export const adminGetPorterDashboard = async (req, res) => {
         margin: round2(revenue - riderPayout),
         distanceKm: round1((pickupTotals.distanceKm || 0) + (cityTotals.distanceKm || 0)),
         zones: { total: zoneTotal, active: zoneActive },
+        fleet: { total: riderTotal, online: riderOnline, verified: riderVerified },
+        rating: {
+          average: round1(ratingAgg[0]?.average || 0),
+          count: ratingAgg[0]?.count || 0,
+        },
       },
       breakdown: {
         pickup: {
@@ -231,6 +255,7 @@ export const adminGetPorterDashboard = async (req, res) => {
         failed: cityFailed,
         withheldPayouts: cityWithheld,
         refundRequests: pickupRefundRequests,
+        cashDepositsPending,
       },
       trend: buildTrend(from, days, pickupDaily, cityDaily),
       recent,

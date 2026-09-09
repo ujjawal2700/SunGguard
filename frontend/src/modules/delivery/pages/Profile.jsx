@@ -16,6 +16,7 @@ import {
   ChevronDown,
   ChevronUp,
   Wallet,
+  Banknote,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import Button from "@/shared/components/ui/Button";
@@ -144,6 +145,13 @@ const Profile = () => {
           : "Add bank account details",
       color: "text-brand-600 bg-brand-50",
       path: "/delivery/profile/bank-account",
+    },
+    {
+      icon: Banknote,
+      label: "Parcel Cash Deposit",
+      sub: "Hand back COD cash you collected",
+      color: "text-amber-600 bg-amber-50",
+      path: "/delivery/porter-cash",
     },
     {
       icon: IndianRupee,

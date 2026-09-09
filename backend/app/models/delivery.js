@@ -45,6 +45,34 @@ const deliverySchema = new mongoose.Schema(
             trim: true,
         },
 
+        bankName: {
+            type: String,
+            trim: true,
+            default: "",
+        },
+
+        /**
+         * Where withdrawals actually get paid out.
+         *
+         * Bank fields above were captured once at signup and could never be
+         * changed, and the admin approving a withdrawal was never shown any of
+         * them — they had to approve blind. These are editable by the rider
+         * from their own panel, and are sent to the admin with every
+         * withdrawal request so there is a real destination on screen.
+         */
+        upiId: {
+            type: String,
+            trim: true,
+            default: "",
+        },
+
+        /** Rider's own collect-money QR, uploaded as an image. */
+        qrImageUrl: {
+            type: String,
+            trim: true,
+            default: "",
+        },
+
         documents: {
             aadhar: { type: String },
             pan: { type: String },

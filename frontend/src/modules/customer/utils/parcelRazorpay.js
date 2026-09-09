@@ -33,7 +33,9 @@ export async function openParcelRazorpayCheckout({
   orderId,
   amount,
   currency = "INR",
-  name = "SunGguard Parcel",
+  // Callers pass the configured app name explicitly; this only covers a
+  // caller that forgets to, so it deliberately names no brand.
+  name = "Parcel Delivery",
   description = "Parcel delivery payment",
   prefill = {},
 }) {

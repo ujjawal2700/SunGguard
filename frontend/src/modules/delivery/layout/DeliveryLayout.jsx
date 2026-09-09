@@ -1329,7 +1329,7 @@ const DeliveryLayout = () => {
           <AnimatePresence>
             {activeOrder && (
               <div
-                className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-900/85 backdrop-blur-sm"
+                className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-900/85 backdrop-blur-sm max-w-md mx-auto"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="delivery-order-alert-title">
@@ -1480,7 +1480,7 @@ const DeliveryLayout = () => {
 
             {activeParcelOffer && (
               <div
-                className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-900/85 backdrop-blur-sm"
+                className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-900/85 backdrop-blur-sm max-w-md mx-auto"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="delivery-parcel-offer-title">
@@ -1642,7 +1642,7 @@ const DeliveryLayout = () => {
 
             {activeParcel && (
               <div
-                className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-900/85 backdrop-blur-sm"
+                className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-900/85 backdrop-blur-sm max-w-md mx-auto"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="delivery-parcel-alert-title">

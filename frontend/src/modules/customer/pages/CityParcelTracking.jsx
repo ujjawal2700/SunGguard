@@ -19,6 +19,7 @@ import {
   PrimaryButton, GhostButton,
 } from "../components/sunguard/kit";
 import { unwrap } from "@core/api/unwrap";
+import { useSettings } from "@core/context/SettingsContext";
 
 const getCustomerToken = createSocketTokenReader(STORAGE_KEYS.AUTH_CUSTOMER);
 
@@ -97,7 +98,7 @@ const ConsignmentNote = ({ parcel, phone }) => {
       <div className="bg-sg-surface-inverse px-5 py-5 text-sg-ink-inverse">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="sg-heading text-[15px]">SunGguard</p>
+            <p className="sg-heading text-[15px]">{appName}</p>
             <Label className="mt-0.5 !text-current opacity-55">Consignment Note</Label>
           </div>
           <span className="sg-label rounded-full border border-current/30 px-2.5 py-1 opacity-70">
@@ -280,6 +281,8 @@ const FailurePrompt = ({ parcel, onResolved }) => {
 const CityParcelTracking = () => {
   const { cityParcelId } = useParams();
   const navigate = useNavigate();
+  const { settings } = useSettings();
+  const appName = settings?.appName || "App";
   const [parcel, setParcel] = useState(null);
   const [timeline, setTimeline] = useState([]);
   const [loading, setLoading] = useState(true);

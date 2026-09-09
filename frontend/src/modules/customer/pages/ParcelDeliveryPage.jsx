@@ -27,9 +27,22 @@ import {
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import {
+  checkPersonName,
+  checkPhone,
+  checkPincode,
+  checkAddressLine,
+  checkPlaceName,
+  firstProblem,
+  sanitizeNameInput,
+  sanitizePhoneInput,
+  NAME_MAX,
+  PHONE_MAX,
+} from "../utils/bookingValidation";
 import { parcelApi } from "../services/parcelApi";
 import MapPicker from "../../../shared/components/MapPicker";
 import { useAuth } from "@core/context/AuthContext";
+import { useSettings } from "@core/context/SettingsContext";
 import { openParcelRazorpayCheckout } from "../utils/parcelRazorpay";
 import ParcelReviewsSection from "../components/parcel/ParcelReviewsSection";
 import {
@@ -537,6 +550,8 @@ const HandoffDiagram = ({ counter, destination, compact = false }) => {
 
 const ParcelDeliveryPage = () => {
   const { user } = useAuth();
+  const { settings } = useSettings();
+  const appName = settings?.appName || "App";
   const navigate = useNavigate();
   const reduce = useReducedMotion();
   const [loading, setLoading] = useState(false);
@@ -586,7 +601,10 @@ const ParcelDeliveryPage = () => {
   const [weightUnit, setWeightUnit] = useState("kg"); // 'kg' | 'gm'
   const [description, setDescription] = useState("");
   const [deliverySpeed, setDeliverySpeed] = useState("normal");
-  const [paymentMethod, setPaymentMethod] = useState("COD");
+  // No default — Cash silently pre-selected meant the "Request pickup" button
+  // could be tapped without the customer ever consciously choosing how to
+  // pay. Left blank until they pick one on the Pay step.
+  const [paymentMethod, setPaymentMethod] = useState("");
   const [courierCompanies, setCourierCompanies] = useState(
     FALLBACK_COURIER_COMPANIES,
   );
@@ -908,13 +926,18 @@ const ParcelDeliveryPage = () => {
   const validateStep = useCallback(
     (index) => {
       if (index === 0) {
-        if (!pickupDetails.name?.trim() || !pickupDetails.phone?.trim())
-          return "Add the sender name and phone.";
-        if (!pickupDetails.address?.trim())
-          return "Add the house / street address.";
-        if (!pickupDetails.city?.trim()) return "Add the city.";
-        if (!pickupDetails.state?.trim()) return "Add the state.";
-        if (!pickupDetails.pincode?.trim()) return "Add the pincode.";
+        // Rules match the server so the customer is stopped here rather
+        // than after a round trip. A trim()-only gate used to accept
+        // "12345" as a name and "abc" as the phone a rider has to call.
+        const problem = firstProblem(
+          checkPersonName(pickupDetails.name, "Sender name"),
+          checkPhone(pickupDetails.phone, "Sender phone"),
+          checkAddressLine(pickupDetails.address, "House / street address"),
+          checkPlaceName(pickupDetails.city, "City"),
+          checkPlaceName(pickupDetails.state, "State"),
+          checkPincode(pickupDetails.pincode),
+        );
+        if (problem) return problem;
         if (!pickupDetails.lat || !pickupDetails.lng)
           return "Set the pickup point on the map.";
         return null;
@@ -1151,7 +1174,7 @@ const ParcelDeliveryPage = () => {
               orderId: razorpay.orderId,
               amount: razorpay.amount,
               currency: razorpay.currency || "INR",
-              name: "SunGguard",
+              name: appName,
               description: `Parcel delivery · ₹${createdParcel.fare}`,
               prefill: {
                 name: pickupDetails.name || user?.name || "",
@@ -1227,7 +1250,8 @@ const ParcelDeliveryPage = () => {
     !pickupDetails.lat ||
     !selectedCity ||
     !selectedCourier ||
-    (isOtherCourier && !customCourierNameSaved);
+    (isOtherCourier && !customCourierNameSaved) ||
+    !paymentMethod;
 
   const totalFare = fareEstimation ? Number(fareEstimation.fare) || 0 : 0;
 
@@ -1329,9 +1353,11 @@ const ParcelDeliveryPage = () => {
                                   onChange={(e) =>
                                     setPickupDetails((p) => ({
                                       ...p,
-                                      name: e.target.value,
+                                      name: sanitizeNameInput(e.target.value),
                                     }))
                                   }
+                                  maxLength={NAME_MAX}
+                                  autoComplete="name"
                                   className={cn(
                                     inputClass(
                                       Boolean(pickupDetails.name?.trim()),
@@ -1357,9 +1383,11 @@ const ParcelDeliveryPage = () => {
                                   onChange={(e) =>
                                     setPickupDetails((p) => ({
                                       ...p,
-                                      phone: e.target.value,
+                                      phone: sanitizePhoneInput(e.target.value),
                                     }))
                                   }
+                                  maxLength={PHONE_MAX}
+                                  autoComplete="tel"
                                   className={cn(
                                     inputClass(
                                       Boolean(pickupDetails.phone?.trim()),
@@ -2210,6 +2238,8 @@ const ParcelDeliveryPage = () => {
                     <Truck size={18} className="animate-pulse" />
                     Booking…
                   </>
+                ) : !paymentMethod ? (
+                  "Select a payment method"
                 ) : paymentMethod === "UPI" ? (
                   <>
                     Pay <Money value={totalFare} /> and request

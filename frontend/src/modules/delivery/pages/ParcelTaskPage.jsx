@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { GoogleMap, Marker, OverlayView } from "@react-google-maps/api";
-import { MapPin, CheckCircle2 } from "lucide-react";
+import { MapPin, CheckCircle2, QrCode, Phone, Package } from "lucide-react";
 import { toast } from "sonner";
 import { parcelApi } from "../../customer/services/parcelApi";
 import ParcelProofCapture from "../components/ParcelProofCapture";
+import CodOnlineQrSheet from "../components/CodOnlineQrSheet";
 import {
   getCachedDeliveryPartnerLocation,
   getCurrentPositionWithCache,
@@ -74,6 +75,8 @@ const ParcelTaskPage = () => {
   });
   const [sheetVh, setSheetVh] = useState(DEFAULT_SHEET_VH);
   const [isSheetDragging, setIsSheetDragging] = useState(false);
+  // Customer at the door asking to pay by UPI instead of cash.
+  const [codQrOpen, setCodQrOpen] = useState(false);
   const mapRef = useRef(null);
   const routePolylineRef = useRef(null);
   const assignedRequestRef = useRef({ inFlight: false, lastFetchedAt: 0 });
@@ -223,7 +226,27 @@ const ParcelTaskPage = () => {
   const courierCompanyName =
     parcel?.courierCompany || parcel?.dropAddress?.name || "";
   const courierCity = parcel?.destinationCity || "";
-  const customerName = parcel?.pickupAddress?.name || "Customer";
+  const customerName =
+    parcel?.pickupAddress?.name || parcel?.customerId?.name || "Customer";
+  const customerPhone = parcel?.pickupAddress?.phone || parcel?.customerId?.phone || "";
+
+  const isParcelCod = String(parcel?.paymentMethod).toUpperCase() === "COD";
+  const codAmount = Number(parcel?.codSettlement?.collectAmount || parcel?.fare || 0);
+
+  /**
+   * What the customer described at booking. The backend already sends all of
+   * it (riderGetAssignedParcels only strips the OTP) — the rider screen just
+   * never rendered any of it, so riders arrived not knowing what they were
+   * picking up.
+   */
+  const packageLines = useMemo(() => {
+    const pkg = parcel?.packageDetails || {};
+    return [
+      pkg.packageSegment,
+      pkg.packageCategory || pkg.packageType,
+      pkg.weight ? pkg.weight + " kg" : "",
+    ].filter(Boolean);
+  }, [parcel?.packageDetails]);
 
   // Primary job: go to customer and collect parcel. After pickup, route to warehouse (outstation) or seller hub.
   const routeEndpoints = useMemo(() => {
@@ -663,21 +686,40 @@ const ParcelTaskPage = () => {
             : `Drop at ${dropName}${distanceLabel ? ` · ${distanceLabel}` : ""}`}
           {parcel.deliverySpeed === "express" ? " · 10 min" : " · 30 min"}
         </p>
-        {String(parcel.paymentMethod).toUpperCase() === "COD" && (
+        {isParcelCod && (
           <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
             <p className="text-[10px] font-black uppercase tracking-wider text-amber-700">
               Collect COD from customer
             </p>
             <p className="text-lg font-black text-amber-900">
-              ₹{Number(parcel.codSettlement?.collectAmount || parcel.fare || 0).toFixed(2)}
+              ₹{codAmount.toFixed(2)}
             </p>
             <p className="text-[10px] font-semibold text-amber-700/80">
-              {isOutstation
-                ? "Collect at customer pickup, then hand cash at warehouse"
-                : "Collect at customer pickup, then hand cash to seller hub"}
+              Collect at customer pickup, then deposit the cash from Profile → Parcel Cash Deposit
             </p>
+            {goingToCustomer && (
+              <button
+                type="button"
+                onClick={() => setCodQrOpen(true)}
+                className="mt-2 w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-600 py-2 text-[11px] font-black text-white"
+              >
+                <QrCode className="h-3.5 w-3.5" />
+                Customer wants to pay online
+              </button>
+            )}
           </div>
         )}
+        {parcel.paymentStatus === "PAID" &&
+          String(parcel.paymentMethod).toUpperCase() !== "COD" && (
+            <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+              <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">
+                Already paid online
+              </p>
+              <p className="text-[10px] font-semibold text-emerald-700/80">
+                Do not collect any cash from the customer.
+              </p>
+            </div>
+          )}
         {(courierCompanyName || courierCity) && (
           <p className="text-[10px] text-slate-400 mt-0.5">
             Courier: {courierCompanyName || "—"}
@@ -726,8 +768,14 @@ const ParcelTaskPage = () => {
                   Customer location {goingToCustomer ? "(go here)" : ""}
                 </p>
                 <p className="text-xs font-semibold text-slate-800">{customerName}</p>
-                {parcel.pickupAddress?.phone ? (
-                  <p className="text-[11px] text-slate-500 mt-0.5">{parcel.pickupAddress.phone}</p>
+                {customerPhone ? (
+                  <a
+                    href={`tel:${customerPhone}`}
+                    className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-brand-50 px-2.5 py-1 text-[11px] font-black text-brand-700"
+                  >
+                    <Phone className="h-3 w-3" />
+                    {customerPhone}
+                  </a>
                 ) : null}
                 <p className="text-xs text-slate-500 mt-0.5">{parcel.pickupAddress?.fullAddress}</p>
                 {goingToCustomer && distanceLabel ? (
@@ -769,6 +817,27 @@ const ParcelTaskPage = () => {
               </div>
             )}
           </div>
+
+          {(packageLines.length > 0 || parcel.packageDetails?.description) && (
+            <div className="rounded-xl bg-slate-50 border border-slate-100 px-2.5 py-2">
+              <div className="flex items-start gap-2">
+                <Package className="h-4 w-4 mt-0.5 text-slate-500" />
+                <div>
+                  <p className="text-[11px] font-black text-slate-700">What you are picking up</p>
+                  {packageLines.length > 0 && (
+                    <p className="text-xs font-semibold text-slate-800">
+                      {packageLines.join(" · ")}
+                    </p>
+                  )}
+                  {parcel.packageDetails?.description ? (
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      {parcel.packageDetails.description}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          )}
 
           {!pickupPoint && (
             <div className="rounded-xl border border-amber-100 bg-amber-50/80 px-3 py-2 text-[11px] text-amber-900">
@@ -893,7 +962,16 @@ const ParcelTaskPage = () => {
           </div>
         </div>
       </div>
+      <CodOnlineQrSheet
+        open={codQrOpen}
+        kind="parcel"
+        bookingId={parcelId}
+        amount={codAmount}
+        onClose={() => setCodQrOpen(false)}
+        onPaid={() => loadAssignedParcel(true, { force: true })}
+      />
     </div>
+
   );
 };
 

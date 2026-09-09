@@ -70,7 +70,7 @@ const CustomerAuth = () => {
     const { settings } = useSettings();
     const reduce = useReducedMotion();
 
-    const carrier = settings?.appName || 'SunGguard';
+    const carrier = settings?.appName || 'App';
     const logoUrl = settings?.logoUrl || '';
 
     const [mode, setMode] = useState('login');

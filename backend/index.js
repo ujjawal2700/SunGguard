@@ -6,6 +6,7 @@ import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import { Server } from "socket.io";
 import setupRoutes from "./app/routes/index.js";
@@ -167,7 +168,11 @@ function createApp() {
       return compression.filter(req, res);
     },
   }));
-  app.use(helmet());
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: "cross-origin" },
+    })
+  );
   app.use(cors(corsOptions));
   app.use(globalApiRateLimiter);
 
@@ -180,8 +185,23 @@ function createApp() {
     }),
   );
 
-  app.use(express.json({ limit: process.env.API_JSON_LIMIT || "1mb" }));
-  app.use(express.urlencoded({ limit: process.env.API_URLENCODED_LIMIT || "1mb", extended: true }));
+  // Static storage fallback for uploaded media
+  const uploadsDir = path.join(process.cwd(), "uploads");
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+  app.use(
+    "/uploads",
+    (req, res, next) => {
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      next();
+    },
+    express.static(uploadsDir)
+  );
+
+  app.use(express.json({ limit: process.env.API_JSON_LIMIT || "25mb" }));
+  app.use(express.urlencoded({ limit: process.env.API_URLENCODED_LIMIT || "25mb", extended: true }));
 
   // Root endpoint
   app.get("/", (req, res) => {

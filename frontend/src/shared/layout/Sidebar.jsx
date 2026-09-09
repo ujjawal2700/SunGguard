@@ -237,7 +237,7 @@ const SidebarContent = ({ items, onClose, openMenu, handleToggle }) => {
     const { settings } = useSettings();
     const { user, role, logout } = useAuth();
     const location = useLocation();
-    const appName = settings?.appName || "SunGguard";
+    const appName = settings?.appName || "App";
     const logoUrl = settings?.logoUrl || "";
     const [logoBroken, setLogoBroken] = useState(false);
     const showLogo = Boolean(logoUrl) && !logoBroken;

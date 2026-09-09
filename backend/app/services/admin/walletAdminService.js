@@ -122,7 +122,13 @@ export async function getDeliveryWithdrawalsData({ page, limit, skip }) {
 
   const [transactions, total] = await Promise.all([
     Transaction.find(query)
-      .populate("user", "name phone")
+      // The payout destination has to travel with the request. Populating
+      // only name+phone meant the admin approved a withdrawal without ever
+      // seeing where the money was supposed to go.
+      .populate(
+        "user",
+        "name phone accountHolder accountNumber ifsc bankName upiId qrImageUrl",
+      )
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)

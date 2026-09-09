@@ -115,12 +115,22 @@ const ParcelDetailDrawer = ({ cityParcelId, onClose }) => {
                   <p className="text-[13px] text-slate-800">
                     {parcel.pickupAddress?.fullAddress}
                   </p>
+                  {parcel.pickupAddress?.addressNote ? (
+                    <p className="text-[12px] text-slate-500">
+                      {parcel.pickupAddress.addressNote}
+                    </p>
+                  ) : null}
                 </div>
                 <div>
                   <p className="text-[11px] uppercase tracking-wider text-slate-400">Drop</p>
                   <p className="text-[13px] text-slate-800">
                     {parcel.dropAddress?.fullAddress}
                   </p>
+                  {parcel.dropAddress?.addressNote ? (
+                    <p className="text-[12px] text-slate-500">
+                      {parcel.dropAddress.addressNote}
+                    </p>
+                  ) : null}
                 </div>
                 <Row label="Distance">{parcel.distanceKm} km</Row>
               </div>
@@ -130,10 +140,21 @@ const ParcelDetailDrawer = ({ cityParcelId, onClose }) => {
               <Section title="Customer" icon={User}>
                 <Row label="Name">{parcel.customerId?.name || "—"}</Row>
                 <Row label="Phone">{parcel.customerId?.phone || "—"}</Row>
+                {/* Who actually handed the parcel over, when the booker
+                    was filling in for someone else. */}
+                {parcel.sender?.name || parcel.sender?.phone ? (
+                  <>
+                    <Row label="Handed over by">{parcel.sender?.name || "—"}</Row>
+                    <Row label="Their phone">{parcel.sender?.phone || "—"}</Row>
+                  </>
+                ) : null}
               </Section>
               <Section title="Receiver" icon={User}>
                 <Row label="Name">{parcel.receiver?.name || "—"}</Row>
                 <Row label="Phone">{parcel.receiver?.phone || "—"}</Row>
+                {parcel.receiver?.altPhone ? (
+                  <Row label="Alternate phone">{parcel.receiver.altPhone}</Row>
+                ) : null}
                 <Row label="Anyone may collect">
                   {parcel.receiver?.allowAlternate ? "Yes" : "No"}
                 </Row>
@@ -174,6 +195,29 @@ const ParcelDetailDrawer = ({ cityParcelId, onClose }) => {
               <Row label="Payment">
                 {parcel.paymentMethod} · {parcel.paymentStatus}
               </Row>
+              {/* COD cash: where it is, not just that the booking was COD.
+                  RIDER_HOLDING means the rider still has it and owes a
+                  deposit; REMITTED_TO_ADMIN means an approved deposit
+                  cleared it. */}
+              {String(parcel.paymentMethod).toUpperCase() === "COD" ? (
+                <>
+                  <Row label="Cash to collect">
+                    {money(parcel.codCollection?.amount ?? parcel.fare)}
+                  </Row>
+                  <Row label="Cash status">
+                    {(parcel.codCollection?.status || "—").replace(/_/g, " ")}
+                  </Row>
+                  {parcel.codCollection?.collectedAt ? (
+                    <Row label="Collected">{when(parcel.codCollection.collectedAt)}</Row>
+                  ) : null}
+                  {parcel.codCollection?.remittedAt ? (
+                    <Row label="Remitted">{when(parcel.codCollection.remittedAt)}</Row>
+                  ) : null}
+                </>
+              ) : null}
+              {parcel.codOnlineQr?.paidAt ? (
+                <Row label="Paid by QR">{when(parcel.codOnlineQr.paidAt)}</Row>
+              ) : null}
               <Row label="Rider earning">{money(parcel.riderEarning)}</Row>
               {Number(parcel.riderReturnEarning) > 0 ? (
                 <Row label="Return leg pay">{money(parcel.riderReturnEarning)}</Row>

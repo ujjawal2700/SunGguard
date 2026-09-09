@@ -20,6 +20,23 @@ const phone = trimmed
     "string.pattern.base": "Enter a valid 10-digit mobile number",
   });
 
+/**
+ * A person's name, not a phone number typed into the wrong box.
+ *
+ * Requires at least one letter and allows only letters, spaces and the
+ * punctuation real names carry (. ' -). "9876543210" and "@@@" are rejected;
+ * "R. K. Sharma" and "D'Souza" are not. Unicode letters are allowed so
+ * non-Latin scripts still work.
+ */
+const personName = trimmed
+  .min(2)
+  .max(80)
+  .pattern(/^(?=.*\p{L})[\p{L}\p{M}\s.'-]+$/u)
+  .messages({
+    "string.pattern.base": "Enter a real name — letters only, no digits",
+    "string.min": "Name looks too short",
+  });
+
 const lat = Joi.number().min(-90).max(90).required();
 const lng = Joi.number().min(-180).max(180).required();
 
@@ -43,7 +60,7 @@ const packageSchema = Joi.object({
 });
 
 const receiverSchema = Joi.object({
-  name: trimmed.min(2).max(80).required().messages({
+  name: personName.required().messages({
     "any.required": "We need a name for whoever is receiving this",
   }),
   phone: phone.required().messages({
@@ -51,6 +68,16 @@ const receiverSchema = Joi.object({
   }),
   altPhone: phone.allow("").optional(),
   allowAlternate: Joi.boolean().optional(),
+});
+
+/** Whoever is handing the parcel over at pickup — not always the account holder. */
+const senderSchema = Joi.object({
+  name: personName.required().messages({
+    "any.required": "We need a name for whoever is handing the parcel over",
+  }),
+  phone: phone.required().messages({
+    "any.required": "We need a number the rider can call at pickup",
+  }),
 });
 
 /* ========================= Customer ========================= */
@@ -65,6 +92,9 @@ export const calculateCityFareSchema = Joi.object({
 export const createCityParcelSchema = Joi.object({
   pickupAddress: addressSchema.required(),
   dropAddress: addressSchema.required(),
+  // Optional so a client that predates the sender field still books; the
+  // booking form has always collected it and now actually sends it.
+  sender: senderSchema.optional(),
   receiver: receiverSchema.required(),
   package: packageSchema.required(),
   deliverySpeed: trimmed.valid("normal", "express").optional(),

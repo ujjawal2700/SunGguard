@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
-  MapPin, Package, Navigation2, Phone, Loader2, IndianRupee, ChevronRight,
+  MapPin, Package, Navigation2, Phone, Loader2, IndianRupee, ChevronRight, QrCode,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,7 @@ import ProximityBanner from "../components/cityparcel/ProximityBanner";
 import DeliveryVerifySheet from "../components/cityparcel/DeliveryVerifySheet";
 import FailedAttemptSheet from "../components/cityparcel/FailedAttemptSheet";
 import ReturnLegCard from "../components/cityparcel/ReturnLegCard";
+import CodOnlineQrSheet from "../components/CodOnlineQrSheet";
 import {
   getCurrentPositionWithCache,
   saveDeliveryPartnerLocation,
@@ -45,6 +46,8 @@ const CityParcelTaskPage = () => {
   const [pickupProof, setPickupProof] = useState("");
   const [verifyingPickup, setVerifyingPickup] = useState(false);
   const [releasing, setReleasing] = useState(false);
+  // Customer at the door asking to pay by UPI instead of cash.
+  const [codQrOpen, setCodQrOpen] = useState(false);
 
   /* ---------------- location ---------------- */
 
@@ -190,6 +193,7 @@ const CityParcelTaskPage = () => {
 
   const step = SIMPLE_STEPS[parcel.status];
   const isCod = String(parcel.paymentMethod).toUpperCase() === "COD";
+  const codAmount = Number(parcel.codCollection?.amount ?? parcel.fare ?? 0);
 
   return (
     <div className="mx-auto w-full max-w-lg px-4 pb-28 pt-4 space-y-4">
@@ -239,20 +243,47 @@ const CityParcelTaskPage = () => {
           </div>
         ))}
 
-        <div className="flex items-center gap-3 pt-1 border-t border-slate-100 text-[12px] text-slate-500">
-          <span className="inline-flex items-center gap-1">
-            <Package className="h-3.5 w-3.5" />
-            {parcel.package?.packageType} · {parcel.package?.weightKg} kg
-          </span>
-          <span>{parcel.distanceKm} km</span>
+        <div className="space-y-1 pt-1 border-t border-slate-100 text-[12px] text-slate-500">
+          <div className="flex items-center gap-3">
+            <span className="inline-flex items-center gap-1">
+              <Package className="h-3.5 w-3.5" />
+              {parcel.package?.packageType} · {parcel.package?.weightKg} kg
+            </span>
+            <span>{parcel.distanceKm} km</span>
+          </div>
+          {parcel.package?.description ? (
+            <p className="text-slate-500">{parcel.package.description}</p>
+          ) : null}
+          <p className="text-slate-500">
+            From {parcel.sender?.name || parcel.customerId?.name || "customer"}
+            {parcel.receiver?.name ? ` · To ${parcel.receiver.name}` : ""}
+          </p>
         </div>
       </div>
 
       {isCod && !parcel.pickedUpAt ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 space-y-2">
           <p className="text-[13px] font-semibold text-amber-900">
-            Collect ₹{(parcel.codCollection?.amount ?? 0).toFixed(0)} cash at pickup
+            Collect ₹{codAmount.toFixed(0)} cash at pickup
           </p>
+          <p className="text-[11px] text-amber-700/80">
+            Deposit it later from Profile → Parcel Cash Deposit.
+          </p>
+          <button
+            type="button"
+            onClick={() => setCodQrOpen(true)}
+            className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-600 py-2 text-[12px] font-semibold text-white"
+          >
+            <QrCode className="h-3.5 w-3.5" />
+            Customer wants to pay online
+          </button>
+        </div>
+      ) : null}
+
+      {parcel.paymentStatus === "PAID" && !isCod ? (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5">
+          <p className="text-[13px] font-semibold text-emerald-900">Already paid online</p>
+          <p className="text-[11px] text-emerald-700/80">Do not collect any cash.</p>
         </div>
       ) : null}
 
@@ -369,7 +400,16 @@ const CityParcelTaskPage = () => {
           Call customer
         </a>
       ) : null}
+      <CodOnlineQrSheet
+        open={codQrOpen}
+        kind="city_parcel"
+        bookingId={cityParcelId}
+        amount={codAmount}
+        onClose={() => setCodQrOpen(false)}
+        onPaid={load}
+      />
     </div>
+
   );
 };
 

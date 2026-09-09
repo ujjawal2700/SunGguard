@@ -21,6 +21,7 @@ import {
   computeRiderParcelEarnings,
 } from "../services/parcelWorkflowService.js";
 import { resetAllParcelData } from "../services/parcelDataResetService.js";
+import { recordCodCollection } from "../services/riderCashService.js";
 import { generateParcelOtp } from "../utils/otp.js";
 import { getCachedRoute } from "../services/mapsRouteService.js";
 import {
@@ -301,6 +302,67 @@ export const calculateFare = async (req, res) => {
   }
 };
 
+/* ==========================================================================
+   Booking input rules
+   ==========================================================================
+   `POST /parcels/create` carried no field-level validation at all: it checked
+   that pickupAddress existed and then trusted every value inside it. A name
+   could be "12345", the phone the rider has to call could be "abc", and a
+   missing lat/lng became NaN that only surfaced as a confusing failure deep
+   in the distance lookup. The city-parcel module validates with Joi before
+   the controller runs; this is the same guarantee for the outstation one.
+   ========================================================================== */
+
+/** Indian mobile: 10 digits starting 6-9, with an optional +91 / 0 prefix. */
+const PHONE_PATTERN = /^(?:\+?91[-\s]?|0)?[6-9]\d{9}$/;
+/** At least one letter, and nothing but letters, spaces and name punctuation. */
+const PERSON_NAME_PATTERN = /^(?=.*\p{L})[\p{L}\p{M}\s.'-]+$/u;
+const PINCODE_PATTERN = /^[1-9]\d{5}$/;
+
+/**
+ * Validates the person + place the rider is being sent to.
+ * @returns {string|null} the message to reject with, or null when usable.
+ */
+function checkBookingAddress(address, label) {
+  if (!address || typeof address !== "object") return `${label} is required`;
+
+  const name = String(address.name || "").trim();
+  if (name.length < 2 || name.length > 80 || !PERSON_NAME_PATTERN.test(name)) {
+    return `Enter a valid ${label.toLowerCase()} name — letters only, no digits`;
+  }
+
+  const phone = String(address.phone || "").trim().replace(/[\s-]/g, "");
+  if (!PHONE_PATTERN.test(phone)) {
+    return `Enter a valid 10-digit ${label.toLowerCase()} phone number`;
+  }
+
+  const fullAddress = String(address.fullAddress || "").trim();
+  if (fullAddress.length < 5 || fullAddress.length > 500) {
+    return `${label} address looks too short to find`;
+  }
+
+  // A pin that never got set arrives as undefined and becomes NaN downstream,
+  // where it reads as a routing failure rather than a missing field.
+  const lat = Number(address.lat);
+  const lng = Number(address.lng);
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
+    return `Set the ${label.toLowerCase()} point on the map`;
+  }
+  if (!Number.isFinite(lng) || lng < -180 || lng > 180) {
+    return `Set the ${label.toLowerCase()} point on the map`;
+  }
+
+  if (address.pincode !== undefined && String(address.pincode).trim()) {
+    if (!PINCODE_PATTERN.test(String(address.pincode).trim())) {
+      return `Enter a valid 6-digit ${label.toLowerCase()} pincode`;
+    }
+  }
+
+  return null;
+}
+
+const PARCEL_PAYMENT_METHODS = ["UPI", "CARD", "WALLET", "COD"];
+
 export const createParcel = async (req, res) => {
   try {
     const {
@@ -320,6 +382,22 @@ export const createParcel = async (req, res) => {
 
     if (!pickupAddress || !dropAddress || !packageDetails || !paymentMethod) {
       return handleResponse(res, 400, "Missing required details");
+    }
+
+    const method = String(paymentMethod).trim().toUpperCase();
+    if (!PARCEL_PAYMENT_METHODS.includes(method)) {
+      return handleResponse(res, 400, "Choose a valid payment method");
+    }
+
+    // The pickup person is who the rider calls and meets; the drop person
+    // matters only for a local parcel, since an outstation one is
+    // overwritten with the warehouse below.
+    const pickupProblem = checkBookingAddress(pickupAddress, "Pickup");
+    if (pickupProblem) return handleResponse(res, 400, pickupProblem);
+
+    const description = String(packageDetails.description || "").trim();
+    if (description.length > 500) {
+      return handleResponse(res, 400, "Package description must be under 500 characters");
     }
 
     const courierKey = courierCompanyId || courierCompany;
@@ -437,6 +515,14 @@ export const createParcel = async (req, res) => {
         : "outstation";
     const isOutstation = parcelType !== "local";
 
+    // An outstation drop is replaced with the warehouse below, so validating
+    // what the client sent would reject a value nobody ends up using. A local
+    // parcel really is delivered to this address, so it has to hold up.
+    if (!isOutstation) {
+      const dropProblem = checkBookingAddress(dropAddress, "Drop");
+      if (dropProblem) return handleResponse(res, 400, dropProblem);
+    }
+
     // Shared with the quote endpoint, so the price the customer was shown is
     // the price this books against.
     const firstMile = await resolveFirstMile({
@@ -513,13 +599,13 @@ export const createParcel = async (req, res) => {
         billableDays: priced.billableDays,
       },
       paymentStatus: "PENDING",
-      paymentMethod,
-      codSettlement: buildInitialCodSettlement(paymentMethod, priced.fare),
+      paymentMethod: method,
+      codSettlement: buildInitialCodSettlement(method, priced.fare),
       otp,
       status: "REQUESTED",
     });
 
-    const method = String(paymentMethod || "").toUpperCase();
+    // `method` is the normalized value validated at the top of this handler.
 
     // UPI: create Razorpay order; broadcast only after payment verify.
     if (method === "UPI") {
@@ -649,7 +735,33 @@ export const trackParcel = async (req, res) => {
       return handleResponse(res, 404, "Parcel not found");
     }
 
+    /**
+     * Anyone signed in used to be able to read any parcel by guessing its id,
+     * which handed out the customer's name, phone, full pickup address and the
+     * pickup OTP. Only the people with a reason to see it can now: the
+     * customer who booked it, the rider carrying it, and admins.
+     *
+     * A stranger gets 404 rather than 403, so the endpoint cannot be used to
+     * confirm that an id exists.
+     */
+    const viewerId = String(req.user?.id || "");
+    const viewerRole = String(req.user?.role || "");
+    const ownerId = String(parcel.customerId?._id || parcel.customerId || "");
+    const riderId = String(parcel.deliveryPartnerId?._id || parcel.deliveryPartnerId || "");
+    const isStaff = ["admin", "parcel_admin"].includes(viewerRole);
+
+    if (!isStaff && viewerId !== ownerId && viewerId !== riderId) {
+      return handleResponse(res, 404, "Parcel not found");
+    }
+
     const plain = parcel.toObject ? parcel.toObject() : { ...parcel };
+
+    // The OTP is the customer's to read out at pickup; the rider verifies it
+    // rather than being shown it.
+    if (viewerId === riderId && viewerId !== ownerId) {
+      delete plain.otp;
+    }
+
     const deadline = getParcelPickupDeadline(plain);
     const lateEligible = canCustomerRequestLateRefund(plain);
     const lateSummary = getParcelLatePickupSummary(plain);
@@ -1455,17 +1567,31 @@ export const riderUpdateStatus = async (req, res) => {
     parcel.status = status;
 
     // COD: rider collects full fare cash from customer at pickup.
+    let recordedCodCollection = null;
     if (status === "PICKED_UP" && isParcelCod(parcel)) {
       if (!parcel.codSettlement) parcel.codSettlement = {};
       parcel.codSettlement.collectAmount = getParcelCollectAmount(parcel);
       if (parcel.codSettlement.status === "COLLECT_PENDING" || !parcel.codSettlement.status) {
         parcel.codSettlement.status = "RIDER_HOLDING";
         parcel.codSettlement.riderCollectedAt = new Date();
+        recordedCodCollection = parcel.codSettlement.collectAmount;
       }
     }
 
     // OTP is only verified at customer pickup. Hub drop needs no OTP/SMS.
     await parcel.save();
+
+    // Put the cash on the rider's ledger so the admin cash screens see it.
+    // Upserted on a deterministic reference, so a repeated status call
+    // cannot count the same pickup twice.
+    if (recordedCodCollection) {
+      await recordCodCollection({
+        riderId: parcel.deliveryPartnerId,
+        kind: "parcel",
+        refId: parcel._id,
+        amount: recordedCodCollection,
+      });
+    }
 
     const populated = await Parcel.findById(parcel._id)
       .populate("deliveryPartnerId", "name phone vehicleType vehicleNumber profileImage location")
@@ -1501,7 +1627,7 @@ export const riderUpdateStatus = async (req, res) => {
       msg = `Rider has reached your pickup location. Share pickup OTP ${parcel.otp} with the captain.`;
     }
     else if (status === "PICKED_UP") msg = "Rider has picked up your parcel. Live tracking has ended.";
-    else if (status === "OUT_FOR_DELIVERY") msg = "Your parcel has been collected and is being dropped at the seller hub.";
+    else if (status === "OUT_FOR_DELIVERY") msg = "Your parcel has been collected and is on its way to our hub.";
     else if (status === "CANCELLED") msg = "Your parcel delivery was cancelled by the rider.";
 
     await sendParcelNotification(
@@ -1570,17 +1696,34 @@ export const riderCompleteDelivery = async (req, res) => {
     parcel.status = "DELIVERED";
     parcel.deliveryProofImage = hubProofUrl;
 
-    // COD: rider hands full cash to seller; admin payment waits for seller Razorpay remit.
-    // UPI/online: already PAID at booking.
+    /**
+     * COD: the cash stays with the rider until they deposit it and an admin
+     * approves that deposit.
+     *
+     * This used to stamp WITH_SELLER on every COD parcel. Outstation parcels
+     * carry `sellerId: null` (they drop at a warehouse, and nobody logs in as
+     * a warehouse), so the only endpoint that could clear WITH_SELLER — the
+     * seller's Razorpay remit — was unreachable, and the cash was stranded
+     * permanently. Only a parcel genuinely routed to a seller hub keeps that
+     * hop; everything else goes through the rider deposit flow.
+     *
+     * UPI/online is already PAID at booking.
+     */
     if (isParcelCod(parcel)) {
       if (!parcel.codSettlement) parcel.codSettlement = {};
       parcel.codSettlement.collectAmount = getParcelCollectAmount(parcel);
-      parcel.codSettlement.status = "WITH_SELLER";
-      parcel.codSettlement.handedToSellerAt = new Date();
       if (!parcel.codSettlement.riderCollectedAt) {
         parcel.codSettlement.riderCollectedAt = new Date();
       }
-      // Keep paymentStatus PENDING until seller remits to admin.
+
+      if (parcel.sellerId) {
+        parcel.codSettlement.status = "WITH_SELLER";
+        parcel.codSettlement.handedToSellerAt = new Date();
+      } else if (parcel.codSettlement.status !== "REMITTED_TO_ADMIN") {
+        parcel.codSettlement.status = "RIDER_HOLDING";
+      }
+
+      // Stays PENDING until the cash actually reaches admin.
       if (parcel.paymentStatus !== "PAID") {
         parcel.paymentStatus = "PENDING";
       }
@@ -1631,8 +1774,8 @@ export const riderCompleteDelivery = async (req, res) => {
       "customer",
       "Parcel dropped at hub",
       isParcelCod(parcel)
-        ? `Your parcel was dropped at the seller hub. COD ₹${getParcelCollectAmount(parcel)} was collected at pickup.`
-        : `Your parcel was dropped at the seller hub successfully.`,
+        ? `Your parcel reached our hub. COD ₹${getParcelCollectAmount(parcel)} was collected at pickup.`
+        : `Your parcel reached our hub successfully.`,
       NOTIFICATION_EVENTS.PARCEL_DELIVERED,
       parcel._id
     );

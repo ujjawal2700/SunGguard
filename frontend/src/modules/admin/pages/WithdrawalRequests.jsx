@@ -28,6 +28,73 @@ import Pagination from '@shared/components/ui/Pagination';
 import { adminApi } from "../services/adminApi";
 import { toast } from "sonner";
 
+/**
+ * Where the money is supposed to go.
+ *
+ * The admin used to approve a withdrawal knowing only a name, a phone number
+ * and an amount — the account details lived on a different screen entirely.
+ * `meta.payout` is the snapshot taken when the request was raised; `user` is
+ * whatever the rider has saved right now. The snapshot wins, so editing
+ * payout details after requesting cannot silently redirect a payment.
+ */
+const resolvePayout = (req) => {
+    const snapshot = req?.meta?.payout;
+    const live = req?.user || {};
+    const source = snapshot && Object.values(snapshot).some(Boolean) ? snapshot : live;
+    return {
+        accountHolder: source.accountHolder || "",
+        accountNumber: source.accountNumber || "",
+        ifsc: source.ifsc || "",
+        bankName: source.bankName || "",
+        upiId: source.upiId || "",
+        qrImageUrl: source.qrImageUrl || "",
+        fromSnapshot: Boolean(snapshot && Object.values(snapshot).some(Boolean)),
+    };
+};
+
+const PayoutDestination = ({ request, compact = false }) => {
+    const p = resolvePayout(request);
+    const hasBank = Boolean(p.accountNumber && p.ifsc);
+
+    if (!hasBank && !p.upiId && !p.qrImageUrl) {
+        return (
+            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-600">
+                <AlertCircle className="h-3.5 w-3.5" />
+                No payout details on file
+            </span>
+        );
+    }
+
+    return (
+        <div className={cn("space-y-0.5", compact ? "" : "text-sm")}>
+            {p.upiId && (
+                <p className="font-mono text-[11px] text-slate-700">UPI · {p.upiId}</p>
+            )}
+            {hasBank && (
+                <>
+                    <p className="font-mono text-[11px] text-slate-700">A/C · {p.accountNumber}</p>
+                    <p className="text-[10px] font-semibold text-slate-400">
+                        {p.ifsc}
+                        {p.bankName ? ` · ${p.bankName}` : ""}
+                        {p.accountHolder ? ` · ${p.accountHolder}` : ""}
+                    </p>
+                </>
+            )}
+            {p.qrImageUrl && (
+                <a
+                    href={p.qrImageUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-[10px] font-bold text-primary hover:underline"
+                >
+                    <CreditCard className="h-3 w-3" />
+                    View QR
+                </a>
+            )}
+        </div>
+    );
+};
+
 const WithdrawalRequests = () => {
     const [activeTab, setActiveTab] = useState('sellers');
     const [searchTerm, setSearchTerm] = useState('');
@@ -260,6 +327,7 @@ const WithdrawalRequests = () => {
                             <thead>
                                 <tr className="bg-slate-50/50 border-b border-slate-100">
                                     <th className="ds-table-header-cell pl-8">Requester Details</th>
+                                    <th className="ds-table-header-cell">Pay To</th>
                                     <th className="ds-table-header-cell">Transaction ID</th>
                                     <th className="ds-table-header-cell text-center">Amount Requested</th>
                                     <th className="ds-table-header-cell">Gateway Status</th>
@@ -288,6 +356,9 @@ const WithdrawalRequests = () => {
                                                     </div>
                                                 </div>
                                             </div>
+                                        </td>
+                                        <td className="px-6 py-5">
+                                            <PayoutDestination request={req} compact />
                                         </td>
                                         <td className="px-6 py-5">
                                             <span className="text-[10px] font-mono font-bold text-slate-500">{req.reference || req._id}</span>
@@ -333,7 +404,7 @@ const WithdrawalRequests = () => {
                                 ))}
                                 {currentData.length === 0 && (
                                     <tr>
-                                        <td colSpan="5" className="px-6 py-20 text-center">
+                                        <td colSpan="6" className="px-6 py-20 text-center">
                                             <div className="flex flex-col items-center">
                                                 <div className="p-4 bg-slate-50 rounded-full mb-4">
                                                     <FileText className="h-8 w-8 text-slate-200" />
@@ -397,6 +468,15 @@ const WithdrawalRequests = () => {
                                 <p className="ds-label mb-2">Request Amount</p>
                                 <h4 className="text-2xl font-black text-slate-900">₹{Math.abs(selectedRequest.amount).toLocaleString()}</h4>
                                 <p className="text-[10px] font-semibold text-slate-400 mt-1">Reference: {selectedRequest.reference}</p>
+                            </Card>
+                            <Card className="p-5 border-none bg-slate-50 ring-1 ring-slate-100 rounded-xl">
+                                <p className="ds-label mb-2">Pay To</p>
+                                <PayoutDestination request={selectedRequest} />
+                                <p className="text-[10px] font-semibold text-slate-400 mt-2">
+                                    {selectedRequest?.meta?.payout
+                                        ? "Captured when the request was raised."
+                                        : "Live from the partner's profile."}
+                                </p>
                             </Card>
                         </div>
 

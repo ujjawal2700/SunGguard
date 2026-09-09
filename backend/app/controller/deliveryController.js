@@ -417,40 +417,120 @@ export const getMyDeliveryOrders = async (req, res) => {
 /* ===============================
    REQUEST WITHDRAWAL (Delivery)
 ================================ */
+/** Below this a payout costs more in transfer fees than it moves. */
+const MIN_WITHDRAWAL_AMOUNT = 100;
+
+/**
+ * Earnings a rider may draw against.
+ *
+ * Deliberately the same formula as `deliveryEarningsService.getDeliveryEarnings`
+ * so the number here can never disagree with the one on the rider's own
+ * earnings screen. The previous version summed EVERY settled row — including
+ * cash-settlement debits and adjustments — which made the two screens quote
+ * different balances for the same rider.
+ */
+function computeWithdrawableBalance(transactions) {
+    const earned = transactions
+        .filter(
+            (t) =>
+                t.status === "Settled" &&
+                ["Delivery Earning", "Incentive", "Bonus"].includes(t.type),
+        )
+        .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0);
+
+    const withdrawn = transactions
+        .filter((t) => t.type === "Withdrawal" && t.status === "Settled")
+        .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0);
+
+    const inFlight = transactions
+        .filter(
+            (t) =>
+                t.type === "Withdrawal" &&
+                (t.status === "Pending" || t.status === "Processing"),
+        )
+        .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0);
+
+    return {
+        available: roundCurrency(Math.max(0, earned - withdrawn - inFlight)),
+        inFlight: roundCurrency(inFlight),
+    };
+}
+
 export const requestWithdrawal = async (req, res) => {
     try {
         const deliveryBoyId = req.user.id;
-        const { amount } = req.body;
+        const amount = roundCurrency(Number(req.body?.amount));
 
-        if (!amount || amount <= 0) {
+        if (!Number.isFinite(amount) || amount <= 0) {
             return handleResponse(res, 400, "Please enter a valid amount");
         }
-
-        // 1. Calculate current available balance
-        const transactions = await Transaction.find({ user: deliveryBoyId, userModel: 'Delivery' });
-
-        const settledBalance = transactions
-            .filter(t => t.status === 'Settled')
-            .reduce((acc, t) => acc + t.amount, 0);
-
-        const pendingPayouts = transactions
-            .filter(t => (t.status === 'Pending' || t.status === 'Processing') && t.type === 'Withdrawal')
-            .reduce((acc, t) => acc + Math.abs(t.amount), 0);
-
-        const availableBalance = settledBalance - pendingPayouts;
-
-        if (amount > availableBalance) {
-            return handleResponse(res, 400, `Insufficient balance. Available: ₹${availableBalance}`);
+        if (amount < MIN_WITHDRAWAL_AMOUNT) {
+            return handleResponse(
+                res,
+                400,
+                `Minimum withdrawal is ₹${MIN_WITHDRAWAL_AMOUNT}`,
+            );
         }
 
-        // 2. Create Withdrawal Transaction
+        // A withdrawal with no destination is one the admin has to approve
+        // blind, then chase the rider for account details out-of-band.
+        const rider = await Delivery.findById(deliveryBoyId)
+            .select("name phone accountHolder accountNumber ifsc bankName upiId qrImageUrl")
+            .lean();
+        if (!rider) {
+            return handleResponse(res, 404, "Delivery partner not found");
+        }
+
+        const payout = {
+            accountHolder: rider.accountHolder || "",
+            accountNumber: rider.accountNumber || "",
+            ifsc: rider.ifsc || "",
+            bankName: rider.bankName || "",
+            upiId: rider.upiId || "",
+            qrImageUrl: rider.qrImageUrl || "",
+        };
+        const hasBank = Boolean(payout.accountHolder && payout.accountNumber && payout.ifsc);
+        if (!hasBank && !payout.upiId && !payout.qrImageUrl) {
+            return handleResponse(
+                res,
+                400,
+                "Add your payout details first — bank account, UPI ID or a QR image",
+            );
+        }
+
+        const transactions = await Transaction.find({
+            user: deliveryBoyId,
+            userModel: "Delivery",
+        })
+            .select("type status amount")
+            .lean();
+
+        const { available, inFlight } = computeWithdrawableBalance(transactions);
+
+        // One request at a time. Two pending requests against one balance is
+        // how a rider ends up paid twice for the same earnings.
+        if (inFlight > 0) {
+            return handleResponse(
+                res,
+                409,
+                `You already have a withdrawal of ₹${inFlight} awaiting approval`,
+            );
+        }
+
+        if (amount > available) {
+            return handleResponse(res, 400, `Insufficient balance. Available: ₹${available}`);
+        }
+
         const withdrawal = await Transaction.create({
             user: deliveryBoyId,
             userModel: "Delivery",
             type: "Withdrawal",
             amount: -Math.abs(amount),
             status: "Pending",
-            reference: `WDR-DL-${Date.now()}`
+            reference: `WDR-DL-${Date.now()}`,
+            // Snapshotted so the admin sees the destination as it stood when
+            // the request was raised, even if the rider edits it afterwards.
+            meta: { payout, requestedBalance: available },
         });
 
         return handleResponse(res, 201, "Withdrawal request submitted successfully", withdrawal);

@@ -255,10 +255,12 @@ const WaybillHistory = () => {
                 <WaybillCard
                   key={`${row.kind}-${row.id}`}
                   row={row}
-                  onOpen={
-                    row.kind === "local"
-                      ? (r) => navigate(`/parcel/local/track/${r.id}`)
-                      : undefined
+                  onOpen={(r) =>
+                    navigate(
+                      r.kind === "local"
+                        ? `/parcel/local/track/${r.id}`
+                        : `/parcel/outstation/${r.id}`,
+                    )
                   }
                 />
               ))}
@@ -270,10 +272,12 @@ const WaybillHistory = () => {
                 <WaybillCard
                   key={`${row.kind}-${row.id}`}
                   row={row}
-                  onOpen={
-                    row.kind === "local"
-                      ? (r) => navigate(`/parcel/local/track/${r.id}`)
-                      : undefined
+                  onOpen={(r) =>
+                    navigate(
+                      r.kind === "local"
+                        ? `/parcel/local/track/${r.id}`
+                        : `/parcel/outstation/${r.id}`,
+                    )
                   }
                 />
               ))}

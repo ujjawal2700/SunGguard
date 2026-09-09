@@ -57,6 +57,7 @@ import {
   CITY_PARCEL_OTP_TYPE,
   CITY_PARCEL_EVENT_ACTOR,
 } from "../constants/cityParcelWorkflow.js";
+import { recordCodCollection } from "../services/riderCashService.js";
 import logger from "../services/logger.js";
 
 /** Turn a thrown service error into the status code it asked for. */
@@ -178,6 +179,7 @@ export const createCityParcel = async (req, res) => {
     const {
       pickupAddress,
       dropAddress,
+      sender,
       receiver,
       package: pkg,
       deliverySpeed = "normal",
@@ -203,6 +205,13 @@ export const createCityParcel = async (req, res) => {
 
     const parcel = await CityParcel.createWithReference({
       customerId: req.user.id,
+      // Who is physically at pickup. The booking form has always asked for
+      // this and then dropped it, so the rider arrived knowing only the
+      // account name and the admin could not say who handed the parcel over.
+      sender: {
+        name: String(sender?.name || "").trim(),
+        phone: String(sender?.phone || "").trim(),
+      },
       receiver: {
         name: receiver.name,
         phone: receiver.phone,
@@ -340,9 +349,18 @@ export const verifyPayment = async (req, res) => {
         razorpaySignature,
       });
     } catch (sigErr) {
-      await CityParcel.findByIdAndUpdate(cityParcelId, {
-        $set: { paymentStatus: "FAILED" },
-      });
+      /**
+       * Deliberately leaves the booking PENDING.
+       *
+       * A signature that does not verify means "this receipt cannot be
+       * trusted", not "the customer's payment failed" — and this used to
+       * write FAILED, which permanently bricked the booking. A mangled or
+       * re-posted receipt from a customer who was mid-checkout would flip
+       * their own booking to FAILED, and the real payment could then never
+       * be applied to it. FAILED belongs to a gateway that actually reports
+       * a failed payment; an untrusted receipt just gets refused, and the
+       * customer can complete or retry checkout against the same order.
+       */
       logger.warn("City parcel payment verification failed", {
         referenceId: parcel.referenceId,
         reason: sigErr?.code || sigErr?.message,
@@ -775,6 +793,18 @@ export const riderVerifyPickup = async (req, res) => {
       location,
       note: "Collected from the customer",
     });
+
+    // Put the collected cash on the rider's ledger so the admin cash screens
+    // see it. Upserted on a deterministic reference, so re-running this
+    // cannot count the same pickup twice.
+    if (isCod) {
+      await recordCodCollection({
+        riderId: req.user.id,
+        kind: "city_parcel",
+        refId: cityParcelId,
+        amount: updated.codCollection?.amount || updated.fare,
+      });
+    }
 
     // The receiver's code goes out now, so it is waiting on their phone
     // by the time the rider arrives.

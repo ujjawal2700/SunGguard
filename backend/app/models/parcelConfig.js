@@ -226,7 +226,15 @@ parcelConfigSchema.statics.getOrCreate = async function () {
     config.packageCategories = DEFAULT_PACKAGE_CATEGORIES.map((c) => ({ ...c }));
     dirty = true;
   }
-  if (config.maxWeightKg == null || config.maxWeightKg <= 0 || Number(config.maxWeightKg) === 5) {
+  // Repairs a missing or nonsensical limit only.
+  //
+  // This used to also reset the value whenever it was exactly 5 — a one-off
+  // correction for an old bad default that was left running on every call.
+  // The effect was that an admin could set Max Weight to 5 kg on the pricing
+  // screen, see it save, and have the next booking silently put it back to 1,
+  // refusing every parcel over a kilo with no explanation. 5 is a perfectly
+  // valid limit and is now kept.
+  if (config.maxWeightKg == null || !(Number(config.maxWeightKg) > 0)) {
     config.maxWeightKg = 1;
     dirty = true;
   }

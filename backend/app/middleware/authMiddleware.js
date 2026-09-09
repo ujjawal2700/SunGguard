@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import handleResponse from "../utils/helper.js";
 import Seller from "../models/seller.js";
+import Customer from "../models/customer.js";
 
 function extractJwtFromHeaders(req) {
   const authHeader = String(req.headers.authorization || "").trim();
@@ -122,5 +123,38 @@ export const requireApprovedSeller = async (req, res, next) => {
     next();
   } catch (error) {
     return handleResponse(res, 500, "Unable to validate seller approval status");
+  }
+};
+
+/* ===============================
+   Ensure a customer's JWT can't outlive an admin deactivating them.
+   The token itself stays valid until it expires — this middleware is what
+   actually enforces "deactivated customers can't use the app" on routes
+   that carry real consequences (placing a booking, reading a live profile).
+================================ */
+export const requireActiveCustomer = async (req, res, next) => {
+  try {
+    if (req.user?.role !== "customer" && req.user?.role !== "user") {
+      return next();
+    }
+
+    const customer = await Customer.findById(req.user.id).select("isActive").lean();
+
+    if (!customer) {
+      return handleResponse(res, 401, "Account not found");
+    }
+
+    if (customer.isActive === false) {
+      return handleResponse(
+        res,
+        403,
+        "Your account has been deactivated. Please contact support for help.",
+        { code: "ACCOUNT_DEACTIVATED" },
+      );
+    }
+
+    next();
+  } catch (error) {
+    return handleResponse(res, 500, "Unable to validate account status");
   }
 };

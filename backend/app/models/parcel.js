@@ -151,8 +151,13 @@ const parcelSchema = new mongoose.Schema(
       required: true,
     },
     /**
-     * COD cash chain:
-     * Customer → Rider (collect) → Seller (handover) → Admin (Razorpay remit)
+     * COD cash chain: Customer -> Rider (collect at pickup) -> Admin.
+     *
+     * The rider deposits what they collected and an admin approves it; see
+     * services/riderCashService.js. WITH_SELLER survives only for the legacy
+     * seller-hub route (parcels that actually carry a sellerId). Outstation
+     * parcels drop at a warehouse, which nobody logs in as, so they go from
+     * RIDER_HOLDING straight to REMITTED_TO_ADMIN when a deposit is approved.
      */
     codSettlement: {
       collectAmount: { type: Number, default: 0 },
@@ -174,6 +179,22 @@ const parcelSchema = new mongoose.Schema(
       remittedAt: { type: Date, default: null },
       sellerRazorpayOrderId: { type: String, default: null },
       sellerRazorpayPaymentId: { type: String, default: null },
+    },
+    /**
+     * A COD customer choosing to pay digitally at the door instead.
+     *
+     * When this is paid the booking stops being COD — `paymentMethod` becomes
+     * UPI and `codSettlement` goes back to NOT_APPLICABLE — so the money
+     * lands with admin directly and never enters the rider deposit pipeline.
+     */
+    codOnlineQr: {
+      qrId: { type: String, default: null },
+      imageUrl: { type: String, default: null },
+      /** Paise, matching what Razorpay was asked to collect. */
+      amount: { type: Number, default: 0 },
+      createdAt: { type: Date, default: null },
+      paidAt: { type: Date, default: null },
+      paymentId: { type: String, default: null },
     },
     /** Razorpay order id for UPI/online parcel payments. */
     razorpayOrderId: {

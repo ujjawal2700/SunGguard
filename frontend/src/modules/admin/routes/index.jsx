@@ -60,11 +60,19 @@ const AdminParcelDashboard = React.lazy(
   () => import("../pages/AdminParcelDashboard"),
 );
 const PorterDashboard = React.lazy(() => import("../pages/porter/PorterDashboard"));
+const PorterBanners = React.lazy(() => import("../pages/porter/PorterBanners"));
 const DeliveryZones = React.lazy(() => import("../pages/porter/DeliveryZones"));
 const PorterRiderPayouts = React.lazy(
   () => import("../pages/porter/PorterRiderPayouts"),
 );
 const PorterTickets = React.lazy(() => import("../pages/porter/PorterTickets"));
+const PorterCustomers = React.lazy(() => import("../pages/porter/PorterCustomers"));
+const PorterCustomerDetail = React.lazy(() => import("../pages/porter/PorterCustomerDetail"));
+const FleetZoneMap = React.lazy(() => import("../pages/porter/FleetZoneMap"));
+const PorterWallet = React.lazy(() => import("../pages/porter/PorterWallet"));
+const PorterCashDeposits = React.lazy(
+  () => import("../pages/porter/PorterCashDeposits"),
+);
 const CityParcelAdmin = React.lazy(() => import("../pages/CityParcelAdmin"));
 const DeliveryFunds = React.lazy(() => import("../pages/DeliveryFunds"));
 const AdminWallet = React.lazy(() => import("../pages/AdminWallet"));
@@ -169,10 +177,31 @@ const navItems = [
     end: true,
   },
   {
+    label: "App Banners",
+    path: "/admin/porter/banners",
+    icon: Sparkles,
+    color: "amber",
+    group: "porter",
+  },
+  {
     label: "Delivery Zones",
     path: "/admin/porter/zones",
     icon: Layers,
     color: "violet",
+    group: "porter",
+  },
+  {
+    label: "Porter Wallet",
+    path: "/admin/porter/wallet",
+    icon: Wallet,
+    color: "purple",
+    group: "porter",
+  },
+  {
+    label: "Cash Deposits",
+    path: "/admin/porter/cash-deposits",
+    icon: Banknote,
+    color: "amber",
     group: "porter",
   },
   {
@@ -190,6 +219,13 @@ const navItems = [
     group: "porter",
   },
   {
+    label: "Porter Customers",
+    path: "/admin/porter/customers",
+    icon: Users,
+    color: "sky",
+    group: "porter",
+  },
+  {
     label: "Delivery Drivers",
     icon: Truck,
     color: "emerald",
@@ -198,6 +234,7 @@ const navItems = [
       { label: "Active Drivers", path: "/admin/delivery-boys/active" },
       { label: "Waiting for Review", path: "/admin/delivery-boys/pending" },
       { label: "Track Drivers", path: "/admin/tracking" },
+      { label: "Live Fleet Map", path: "/admin/delivery-boys/live-map" },
       { label: "Send Money", path: "/admin/delivery-funds" },
     ],
   },
@@ -275,6 +312,10 @@ const navItems = [
     path: "/admin/settings",
     icon: Settings,
     color: "slate",
+    // Branding tab here sets appName/logoUrl/faviconUrl — the one place
+    // that drives the name and icon shown across admin, customer, and
+    // delivery. Tagged porter so it stays reachable while Quick is hidden.
+    group: "porter",
   },
   { label: "My Profile", path: "/admin/profile", icon: User, color: "indigo" },
   { label: "System Settings", path: "/admin/env", icon: Terminal, color: "dark" },
@@ -348,10 +389,16 @@ const AdminRoutes = () => {
         <Route path="/city-parcels" element={<CityParcelAdmin />} />
         <Route path="/city-parcels/:tab" element={<CityParcelAdmin />} />
         <Route path="/porter" element={<PorterDashboard />} />
+        <Route path="/porter/banners" element={<PorterBanners />} />
         <Route path="/porter/zones" element={<DeliveryZones />} />
+        <Route path="/porter/wallet" element={<PorterWallet />} />
+        <Route path="/porter/cash-deposits" element={<PorterCashDeposits />} />
         <Route path="/porter/rider-payouts" element={<PorterRiderPayouts />} />
         <Route path="/porter/support" element={<PorterTickets />} />
+        <Route path="/porter/customers" element={<PorterCustomers />} />
+        <Route path="/porter/customers/:id" element={<PorterCustomerDetail />} />
         <Route path="/tracking" element={<FleetTracking />} />
+        <Route path="/delivery-boys/live-map" element={<FleetZoneMap />} />
         <Route path="/delivery-funds" element={<DeliveryFunds />} />
         <Route path="/wallet" element={<AdminWallet />} />
         <Route path="/withdrawals" element={<WithdrawalRequests />} />

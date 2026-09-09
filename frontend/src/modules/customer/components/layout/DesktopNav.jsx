@@ -21,7 +21,7 @@ const DesktopNav = () => {
     const reduce = useReducedMotion();
     const { settings } = useSettings();
 
-    const carrier = settings?.appName || 'SunGguard';
+    const carrier = settings?.appName || 'App';
     const active = getActiveIndex(location.pathname);
 
     // The breakpoint lives on the sticky element itself: wrapping it in a

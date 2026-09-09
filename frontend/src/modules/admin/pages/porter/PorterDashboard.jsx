@@ -12,6 +12,10 @@ import {
     Layers,
     Route,
     Boxes,
+    Users,
+    ShieldCheck,
+    Star,
+    Banknote,
 } from "lucide-react";
 import {
     AreaChart,
@@ -58,12 +62,13 @@ const tooltipStyle = {
     padding: "10px 14px",
 };
 
-/** The four counters that mean someone has to do something. */
+/** The counters that mean someone has to do something. */
 const ATTENTION = [
     { key: "unassigned", label: "Unassigned", hint: "No rider yet" },
     { key: "failed", label: "Delivery failed", hint: "Needs a return call" },
     { key: "withheldPayouts", label: "Payouts withheld", hint: "Blocked rider pay" },
     { key: "refundRequests", label: "Refund requests", hint: "Awaiting a decision" },
+    { key: "cashDepositsPending", label: "Cash deposits", hint: "Awaiting review" },
 ];
 
 const PorterDashboard = () => {
@@ -260,7 +265,7 @@ const PorterDashboard = () => {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
                         {ATTENTION.map((item) => {
                             const count = attention[item.key] || 0;
                             return (
@@ -293,6 +298,66 @@ const PorterDashboard = () => {
                     </div>
                 </div>
             </Card>
+
+            {/* Fleet & quality */}
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 md:gap-6">
+                {[
+                    {
+                        label: "Total Porters",
+                        value: Number(overview.fleet?.total || 0).toLocaleString("en-IN"),
+                        icon: Users,
+                        tint: "bg-sky-500/10 text-sky-600 border-sky-200 dark:border-sky-900",
+                        note: `${overview.fleet?.online || 0} online right now`,
+                    },
+                    {
+                        label: "Verified Riders",
+                        value: Number(overview.fleet?.verified || 0).toLocaleString("en-IN"),
+                        icon: ShieldCheck,
+                        tint: "bg-teal-500/10 text-teal-600 border-teal-200 dark:border-teal-900",
+                        note: overview.fleet?.total
+                            ? `${Math.round(((overview.fleet?.verified || 0) / overview.fleet.total) * 100)}% of fleet KYC-verified`
+                            : "No porters yet",
+                    },
+                    {
+                        label: "Customer Rating",
+                        value: overview.rating?.count ? overview.rating.average.toFixed(1) : "—",
+                        icon: Star,
+                        tint: "bg-yellow-500/10 text-yellow-600 border-yellow-200 dark:border-yellow-900",
+                        note: overview.rating?.count
+                            ? `From ${overview.rating.count} review${overview.rating.count === 1 ? "" : "s"}`
+                            : "No reviews yet",
+                    },
+                    {
+                        label: "Pending Cash Deposits",
+                        value: Number(attention.cashDepositsPending || 0).toLocaleString("en-IN"),
+                        icon: Banknote,
+                        tint: "bg-rose-500/10 text-rose-600 border-rose-200 dark:border-rose-900",
+                        note: "COD deposits awaiting review",
+                    },
+                ].map((kpi) => (
+                    <div
+                        key={kpi.label}
+                        className="flex flex-col justify-between rounded-3xl border border-slate-200/90 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+                    >
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 md:text-sm">
+                                {kpi.label}
+                            </span>
+                            <div className={cn("rounded-2xl border p-3 shadow-sm", kpi.tint)}>
+                                <kpi.icon className="h-5 w-5" />
+                            </div>
+                        </div>
+                        <div className="mt-4">
+                            <h3 className="font-mono text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white md:text-4xl">
+                                {kpi.value}
+                            </h3>
+                            <p className="mt-2 truncate text-xs font-medium text-slate-400">
+                                {kpi.note}
+                            </p>
+                        </div>
+                    </div>
+                ))}
+            </div>
 
             {/* Charts */}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

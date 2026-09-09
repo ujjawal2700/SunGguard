@@ -70,6 +70,20 @@ const cityParcelSchema = new mongoose.Schema(
     },
 
     /**
+     * Who is actually standing at point A with the parcel.
+     *
+     * Usually the account holder, but not always — people book on behalf of
+     * a shop, a relative, or a colleague. The booking form has always asked
+     * for this and then thrown it away, so the rider arrived with only the
+     * account name and the admin could not answer "who handed this over".
+     * Defaults are empty rather than required so older bookings still load.
+     */
+    sender: {
+      name: { type: String, trim: true, default: "" },
+      phone: { type: String, trim: true, default: "" },
+    },
+
+    /**
      * The person waiting at point B. No account, no payment, no app —
      * they receive an OTP by SMS and take the parcel.
      */
@@ -185,6 +199,23 @@ const cityParcelSchema = new mongoose.Schema(
       },
       collectedAt: { type: Date, default: null },
       remittedAt: { type: Date, default: null },
+    },
+
+    /**
+     * A COD customer choosing to pay digitally at pickup instead.
+     *
+     * When this is paid the booking stops being COD — `paymentMethod` becomes
+     * UPI and `codCollection` goes back to NOT_APPLICABLE — so the money
+     * lands with admin directly and never enters the rider deposit pipeline.
+     */
+    codOnlineQr: {
+      qrId: { type: String, default: null },
+      imageUrl: { type: String, default: null },
+      /** Paise, matching what Razorpay was asked to collect. */
+      amount: { type: Number, default: 0 },
+      createdAt: { type: Date, default: null },
+      paidAt: { type: Date, default: null },
+      paymentId: { type: String, default: null },
     },
 
     /** Credited to the rider on DELIVERED, plus any return-leg payout. */
@@ -426,6 +457,8 @@ export const RIDER_SAFE_FIELDS = [
   "referenceId",
   "status",
   "pickupAddress",
+  // Who the rider is meeting at point A, and the number to call.
+  "sender",
   "dropAddress",
   "package",
   // Needed so the rider feed can drop jobs whose zone the rider is outside.
@@ -433,6 +466,11 @@ export const RIDER_SAFE_FIELDS = [
   "distanceKm",
   "deliverySpeed",
   "paymentMethod",
+  // Without paymentStatus the rider app cannot tell an already-paid job
+  // from an unpaid one, and codOnlineQr is what lets it resume a
+  // doorstep pay-by-QR that is already in flight.
+  "paymentStatus",
+  "codOnlineQr",
   "codCollection",
   "riderEarning",
   "pickupEta",

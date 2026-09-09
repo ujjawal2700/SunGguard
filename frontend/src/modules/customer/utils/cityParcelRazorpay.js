@@ -8,7 +8,12 @@ import { openParcelRazorpayCheckout } from "./parcelRazorpay";
  * the gateway's signed receipt, which the server then verifies. Nothing here
  * decides whether a payment succeeded.
  */
-export async function openCityParcelCheckout({ razorpay, parcel, customer = {} }) {
+export async function openCityParcelCheckout({
+  razorpay,
+  parcel,
+  customer = {},
+  appName = "App",
+}) {
   if (!razorpay?.orderId || !razorpay?.keyId) {
     throw new Error("Payment could not be started");
   }
@@ -18,7 +23,7 @@ export async function openCityParcelCheckout({ razorpay, parcel, customer = {} }
     orderId: razorpay.orderId,
     amount: razorpay.amount,
     currency: razorpay.currency || "INR",
-    name: "SunGguard",
+    name: appName,
     description: `City delivery ${parcel?.referenceId || ""}`.trim(),
     prefill: {
       name: customer.name || "",

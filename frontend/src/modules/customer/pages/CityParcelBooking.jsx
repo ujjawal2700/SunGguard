@@ -7,6 +7,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@core/context/AuthContext";
+import { useSettings } from "@core/context/SettingsContext";
 import { cityParcelApi } from "../services/cityParcelApi";
 import { openCityParcelCheckout } from "../utils/cityParcelRazorpay";
 import LocationPicker from "../components/sunguard/LocationPicker";
@@ -16,6 +17,17 @@ import {
   PrimaryButton, GhostButton,
 } from "../components/sunguard/kit";
 import { unwrap } from "@core/api/unwrap";
+import {
+  checkPersonName,
+  checkPhone,
+  sanitizeNameInput,
+  sanitizePhoneInput,
+  firstProblem,
+  NAME_MAX,
+  PHONE_MAX,
+  DESCRIPTION_MAX,
+  LANDMARK_MAX,
+} from "../utils/bookingValidation";
 
 /**
  * Local delivery booking: FROM → TO → WHAT → PAY.
@@ -81,7 +93,11 @@ const AddressStep = ({
           <User className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-sg-ink-3" />
           <input
             value={person.name}
-            onChange={(e) => onPerson({ ...person, name: e.target.value })}
+            // Digits are stripped as they are typed rather than rejected on
+            // submit — a phone number in the name box is the commonest slip.
+            onChange={(e) => onPerson({ ...person, name: sanitizeNameInput(e.target.value) })}
+            maxLength={NAME_MAX}
+            autoComplete="name"
             placeholder="Full name"
             className={cn(inputClass, "pl-10")}
           />
@@ -94,8 +110,10 @@ const AddressStep = ({
           <input
             value={person.phone}
             onChange={(e) =>
-              onPerson({ ...person, phone: e.target.value.replace(/[^\d+ ]/g, "") })
+              onPerson({ ...person, phone: sanitizePhoneInput(e.target.value) })
             }
+            maxLength={PHONE_MAX}
+            autoComplete="tel"
             inputMode="tel"
             placeholder="+91 00000 00000"
             className={cn(inputClass, "pl-10")}
@@ -111,6 +129,7 @@ const AddressStep = ({
           rows={2}
           value={value.line}
           onChange={(e) => onChange({ ...value, line: e.target.value })}
+          maxLength={LANDMARK_MAX}
           placeholder="Flat no, building, floor"
           className={cn(inputClass, "resize-none")}
         />
@@ -120,6 +139,7 @@ const AddressStep = ({
         <input
           value={value.landmark}
           onChange={(e) => onChange({ ...value, landmark: e.target.value })}
+          maxLength={LANDMARK_MAX}
           placeholder="Near City Mall"
           className={inputClass}
         />
@@ -167,6 +187,8 @@ function useZonePin(address, setZone) {
 const CityParcelBooking = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { settings } = useSettings();
+  const appName = settings?.appName || "App";
 
   const [step, setStep] = useState(0);
   const [config, setConfig] = useState(null);
@@ -177,7 +199,10 @@ const CityParcelBooking = () => {
   const [sender, setSender] = useState({ name: "", phone: "" });
   const [receiver, setReceiver] = useState({ name: "", phone: "", allowAlternate: false });
   const [pkg, setPkg] = useState({ packageType: "", weightKg: "", description: "" });
-  const [payment, setPayment] = useState("UPI");
+  // No default — UPI silently pre-selected meant "Pay ₹X" could be tapped
+  // without the customer ever consciously choosing how to pay. Left blank
+  // until they pick one on the Pay step.
+  const [payment, setPayment] = useState("");
   const [quote, setQuote] = useState(null);
   const [quoting, setQuoting] = useState(false);
   const [quoteError, setQuoteError] = useState(null);
@@ -288,13 +313,40 @@ const CityParcelBooking = () => {
     return null;
   }, [step, pickupZone, dropZone]);
 
-  const canContinue = useMemo(() => {
-    if (zoneIssue) return false;
-    if (step === 0) return addressReady(pickup) && sender.name.trim() && sender.phone.trim();
-    if (step === 1) return addressReady(drop) && receiver.name.trim() && receiver.phone.trim();
-    if (step === 2) return pkg.packageType && Number(pkg.weightKg) > 0;
-    return Boolean(quote);
-  }, [step, pickup, drop, sender, receiver, pkg, quote, zoneIssue]);
+  /**
+   * The problem with the current step, or null. A trim()-only gate used to
+   * let "12345" through as a name and "abc" as a phone number, which the
+   * customer only discovered when a rider could not reach them.
+   */
+  const stepProblem = useMemo(() => {
+    if (zoneIssue) return zoneIssue;
+
+    if (step === 0) {
+      if (!addressReady(pickup)) return "Set the pickup point on the map.";
+      return firstProblem(
+        checkPersonName(sender.name, "Sender name"),
+        checkPhone(sender.phone, "Sender phone"),
+      );
+    }
+    if (step === 1) {
+      if (!addressReady(drop)) return "Set the drop point on the map.";
+      return firstProblem(
+        checkPersonName(receiver.name, "Receiver name"),
+        checkPhone(receiver.phone, "Receiver phone"),
+      );
+    }
+    if (step === 2) {
+      if (!pkg.packageType) return "Pick what you are sending.";
+      const weight = Number(pkg.weightKg);
+      if (!Number.isFinite(weight) || weight <= 0) return "Enter the package weight.";
+      const maxKg = Number(config?.maxWeightKg) || 20;
+      if (weight > maxKg) return `We can carry up to ${maxKg} kg on this service.`;
+      return null;
+    }
+    return quote ? null : "Waiting for the price.";
+  }, [step, pickup, drop, sender, receiver, pkg, quote, zoneIssue, config]);
+
+  const canContinue = stepProblem === null;
 
   const buildPayload = useCallback(
     () => ({
@@ -349,9 +401,15 @@ const CityParcelBooking = () => {
     try {
       const { data } = await cityParcelApi.create({
         ...buildPayload(),
+        // Collected on step 0 and, until now, used only to prefill the
+        // Razorpay sheet — the rider and admin never saw who handed it over.
+        sender: {
+          name: sender.name.trim(),
+          phone: sender.phone.replace(/[\s-]/g, ""),
+        },
         receiver: {
-          name: receiver.name,
-          phone: receiver.phone.replace(/\s/g, ""),
+          name: receiver.name.trim(),
+          phone: receiver.phone.replace(/[\s-]/g, ""),
           allowAlternate: receiver.allowAlternate,
         },
         paymentMethod: payment,
@@ -367,6 +425,7 @@ const CityParcelBooking = () => {
           razorpay: payload.razorpay,
           parcel,
           customer: { name: sender.name, phone: sender.phone, email: user?.email },
+          appName,
         });
         await cityParcelApi.verifyPayment(parcel._id, receipt);
       }
@@ -539,6 +598,7 @@ const CityParcelBooking = () => {
                   <input
                     value={pkg.description}
                     onChange={(e) => setPkg({ ...pkg, description: e.target.value })}
+                    maxLength={DESCRIPTION_MAX}
                     placeholder={config?.packageDescriptionPlaceholder || "What's inside?"}
                     className={inputClass}
                   />
@@ -663,6 +723,14 @@ const CityParcelBooking = () => {
       >
         <div className="mx-auto w-full max-w-lg">
           {step < 3 ? (
+            <>
+              {/* A disabled Continue with no explanation is a dead end;
+                  name and phone rules are the usual reason it is off. */}
+              {stepProblem && (pickup.lat || step > 0) ? (
+                <p className="mb-2 text-center text-[12px] font-semibold text-amber-700">
+                  {stepProblem}
+                </p>
+              ) : null}
             <PrimaryButton
               icon={ArrowRight}
               disabled={!canContinue}
@@ -670,14 +738,19 @@ const CityParcelBooking = () => {
             >
               Continue
             </PrimaryButton>
+            </>
           ) : (
-            <PrimaryButton disabled={!quote || placing} onClick={place}>
+            <PrimaryButton disabled={!quote || !payment || placing} onClick={place}>
               {placing ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <IndianRupee className="h-4 w-4" />
               )}
-              {placing ? "Booking…" : `Pay ₹${quote ? Number(quote.fare).toFixed(0) : "0"}`}
+              {placing
+                ? "Booking…"
+                : !payment
+                  ? "Select a payment method"
+                  : `Pay ₹${quote ? Number(quote.fare).toFixed(0) : "0"}`}
             </PrimaryButton>
           )}
         </div>

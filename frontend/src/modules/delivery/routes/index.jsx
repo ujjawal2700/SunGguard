@@ -12,6 +12,7 @@ import Navigation from "../pages/Navigation";
 import DeliveryConfirmation from "../pages/DeliveryConfirmation";
 import EarningsPage from "../pages/EarningsPage";
 import CodCash from "../pages/CodCash";
+import PorterCash from "../pages/PorterCash";
 import OrderHistory from "../pages/OrderHistory";
 import Profile from "../pages/Profile";
 import PersonalDetails from "../pages/profile/PersonalDetails";
@@ -48,6 +49,8 @@ const DeliveryRoutes = () => {
         <Route path="confirm-delivery/:orderId" element={<DeliveryConfirmation />} />
         <Route path="earnings" element={<EarningsPage />} />
         <Route path="cod-cash" element={<CodCash />} />
+        {/* Parcel COD cash the rider holds, and the deposit-for-approval flow. */}
+        <Route path="porter-cash" element={<PorterCash />} />
         <Route path="history" element={<OrderHistory />} />
         <Route path="profile" element={<Profile />} />
         <Route path="profile/personal-details" element={<PersonalDetails />} />

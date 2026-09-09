@@ -5,7 +5,16 @@ import {
   verifyDeliveryOTP,
   getDeliveryProfile,
   updateDeliveryProfile,
+  updateDeliveryPayoutDetails,
 } from "../controller/deliveryAuthController.js";
+import {
+  riderGetCashSummary,
+  riderCreateCashDeposit,
+  riderListCashDeposits,
+  riderGetCashPayoutDestination,
+  riderCreateCodQr,
+  riderCheckCodQr,
+} from "../controller/riderCashController.js";
 import {
   getDeliveryStats,
   getDeliveryEarnings,
@@ -47,6 +56,39 @@ router.get(
 );
 router.post("/request-withdrawal", verifyToken, requestWithdrawal);
 router.post("/location", verifyToken, updateDeliveryLocation);
+
+// Where withdrawals get paid — owned by the rider, read by the admin.
+router.put(
+  "/payout-details",
+  verifyToken,
+  allowRoles("delivery"),
+  updateDeliveryPayoutDetails,
+);
+
+/**
+ * Porter COD cash the rider is physically holding, and handing it back.
+ * Distinct from /cod/* above, which settles quick-commerce order cash.
+ */
+router.get("/cash/summary", verifyToken, allowRoles("delivery"), riderGetCashSummary);
+router.post("/cash/deposit", verifyToken, allowRoles("delivery"), riderCreateCashDeposit);
+router.get("/cash/deposits", verifyToken, allowRoles("delivery"), riderListCashDeposits);
+// Read-only: where admin wants deposits sent — UPI / QR / bank account, set
+// from the admin Cash Deposits page. Shown on the deposit form before the
+// rider transfers anything.
+router.get(
+  "/cash/payout-destination",
+  verifyToken,
+  allowRoles("delivery"),
+  riderGetCashPayoutDestination,
+);
+
+/**
+ * Doorstep switch from cash to online. `kind` is parcel | city_parcel.
+ * POST mints (or returns) the QR; GET asks Razorpay whether it was paid and,
+ * the first time it has been, converts the booking to an online payment.
+ */
+router.post("/cod-qr/:kind/:id", verifyToken, allowRoles("delivery"), riderCreateCodQr);
+router.get("/cod-qr/:kind/:id", verifyToken, allowRoles("delivery"), riderCheckCodQr);
 
 // NOTE: Delivery-completion OTP generation/validation lives on the
 // canonical workflow routes:

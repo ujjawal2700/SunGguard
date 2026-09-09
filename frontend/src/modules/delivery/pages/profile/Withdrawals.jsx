@@ -9,6 +9,7 @@ import {
     Wallet,
     AlertCircle,
     RotateCw,
+    Landmark,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
@@ -16,9 +17,11 @@ import { toast } from "sonner";
 import Button from "@/shared/components/ui/Button";
 import Card from "@/shared/components/ui/Card";
 import { deliveryApi } from "../../services/deliveryApi";
+import { useAuth } from "@core/context/AuthContext";
 
 const Withdrawals = () => {
     const navigate = useNavigate();
+    const { user } = useAuth();
     const [amount, setAmount] = useState("");
     const [loading, setLoading] = useState(false);
     const [fetching, setFetching] = useState(true);
@@ -27,6 +30,18 @@ const Withdrawals = () => {
         pendingWithdrawals: 0,
         history: []
     });
+
+    // Mirrors the server's payout-destination rule so the rider is told
+    // before submitting, not after a rejected request.
+    const hasBank = Boolean(user?.accountHolder && user?.accountNumber && user?.ifsc);
+    const hasPayoutMethod = hasBank || Boolean(user?.upiId) || Boolean(user?.qrImageUrl);
+    const payoutLabel = user?.upiId
+        ? `UPI · ${user.upiId}`
+        : hasBank
+            ? `${user.bankName || "Bank"} · ****${String(user.accountNumber).slice(-4)}`
+            : user?.qrImageUrl
+                ? "Your saved QR"
+                : "";
 
     const fetchData = async () => {
         try {
@@ -163,16 +178,56 @@ const Withdrawals = () => {
                             </div>
                         </div>
 
+                        {/* Where this money actually lands. The screen used to
+                            promise "your primary bank account" without ever
+                            knowing whether one was on file. */}
+                        <div
+                            className={cn(
+                                "flex items-start gap-2 p-3 rounded-xl",
+                                hasPayoutMethod ? "bg-gray-50" : "bg-red-50",
+                            )}
+                        >
+                            <Landmark
+                                className={cn(
+                                    "shrink-0 mt-0.5",
+                                    hasPayoutMethod ? "text-gray-400" : "text-red-500",
+                                )}
+                                size={16}
+                            />
+                            <div className="flex-1 min-w-0">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                                    Paying to
+                                </p>
+                                {hasPayoutMethod ? (
+                                    <p className="text-[11px] font-bold text-gray-700 break-all">
+                                        {payoutLabel}
+                                    </p>
+                                ) : (
+                                    <p className="text-[11px] font-bold text-red-600">
+                                        No payout details saved yet
+                                    </p>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => navigate("/delivery/profile/bank-account")}
+                                    className="mt-1 text-[10px] font-black text-primary"
+                                >
+                                    {hasPayoutMethod ? "Change" : "Add payout details"}
+                                </button>
+                            </div>
+                        </div>
+
                         <div className="flex items-start gap-2 p-3 bg-amber-50 rounded-xl">
                             <AlertCircle className="text-amber-500 shrink-0 mt-0.5" size={16} />
                             <p className="text-[10px] text-amber-700 font-medium leading-relaxed">
-                                Processing may take 24-48 business hours. Funds will be transferred to your primary bank account.
+                                Processing may take 24-48 business hours. Minimum withdrawal is ₹100, and only one request can be open at a time.
                             </p>
                         </div>
 
+
                         <Button
                             onClick={handleRequest}
-                            disabled={loading || !amount || Number(amount) <= 0}
+                            disabled={loading || !amount || Number(amount) <= 0 || !hasPayoutMethod}
                             className="w-full py-4 rounded-2xl font-bold text-sm shadow-lg shadow-primary/20"
                         >
                             {loading ? (

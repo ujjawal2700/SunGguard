@@ -2932,20 +2932,91 @@ const AdminParcelDashboard = () => {
 
                 <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                    Payment Details
+                    Route Type
                   </span>
-                  <span className="text-xs font-bold text-slate-800 mt-1.5 block">
-                    {selectedParcel.paymentMethod?.toUpperCase() || "N/A"} —
-                    <span
-                      className={`ml-1 font-extrabold ${selectedParcel.paymentStatus === "PAID" ? "text-green-600" : "text-amber-600"}`}>
-                      {selectedParcel.paymentStatus || "PENDING"}
-                    </span>
+                  <span className="text-sm font-black text-slate-800 mt-1 block capitalize">
+                    {selectedParcel.parcelType || "outstation"}
                   </span>
+                  <p className="text-[11px] text-slate-500 mt-0.5 font-medium">
+                    {selectedParcel.warehouseId?.name
+                      ? `Hub: ${selectedParcel.warehouseId.name}`
+                      : selectedParcel.sellerId?.shopName
+                        ? `Seller hub: ${selectedParcel.sellerId.shopName}`
+                        : "No hub assigned"}
+                  </p>
                 </div>
               </div>
 
               {/* Address Details */}
               <div className="space-y-4 text-xs">
+                {/* What the customer actually filled in at booking. The API
+                    always sent these; the dashboard simply never showed them,
+                    so support had no way to answer "what is in this parcel". */}
+                <div className="border-t border-slate-100 pt-4">
+                  <strong className="text-slate-800 block text-xs mb-1 uppercase tracking-wider">
+                    Package
+                  </strong>
+                  <p className="font-bold text-slate-700">
+                    {[
+                      selectedParcel.packageDetails?.packageSegment,
+                      selectedParcel.packageDetails?.packageCategory ||
+                        selectedParcel.packageDetails?.packageType,
+                      selectedParcel.packageDetails?.weight
+                        ? `${selectedParcel.packageDetails.weight} kg`
+                        : selectedParcel.weight
+                          ? `${selectedParcel.weight} kg`
+                          : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || "Not specified"}
+                  </p>
+                  {selectedParcel.packageDetails?.description ? (
+                    <p className="text-slate-500 mt-0.5 leading-relaxed">
+                      {selectedParcel.packageDetails.description}
+                    </p>
+                  ) : null}
+                </div>
+
+                {(selectedParcel.courierCompany ||
+                  selectedParcel.destinationCity) && (
+                  <div className="border-t border-slate-100 pt-4">
+                    <strong className="text-slate-800 block text-xs mb-1 uppercase tracking-wider">
+                      Onward Courier
+                    </strong>
+                    <p className="font-bold text-slate-700">
+                      {selectedParcel.courierCompany || "—"}
+                    </p>
+                    {selectedParcel.destinationCity ? (
+                      <p className="text-slate-500 mt-0.5">
+                        Destination: {selectedParcel.destinationCity}
+                      </p>
+                    ) : null}
+                  </div>
+                )}
+
+                {(selectedParcel.preferredPickupDate ||
+                  selectedParcel.pickupWindow) && (
+                  <div className="border-t border-slate-100 pt-4">
+                    <strong className="text-slate-800 block text-xs mb-1 uppercase tracking-wider">
+                      Requested Pickup
+                    </strong>
+                    <p className="font-bold text-slate-700">
+                      {selectedParcel.preferredPickupDate
+                        ? new Date(
+                            selectedParcel.preferredPickupDate,
+                          ).toLocaleDateString("en-IN", {
+                            day: "numeric",
+                            month: "short",
+                            year: "numeric",
+                          })
+                        : "Any day"}
+                      {selectedParcel.pickupWindow
+                        ? ` · ${selectedParcel.pickupWindow}`
+                        : ""}
+                    </p>
+                  </div>
+                )}
+
                 <div className="border-t border-slate-100 pt-4">
                   <strong className="text-slate-800 block text-xs mb-1 uppercase tracking-wider">
                     Pickup Address

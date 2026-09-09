@@ -1,6 +1,6 @@
 import express from "express";
 import mongoose from "mongoose";
-import { verifyToken, allowRoles } from "../middleware/authMiddleware.js";
+import { verifyToken, allowRoles, requireActiveCustomer } from "../middleware/authMiddleware.js";
 import { validate } from "../middleware/validate.js";
 import {
   calculateCityFareSchema,
@@ -103,7 +103,7 @@ router.get(
   getZoneForPoint,
 );
 router.post("/calculate-fare", verifyToken, validate(calculateCityFareSchema), calculateFare);
-router.post("/create", verifyToken, validate(createCityParcelSchema), createCityParcel);
+router.post("/create", verifyToken, requireActiveCustomer, validate(createCityParcelSchema), createCityParcel);
 // Signature-verified. Replaces the earlier confirm-payment route, which
 // marked a booking PAID on request alone.
 router.post("/:cityParcelId/verify-payment", verifyToken, verifyPayment);

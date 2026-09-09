@@ -19,6 +19,7 @@ import {
   EmptyNote,
 } from "../components/sunguard/kit";
 import { unwrapList } from "@core/api/unwrap";
+import PorterBannerCarousel from "../components/porter/PorterBannerCarousel";
 
 const getCustomerToken = createSocketTokenReader(STORAGE_KEYS.AUTH_CUSTOMER);
 
@@ -234,6 +235,9 @@ const ParcelHome = () => {
   return (
     <div className="mx-auto w-full max-w-lg px-5 pb-28 pt-4">
       <ServiceToggle value={service} onChange={setService} options={SERVICES} />
+
+      {/* ---- porter promotional banner carousel ---- */}
+      <PorterBannerCarousel service={service} />
 
       {/* ---- start a shipment ---- */}
       <Card className="mt-5 overflow-hidden p-5">

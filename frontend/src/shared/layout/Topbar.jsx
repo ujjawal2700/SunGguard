@@ -19,7 +19,7 @@ const Topbar = ({ onMenuClick }) => {
     const navigate = useNavigate();
     const location = useLocation();
 
-    const appName = settings?.appName || 'SunGguard';
+    const appName = settings?.appName || 'App';
     const logoUrl = settings?.logoUrl || '';
 
     const [searchQuery, setSearchQuery] = useState('');

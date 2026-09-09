@@ -33,6 +33,7 @@ import {
     getCashSettlementHistory,
     getUsers,
     getUserById,
+    getLiveFleetLocations,
     getSellers,
     getSellerLocations,
     getPlatformSettings,
@@ -163,6 +164,15 @@ router.get(
     verifyToken,
     allowRoles("admin"),
     getDeliveryPartners
+);
+
+// Must stay above "/delivery-partners/:id" — otherwise Express matches the
+// :id param route first and tries to cast "live-locations" as an ObjectId.
+router.get(
+    "/delivery-partners/live-locations",
+    verifyToken,
+    allowRoles("admin"),
+    getLiveFleetLocations,
 );
 
 router.get(

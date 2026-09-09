@@ -564,7 +564,7 @@ async function generateSignedUploadURL(options) {
  * clear rejection here.
  */
 const INLINE_FALLBACK_MAX_BYTES = parseInt(
-  process.env.MEDIA_INLINE_FALLBACK_MAX_BYTES || `${1_500_000}`,
+  process.env.MEDIA_INLINE_FALLBACK_MAX_BYTES || `${5_000_000}`,
   10,
 );
 
@@ -584,11 +584,33 @@ async function uploadImageWithFallback(buffer, folder, options = {}) {
     }
 
     console.warn(
-      `[mediaService] image host unavailable (${error?.message}); storing inline (${size} bytes)`,
+      `[mediaService] image host unavailable (${error?.message}); saving to local disk fallback (${size} bytes)`,
     );
 
     const mime = String(options.mimeType || "image/jpeg");
-    return `data:${mime};base64,${buffer.toString("base64")}`;
+
+    try {
+      const fs = await import("fs");
+      const path = await import("path");
+      const crypto = await import("crypto");
+
+      const safeFolder = String(folder || "media").replace(/[^a-zA-Z0-9_\-\/]/g, "");
+      const uploadsDir = path.join(process.cwd(), "uploads", safeFolder);
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+
+      const ext = (mime.split("/")[1] || "jpg").replace(/[^a-zA-Z0-9]/g, "");
+      const filename = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}.${ext}`;
+      const filePath = path.join(uploadsDir, filename);
+
+      fs.writeFileSync(filePath, buffer);
+
+      return `/uploads/${safeFolder}/${filename}`;
+    } catch (diskErr) {
+      console.warn("[mediaService] Disk write fallback failed; using inline data URL:", diskErr);
+      return `data:${mime};base64,${buffer.toString("base64")}`;
+    }
   }
 }
 

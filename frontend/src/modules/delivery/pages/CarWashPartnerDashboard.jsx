@@ -727,7 +727,7 @@ const CarWashPartnerDashboard = () => {
 
       {/* OTP Completion Modal */}
       {showOtpModal && activeWashForOtp && (
-        <div className="fixed inset-0 z-[1000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[1000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 max-w-md mx-auto">
           <form 
             onSubmit={handleCompleteWashSubmit} 
             className="bg-white rounded-3xl p-6 shadow-xl border border-slate-100 max-w-sm w-full space-y-4"

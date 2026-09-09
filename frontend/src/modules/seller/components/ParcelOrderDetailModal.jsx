@@ -15,6 +15,7 @@ import { parcelStatusVariant } from "../hooks/useSellerParcels";
 import { sellerApi } from "../services/sellerApi";
 import { openParcelRazorpayCheckout } from "../../customer/utils/parcelRazorpay";
 import { useAuth } from "@core/context/AuthContext";
+import { useSettings } from "@core/context/SettingsContext";
 
 const DetailRow = ({ label, value }) => (
   <div className="flex justify-between gap-3 text-sm py-1.5 border-b border-slate-50 last:border-0">
@@ -53,6 +54,8 @@ const codStatusLabel = (status) => {
 
 const ParcelOrderDetailModal = ({ parcel: initialParcel, onClose, onUpdated }) => {
   const { user } = useAuth();
+  const { settings } = useSettings();
+  const appName = settings?.appName || "App";
   const [parcel, setParcel] = useState(initialParcel);
   const [paying, setPaying] = useState(false);
 
@@ -99,7 +102,7 @@ const ParcelOrderDetailModal = ({ parcel: initialParcel, onClose, onUpdated }) =
         orderId: razorpay.orderId,
         amount: razorpay.amount,
         currency: razorpay.currency || "INR",
-        name: "SunGguard",
+        name: appName,
         description: `COD remit to admin · ₹${Number(amount || collectAmount).toFixed(2)}`,
         prefill: {
           name: user?.name || user?.shopName || "",

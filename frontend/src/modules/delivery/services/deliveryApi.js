@@ -68,6 +68,26 @@ export const deliveryApi = {
     axiosInstance.put("/notifications/mark-all-read"),
   requestWithdrawal: (data) =>
     axiosInstance.post("/delivery/request-withdrawal", data),
+
+  /** Where withdrawals get paid — bank, UPI or an uploaded QR. */
+  updatePayoutDetails: (data) =>
+    axiosInstance.put("/delivery/payout-details", data),
+
+  /**
+   * Porter COD cash the rider is holding, and handing it back.
+   * Separate from `getCodCashSummary` above, which is quick-commerce order cash.
+   */
+  getCashSummary: () => axiosInstance.get("/delivery/cash/summary"),
+  submitCashDeposit: (data) => axiosInstance.post("/delivery/cash/deposit", data),
+  getCashDeposits: (params) =>
+    axiosInstance.get("/delivery/cash/deposits", { params }),
+  /** Read-only: where admin wants this deposit sent. */
+  getCashPayoutDestination: () =>
+    axiosInstance.get("/delivery/cash/payout-destination"),
+
+  /** Doorstep switch from cash to online. `kind` is parcel | city_parcel. */
+  createCodQr: (kind, id) => axiosInstance.post(`/delivery/cod-qr/${kind}/${id}`),
+  checkCodQr: (kind, id) => axiosInstance.get(`/delivery/cod-qr/${kind}/${id}`),
   updateStatus: (orderId, data) =>
     axiosInstance.put(`/orders/status/${orderId}`, data),
   updateReturnStatus: (orderId, data) =>

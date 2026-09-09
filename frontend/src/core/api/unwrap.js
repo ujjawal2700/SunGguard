@@ -19,6 +19,7 @@ export function unwrap(response) {
   if (body == null) return null;
 
   if (typeof body === "object") {
+    if ("results" in body) return body.results;
     if ("result" in body) return body.result;
     if ("data" in body) return body.data;
   }
@@ -30,6 +31,12 @@ export function unwrap(response) {
  * Always returns an array, so callers never have to guard before mapping.
  */
 export function unwrapList(response, key) {
+  const body = response?.data ?? response;
+  if (Array.isArray(body)) return body;
+  if (Array.isArray(body?.results)) return body.results;
+  if (Array.isArray(body?.result)) return body.result;
+  if (Array.isArray(body?.data)) return body.data;
+  if (key && Array.isArray(body?.[key])) return body[key];
   const payload = unwrap(response);
   if (Array.isArray(payload)) return payload;
   const list = key ? payload?.[key] : null;

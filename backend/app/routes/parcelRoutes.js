@@ -1,6 +1,6 @@
 import express from "express";
 import mongoose from "mongoose";
-import { verifyToken, allowRoles } from "../middleware/authMiddleware.js";
+import { verifyToken, allowRoles, requireActiveCustomer } from "../middleware/authMiddleware.js";
 import { validate } from "../middleware/validate.js";
 import {
   adminCreateCourierSchema,
@@ -83,7 +83,7 @@ router.param("parcelId", (req, res, next, value) => {
    CUSTOMER API ROUTES
    ========================================================================== */
 router.post("/calculate-fare", verifyToken, calculateFare);
-router.post("/create", verifyToken, createParcel);
+router.post("/create", verifyToken, requireActiveCustomer, createParcel);
 router.post("/verify-payment", verifyToken, verifyParcelPayment);
 router.get("/booking-config", verifyToken, getBookingConfig);
 router.get("/history", verifyToken, getParcelHistory);

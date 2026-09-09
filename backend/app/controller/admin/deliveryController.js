@@ -2,6 +2,7 @@ import Delivery from "../../models/delivery.js";
 import Order from "../../models/order.js";
 import handleResponse from "../../utils/helper.js";
 import getPagination from "../../utils/pagination.js";
+import { zonesForPoint, smallestZone } from "../../services/deliveryZoneService.js";
 
 export const getDeliveryPartners = async (req, res) => {
   try {
@@ -236,6 +237,72 @@ export const getActiveFleet = async (req, res) => {
       limit,
       total,
       totalPages: Math.ceil(total / limit) || 1,
+    });
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+/** A GPS fix older than this is treated as "rider went dark", not "rider is here". */
+const LIVE_LOCATION_STALE_MINUTES = parseInt(
+  process.env.FLEET_LIVE_LOCATION_STALE_MINUTES || "15",
+  10,
+);
+
+/**
+ * Live rider positions for the admin fleet-zone map.
+ *
+ * This is the ONLY thing the map page polls. It reads from our own DB
+ * (riders already push their position to `POST /delivery/location`, throttled
+ * server-side — see `services/delivery/locationThrottleService.js`) and
+ * resolves each fix to a zone via `deliveryZoneService.zonesForPoint`, which
+ * holds active zones in an in-process 60s cache. None of this ever calls a
+ * paid Google Maps API — the client only pays for that once, when the map
+ * script itself loads, not on every location refresh.
+ */
+export const getLiveFleetLocations = async (req, res) => {
+  try {
+    const staleCutoff = new Date(Date.now() - LIVE_LOCATION_STALE_MINUTES * 60 * 1000);
+
+    const riders = await Delivery.find({
+      isOnline: true,
+      isVerified: true,
+      lastLocationAt: { $gte: staleCutoff },
+      // Default/never-set location is the [0,0] null-island coordinate —
+      // excluding it filters out riders who have never sent a real GPS fix.
+      "location.coordinates.0": { $ne: 0 },
+      "location.coordinates.1": { $ne: 0 },
+    })
+      .select("name phone vehicleType isBusy location lastLocationAt")
+      .lean();
+
+    const items = await Promise.all(
+      riders.map(async (rider) => {
+        const [lng, lat] = rider.location?.coordinates || [0, 0];
+        const zone = smallestZone(await zonesForPoint(lat, lng));
+
+        return {
+          id: String(rider._id),
+          name: rider.name,
+          phone: rider.phone,
+          vehicleType: rider.vehicleType,
+          isBusy: Boolean(rider.isBusy),
+          lat,
+          lng,
+          lastLocationAt: rider.lastLocationAt,
+          zone: zone
+            ? { id: String(zone._id), name: zone.name, color: zone.color || "#2563EB" }
+            : null,
+        };
+      }),
+    );
+
+    return handleResponse(res, 200, "Live fleet locations fetched", {
+      items,
+      total: items.length,
+      unzoned: items.filter((item) => !item.zone).length,
+      staleAfterMinutes: LIVE_LOCATION_STALE_MINUTES,
+      syncedAt: new Date(),
     });
   } catch (error) {
     return handleResponse(res, 500, error.message);

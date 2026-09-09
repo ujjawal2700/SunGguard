@@ -44,11 +44,18 @@ const FailedAttemptSheet = ({ parcel, riderLocation, minWaitMinutes = 5, onDone,
   const waitSatisfied = !needsWait || waitedMinutes >= minWaitMinutes;
   const canSubmit = outcome && photoUrl && waitSatisfied && !submitting;
 
-  const callReceiver = () => {
+  /**
+   * The receiver's number is deliberately never sent to the rider app — only
+   * the last four digits, for the read-back check — so this dialled
+   * `receiver.phone`, which is always undefined, and silently did nothing.
+   * The customer (sender) is reachable, and is who the rider needs when a
+   * handover fails anyway, so that is who this calls.
+   */
+  const customerPhone = parcel?.customerId?.phone || "";
+  const callCustomer = () => {
     setCalledAt(new Date().toISOString());
-    const phone = parcel?.receiver?.phone;
-    if (phone) window.location.href = `tel:${phone}`;
-    else toast.info("Call the receiver, then come back here");
+    if (customerPhone) window.location.href = `tel:${customerPhone}`;
+    else toast.info("Call the customer, then come back here");
   };
 
   const submit = async () => {
@@ -148,14 +155,14 @@ const FailedAttemptSheet = ({ parcel, riderLocation, minWaitMinutes = 5, onDone,
 
           <button
             type="button"
-            onClick={callReceiver}
+            onClick={callCustomer}
             className={cn(
               "w-full inline-flex items-center justify-center gap-2 rounded-lg py-2.5 text-[13px] font-semibold",
               calledAt ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-700",
             )}
           >
             <PhoneCall className="h-3.5 w-3.5" />
-            {calledAt ? "Called — call again" : "Call the receiver"}
+            {calledAt ? "Called — call again" : "Call the customer"}
           </button>
         </div>
       ) : null}

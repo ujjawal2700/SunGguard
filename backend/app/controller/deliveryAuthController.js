@@ -508,3 +508,90 @@ export const updateDeliveryProfile = async (req, res) => {
         return handleResponse(res, 500, error.message);
     }
 };
+
+/* ===============================
+   UPDATE PAYOUT DETAILS
+
+   Where the rider's withdrawals actually get sent. These were previously
+   captured once at signup and never editable, while the admin approving a
+   withdrawal was shown none of them — so money was approved with no
+   destination on screen. The rider owns this data; the admin reads it.
+================================ */
+const IFSC_PATTERN = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+const UPI_PATTERN = /^[\w.\-]{2,60}@[a-zA-Z]{2,20}$/;
+
+export const updateDeliveryPayoutDetails = async (req, res) => {
+    try {
+        const { accountHolder, accountNumber, ifsc, bankName, upiId, qrImageUrl } =
+            req.body || {};
+
+        const delivery = await Delivery.findById(req.user.id);
+        if (!delivery) {
+            return handleResponse(res, 404, "Delivery partner not found");
+        }
+
+        if (accountHolder !== undefined) {
+            delivery.accountHolder = String(accountHolder).trim();
+        }
+        if (bankName !== undefined) {
+            delivery.bankName = String(bankName).trim();
+        }
+
+        if (accountNumber !== undefined) {
+            const digits = String(accountNumber).replace(/\s/g, "");
+            if (digits && !/^\d{9,18}$/.test(digits)) {
+                return handleResponse(res, 400, "Account number must be 9 to 18 digits");
+            }
+            delivery.accountNumber = digits;
+        }
+
+        if (ifsc !== undefined) {
+            const code = String(ifsc).trim().toUpperCase();
+            if (code && !IFSC_PATTERN.test(code)) {
+                return handleResponse(res, 400, "Enter a valid IFSC code (e.g. HDFC0001234)");
+            }
+            delivery.ifsc = code;
+        }
+
+        if (upiId !== undefined) {
+            const upi = String(upiId).trim();
+            if (upi && !UPI_PATTERN.test(upi)) {
+                return handleResponse(res, 400, "Enter a valid UPI ID (e.g. name@bank)");
+            }
+            delivery.upiId = upi;
+        }
+
+        if (qrImageUrl !== undefined) {
+            delivery.qrImageUrl = String(qrImageUrl).trim();
+        }
+
+        // A payout destination that is half-filled is worse than none — the
+        // admin would try to pay into it and fail.
+        const hasBank = Boolean(
+            delivery.accountHolder && delivery.accountNumber && delivery.ifsc,
+        );
+        const hasUpi = Boolean(delivery.upiId);
+        const hasQr = Boolean(delivery.qrImageUrl);
+
+        if (!hasBank && !hasUpi && !hasQr) {
+            return handleResponse(
+                res,
+                400,
+                "Add at least one payout method: full bank details, a UPI ID, or a QR image",
+            );
+        }
+
+        await delivery.save();
+
+        return handleResponse(res, 200, "Payout details updated", {
+            accountHolder: delivery.accountHolder || "",
+            accountNumber: delivery.accountNumber || "",
+            ifsc: delivery.ifsc || "",
+            bankName: delivery.bankName || "",
+            upiId: delivery.upiId || "",
+            qrImageUrl: delivery.qrImageUrl || "",
+        });
+    } catch (error) {
+        return handleResponse(res, 500, error.message);
+    }
+};

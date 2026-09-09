@@ -52,7 +52,7 @@ const AdminAuth = () => {
     const { login } = useAuth();
     const { settings } = useSettings();
 
-    const carrier = settings?.appName || 'SunGguard';
+    const carrier = settings?.appName || 'App';
     const logoUrl = settings?.logoUrl || '';
 
     const [mode, setMode] = useState('login');

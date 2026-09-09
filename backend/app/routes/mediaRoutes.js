@@ -7,6 +7,7 @@ import {
   confirmUpload,
   deleteMedia,
   uploadToCloudinary,
+  uploadImageWithFallback,
 } from "../services/mediaService.js";
 import logger from "../services/logger.js";
 
@@ -113,10 +114,14 @@ router.post("/upload", verifyToken, upload.single("file"), async (req, res) => {
     const mimeType = req.file.mimetype;
     const imageUpload = isImageMimeType(mimeType);
     const folder = imageUpload ? "media/images" : "media/files";
-    const url = await uploadToCloudinary(req.file.buffer, folder, {
+    let url = await uploadImageWithFallback(req.file.buffer, folder, {
       mimeType,
       resourceType: imageUpload ? "image" : "raw",
     });
+
+    if (url && typeof url === "string" && url.startsWith("/uploads/")) {
+      url = `${req.protocol}://${req.get("host")}${url}`;
+    }
 
     return handleResponse(res, 200, "Media uploaded successfully", {
       url,

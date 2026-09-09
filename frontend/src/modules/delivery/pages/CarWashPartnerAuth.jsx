@@ -30,7 +30,7 @@ import { setActiveRole, ROLES } from "@core/auth/activeRoleStore";
 const CarWashPartnerAuth = () => {
   const navigate = useNavigate();
   const { settings } = useSettings();
-  const appName = settings?.appName || "SunGuard";
+  const appName = settings?.appName || "App";
   const { login } = useAuth();
 
   useEffect(() => {
