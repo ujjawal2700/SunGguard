@@ -228,7 +228,7 @@ const navItems = [
     group: "porter",
   },
   {
-    label: "Parcel Support",
+    label: "Porter Support",
     path: "/admin/porter/support",
     icon: LifeBuoy,
     color: "rose",
@@ -279,6 +279,18 @@ const navItems = [
       { label: "All Parcels", path: "/admin/city-parcels/all" },
       { label: "Rate Card", path: "/admin/city-parcels/pricing" },
     ],
+  },
+  {
+    // Same page/route as the "Coupons & Promos" entry under Marketing Tools
+    // below — that whole group is hidden while the sidebar runs porter-only
+    // (SHOW_QUICK_TAB is false in Sidebar.jsx), so coupons need their own
+    // porter-tagged entry point to stay reachable for local/outstation
+    // delivery coupons, not just product-order ones.
+    label: "Coupons",
+    path: "/admin/coupons",
+    icon: Tag,
+    color: "rose",
+    group: "porter",
   },
   { label: "Wallet", path: "/admin/wallet", icon: Wallet, color: "violet" },
   {

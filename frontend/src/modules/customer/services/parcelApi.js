@@ -4,6 +4,8 @@ import { getWithDedupe } from "@core/api/dedupe";
 export const parcelApi = {
   // Customer APIs
   calculateFare: (data) => axiosInstance.post("/parcel/calculate-fare", data),
+  getAvailableCoupons: (params) => axiosInstance.get("/parcel/coupons/available", { params }),
+  validateCoupon: (data) => axiosInstance.post("/parcel/coupon/validate", data),
   createParcel: (data) => axiosInstance.post("/parcel/create", data),
   verifyParcelPayment: (data) => axiosInstance.post("/parcel/verify-payment", data),
   getBookingConfig: () =>

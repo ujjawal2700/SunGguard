@@ -277,7 +277,10 @@ export async function openBookingPayment({
   correlationId = null,
 }) {
   const accessor = bookingAccessor(kind);
-  const amountPaise = toPaise(booking.fare);
+  // A coupon discount is charged to the customer's payable amount, never the
+  // pre-discount `fare` — that field stays the basis for rider earning/GST
+  // and is untouched by the discount.
+  const amountPaise = toPaise(booking.payableFare || booking.fare);
 
   if (!(amountPaise > 0)) {
     const err = new Error("This booking has no amount to pay");
@@ -489,6 +492,168 @@ export async function applyBookingSideEffects(payment, { onPaid = null } = {}) {
    * against the same row. Only an explicit cancellation ends a booking.
    */
   return booking;
+}
+
+/* ==========================================================================
+   Refunding — booking cancellation
+   ========================================================================== */
+
+/**
+ * Refund whatever is still captured against a booking, in full.
+ *
+ * Called right after a booking is cancelled — by the customer or an admin —
+ * so a customer who paid online never has to separately ask for their money
+ * back. Deliberately a no-op, not an error, for a booking that was never paid
+ * online (COD) or was never paid at all: cancellation must always succeed on
+ * its own terms, and the caller decides whether "nothing to refund" is worth
+ * mentioning to whoever cancelled it.
+ *
+ * A gateway failure here (network blip, Razorpay outage) is caught and
+ * recorded on the payment row rather than thrown — the booking is already
+ * cancelled by the time this runs, and there is no sensible way to "undo" a
+ * cancellation because a refund call timed out. The failure is written to
+ * `refundFailureReason`/`refundFailedAt` and to the payment's own `refunds`
+ * attempt log, so an admin looking at the booking sees a paid, cancelled
+ * order with no successful refund rather than silence.
+ */
+export async function refundBookingPayment({
+  kind,
+  bookingId,
+  reason = "Booking cancelled",
+  source = PORTER_PAYMENT_SOURCE.SYSTEM,
+  initiatedByAdminId = null,
+}) {
+  const payment = await PorterPayment.findOne({
+    bookingKind: kind,
+    bookingId,
+    purpose: PORTER_PAYMENT_PURPOSE.BOOKING,
+    status: { $in: [PORTER_PAYMENT_STATUS.CAPTURED, PORTER_PAYMENT_STATUS.PARTIALLY_REFUNDED] },
+  }).sort({ capturedAt: -1 });
+
+  // COD, never paid, or paid by an attempt this system has no record of —
+  // there is genuinely nothing to send back.
+  if (!payment) {
+    return { attempted: false, reason: "NOT_PAID_ONLINE" };
+  }
+
+  if (!payment.gatewayPaymentId) {
+    logger.error("porter_refund_missing_gateway_payment_id", {
+      paymentId: String(payment._id),
+      bookingKind: kind,
+      bookingId: String(bookingId),
+    });
+    return { attempted: false, reason: "NO_GATEWAY_PAYMENT_ID" };
+  }
+
+  const remainingPaise = Math.max(0, payment.amount - (payment.refundedAmount || 0));
+  if (remainingPaise <= 0) {
+    return { attempted: false, reason: "ALREADY_REFUNDED", payment };
+  }
+
+  const provider = getActivePaymentProvider();
+
+  try {
+    const result = await provider.initiateRefund({
+      gatewayPaymentId: payment.gatewayPaymentId,
+      amountPaise: remainingPaise,
+      notes: {
+        reason,
+        porterBookingKind: kind,
+        porterBookingId: String(bookingId),
+        referenceId: payment.referenceId,
+      },
+      receipt: `RFD-${payment.referenceId}`,
+    });
+
+    payment.refunds.push({
+      gatewayRefundId: result.gatewayRefundId,
+      amount: remainingPaise,
+      status: result.status,
+      reason,
+      speed: result.speed || "",
+      initiatedBy: initiatedByAdminId,
+      createdAt: new Date(),
+      processedAt: result.status === "processed" ? new Date() : null,
+    });
+    // The merchant balance is debited the moment the gateway accepts the
+    // refund request, regardless of how long it takes to reach the
+    // customer's bank — so this counts as refunded now, not once a later
+    // webhook confirms it landed.
+    payment.refundedAmount = Math.min(
+      payment.amount,
+      (payment.refundedAmount || 0) + remainingPaise,
+    );
+    payment.refundFailureReason = "";
+    payment.refundFailedAt = null;
+    payment.rawGatewayResponse = {
+      ...(payment.rawGatewayResponse || {}),
+      lastRefund: result.gatewayResponse,
+    };
+
+    const nextStatus =
+      payment.refundedAmount >= payment.amount
+        ? PORTER_PAYMENT_STATUS.REFUNDED
+        : PORTER_PAYMENT_STATUS.PARTIALLY_REFUNDED;
+
+    applyPorterStatus(payment, { nextStatus, source, reason });
+    await payment.save();
+
+    const booking = await applyBookingSideEffects(payment, {});
+
+    logger.info("porter_refund_initiated", {
+      paymentId: String(payment._id),
+      bookingKind: kind,
+      bookingId: String(bookingId),
+      amount: remainingPaise,
+      gatewayRefundId: result.gatewayRefundId,
+      gatewayStatus: result.status,
+    });
+
+    return {
+      attempted: true,
+      ok: true,
+      status: nextStatus,
+      gatewayStatus: result.status,
+      amountPaise: remainingPaise,
+      amountRupees: Number((remainingPaise / 100).toFixed(2)),
+      gatewayRefundId: result.gatewayRefundId,
+      booking,
+    };
+  } catch (error) {
+    payment.refunds.push({
+      gatewayRefundId: null,
+      amount: remainingPaise,
+      status: "failed",
+      reason,
+      speed: "",
+      initiatedBy: initiatedByAdminId,
+      createdAt: new Date(),
+      processedAt: null,
+    });
+    payment.refundFailureReason = error?.message || "Refund could not be initiated";
+    payment.refundFailedAt = new Date();
+    await payment.save().catch((saveErr) => {
+      logger.error("porter_refund_failure_not_recorded", {
+        paymentId: String(payment._id),
+        message: saveErr?.message,
+      });
+    });
+
+    logger.error("porter_refund_failed", {
+      paymentId: String(payment._id),
+      bookingKind: kind,
+      bookingId: String(bookingId),
+      message: error?.message,
+    });
+
+    return {
+      attempted: true,
+      ok: false,
+      error: payment.refundFailureReason,
+      amountPaise: remainingPaise,
+      amountRupees: Number((remainingPaise / 100).toFixed(2)),
+    };
+  }
 }
 
 /* ==========================================================================

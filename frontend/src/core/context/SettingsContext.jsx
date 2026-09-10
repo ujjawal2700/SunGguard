@@ -18,6 +18,33 @@ export const SettingsProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const deepMergeSettings = (defaults, data) => {
+    if (!data || typeof data !== "object") return { ...defaults };
+    const result = { ...defaults };
+    for (const key of Object.keys(defaults)) {
+      const defVal = defaults[key];
+      const dataVal = data[key];
+      if (
+        defVal &&
+        typeof defVal === "object" &&
+        !Array.isArray(defVal) &&
+        dataVal &&
+        typeof dataVal === "object" &&
+        !Array.isArray(dataVal)
+      ) {
+        result[key] = { ...defVal, ...dataVal };
+      } else if (dataVal !== undefined) {
+        result[key] = dataVal;
+      }
+    }
+    for (const key of Object.keys(data)) {
+      if (!(key in result)) {
+        result[key] = data[key];
+      }
+    }
+    return result;
+  };
+
   const fetchSettings = useCallback(async (options = {}) => {
     try {
       setLoading(true);
@@ -28,7 +55,7 @@ export const SettingsProvider = ({ children }) => {
         forceRefresh: options.forceRefresh || false 
       });
       const data = res.data?.result || res.data;
-      const merged = { ...DEFAULT_SETTINGS, ...data };
+      const merged = deepMergeSettings(DEFAULT_SETTINGS, data);
       setSettings(merged);
       applyThemeVariables(merged);
     } catch (err) {

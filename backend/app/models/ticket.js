@@ -3,9 +3,13 @@ import { ALL_USER_MODEL_NAMES_WITH_LEGACY } from "../constants/refModels.js";
 
 const ticketSchema = new mongoose.Schema(
     {
+        // Populate target depends on who raised the ticket — a customer's
+        // userId lives in the "User" collection, a rider's in "Delivery".
+        // Without this, admin screens always looked the id up in "User" and
+        // silently got nothing back for rider-raised tickets.
         userId: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: "User",
+            refPath: "userType",
             required: true,
         },
         // Phase 5 P5-2: enum widened to include canonical "User" / "Delivery"
@@ -37,6 +41,11 @@ const ticketSchema = new mongoose.Schema(
                 "product",
                 "refund",
                 "app",
+                // Delivery-partner specific reasons (raised from the rider app).
+                "earnings",
+                "account",
+                "vehicle",
+                "safety",
                 "other",
             ],
             default: "other",

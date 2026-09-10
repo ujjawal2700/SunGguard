@@ -207,6 +207,15 @@ const porterPaymentSchema = new mongoose.Schema(
     capturedAt: { type: Date, default: null },
     failedAt: { type: Date, default: null },
     refundedAt: { type: Date, default: null },
+    /**
+     * Set when the most recent refund ATTEMPT (not the original payment)
+     * could not be initiated at the gateway — a network failure, a gateway
+     * outage, or a refund the gateway itself rejected. Cleared the next time
+     * a refund attempt succeeds. This is what an admin screen checks to know
+     * a cancelled, paid booking still needs its money sent back by hand.
+     */
+    refundFailureReason: { type: String, default: "" },
+    refundFailedAt: { type: Date, default: null },
 
     /* ================= Snapshots ================= */
 
@@ -314,6 +323,8 @@ export const PORTER_PAYMENT_CLIENT_FIELDS = [
   "capturedAt",
   "failedAt",
   "refundedAt",
+  "refundFailureReason",
+  "refundFailedAt",
   "taxSnapshot",
   "createdAt",
   "updatedAt",

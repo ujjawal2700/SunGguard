@@ -6,6 +6,8 @@ import {
     MessageSquare,
     Package,
     RotateCw,
+    User,
+    Truck,
 } from "lucide-react";
 import { toast } from "sonner";
 import Card from "@shared/components/ui/Card";
@@ -14,11 +16,10 @@ import { adminPorterApi } from "../../services/api/porterApi";
 import { cn } from "@/lib/utils";
 
 /**
- * Support tickets raised about a parcel.
- *
- * The general Help Tickets queue still shows every ticket including these —
- * it passes no category and is untouched. This screen narrows to the porter
- * desk's own so a parcel complaint is not lost among grocery-order ones.
+ * Support tickets — raised by customers (/support) or delivery partners
+ * (/delivery/profile/help-support). This is the porter desk's own view of
+ * the shared ticket inbox; the general Help Tickets screen lists the same
+ * data unfiltered.
  */
 
 const STATUSES = [
@@ -28,17 +29,49 @@ const STATUSES = [
     { key: "closed", label: "Closed" },
 ];
 
+const ORIGINS = [
+    { key: "", label: "All" },
+    { key: "customer", label: "Customer" },
+    { key: "delivery", label: "Delivery" },
+];
+
 const STATUS_STYLE = {
     open: "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400",
     processing: "bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400",
     closed: "bg-slate-100 text-slate-500 dark:bg-slate-800",
 };
 
+const isDeliveryTicket = (t) => t.userType === "Delivery" || t.userType === "Rider";
+
+function originLabel(ticket) {
+    return isDeliveryTicket(ticket) ? "Delivery Partner" : "Customer";
+}
+
+function OriginBadge({ ticket, className }) {
+    const delivery = isDeliveryTicket(ticket);
+    const Icon = delivery ? Truck : User;
+    return (
+        <span
+            className={cn(
+                "inline-flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider",
+                delivery
+                    ? "bg-orange-50 text-orange-700 dark:bg-orange-950/50 dark:text-orange-400"
+                    : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400",
+                className,
+            )}
+        >
+            <Icon className="h-3 w-3" />
+            {originLabel(ticket)}
+        </span>
+    );
+}
+
 const PorterTickets = () => {
     const [tickets, setTickets] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [status, setStatus] = useState("");
+    const [origin, setOrigin] = useState("");
     const [selected, setSelected] = useState(null);
     const [reply, setReply] = useState("");
     const [sending, setSending] = useState(false);
@@ -54,7 +87,7 @@ const PorterTickets = () => {
             } catch (error) {
                 console.error("Porter tickets error:", error);
                 toast.error(
-                    error?.response?.data?.message || "Couldn't load parcel tickets",
+                    error?.response?.data?.message || "Couldn't load tickets",
                 );
             } finally {
                 setLoading(false);
@@ -68,9 +101,14 @@ const PorterTickets = () => {
         fetchTickets();
     }, [fetchTickets]);
 
-    // Filtered client-side: the list is one page of parcel tickets, so a round
-    // trip per tab would cost more than it saves.
-    const visible = status ? tickets.filter((t) => t.status === status) : tickets;
+    // Filtered client-side: the list is one page of tickets, so a round trip
+    // per tab would cost more than it saves.
+    const visible = tickets.filter((t) => {
+        if (status && t.status !== status) return false;
+        if (origin === "delivery" && !isDeliveryTicket(t)) return false;
+        if (origin === "customer" && isDeliveryTicket(t)) return false;
+        return true;
+    });
 
     const sendReply = async () => {
         const text = reply.trim();
@@ -115,11 +153,10 @@ const PorterTickets = () => {
                 <div>
                     <h1 className="flex items-center gap-2.5 text-2xl font-black tracking-tight text-slate-900 dark:text-white">
                         <LifeBuoy className="h-6 w-6 text-primary" />
-                        Parcel Support
+                        Porter Support
                     </h1>
                     <p className="mt-1 text-sm text-slate-500">
-                        Tickets customers raised about a parcel. The general Help Tickets
-                        queue still lists these alongside everything else.
+                        Complaints raised by customers and delivery partners land here.
                     </p>
                 </div>
                 <button
@@ -131,7 +168,7 @@ const PorterTickets = () => {
                 </button>
             </div>
 
-            <Card className="p-3">
+            <Card className="p-3 space-y-3">
                 <div className="flex flex-wrap gap-2">
                     {STATUSES.map((s) => {
                         const count = s.key
@@ -153,6 +190,27 @@ const PorterTickets = () => {
                         );
                     })}
                 </div>
+                <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+                    {ORIGINS.map((o) => {
+                        const count = o.key
+                            ? tickets.filter((t) => (o.key === "delivery" ? isDeliveryTicket(t) : !isDeliveryTicket(t))).length
+                            : tickets.length;
+                        return (
+                            <button
+                                key={o.key || "all-origin"}
+                                onClick={() => setOrigin(o.key)}
+                                className={cn(
+                                    "rounded-xl px-4 py-2 text-xs font-bold transition",
+                                    origin === o.key
+                                        ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
+                                        : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300",
+                                )}
+                            >
+                                {o.label} ({count})
+                            </button>
+                        );
+                    })}
+                </div>
             </Card>
 
             {loading ? (
@@ -167,7 +225,7 @@ const PorterTickets = () => {
                             <Card className="flex flex-col items-center gap-2 py-16 text-center">
                                 <Package className="h-7 w-7 text-slate-300" />
                                 <p className="text-sm font-bold text-slate-600 dark:text-slate-300">
-                                    No parcel tickets here
+                                    No tickets here
                                 </p>
                             </Card>
                         ) : (
@@ -198,12 +256,15 @@ const PorterTickets = () => {
                                             {ticket.status}
                                         </span>
                                     </div>
-                                    <p className="mt-1 truncate text-xs text-slate-500">
-                                        {ticket.userId?.name || "Customer"}
-                                        {ticket.relatedParcelId
-                                            ? ` · ${ticket.relatedParcelId}`
-                                            : ""}
-                                    </p>
+                                    <div className="mt-1.5 flex items-center gap-1.5">
+                                        <OriginBadge ticket={ticket} />
+                                        <span className="truncate text-xs text-slate-500">
+                                            {ticket.userId?.name || originLabel(ticket)}
+                                            {ticket.relatedParcelId
+                                                ? ` · ${ticket.relatedParcelId}`
+                                                : ""}
+                                        </span>
+                                    </div>
                                     <p className="mt-1.5 text-[11px] text-slate-400">
                                         {ticket.messages?.length || 0} message
                                         {(ticket.messages?.length || 0) === 1 ? "" : "s"}
@@ -229,12 +290,15 @@ const PorterTickets = () => {
                                         <h3 className="truncate text-base font-extrabold text-slate-900 dark:text-white">
                                             {selected.subject || "Untitled"}
                                         </h3>
-                                        <p className="mt-0.5 text-xs text-slate-500">
-                                            {selected.userId?.name || "Customer"}
-                                            {selected.userId?.email
-                                                ? ` · ${selected.userId.email}`
-                                                : ""}
-                                        </p>
+                                        <div className="mt-1 flex items-center gap-1.5">
+                                            <OriginBadge ticket={selected} />
+                                            <p className="truncate text-xs text-slate-500">
+                                                {selected.userId?.name || originLabel(selected)}
+                                                {selected.userId?.email
+                                                    ? ` · ${selected.userId.email}`
+                                                    : ""}
+                                            </p>
+                                        </div>
                                         {selected.relatedParcelId && (
                                             <p className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2 py-1 font-mono text-[11px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                                                 <Package className="h-3 w-3" />
@@ -272,7 +336,7 @@ const PorterTickets = () => {
                                                     )}
                                                 >
                                                     <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                                                        {m.sender || (fromAdmin ? "Support" : "Customer")}
+                                                        {m.sender || (fromAdmin ? "Support" : originLabel(selected))}
                                                     </p>
                                                     {m.text && (
                                                         <p className="mt-0.5 whitespace-pre-wrap text-sm">
@@ -297,7 +361,7 @@ const PorterTickets = () => {
                                         rows={2}
                                         value={reply}
                                         onChange={(e) => setReply(e.target.value)}
-                                        placeholder="Reply to the customer…"
+                                        placeholder={`Reply to the ${originLabel(selected).toLowerCase()}…`}
                                         className="flex-1 resize-none rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10 dark:border-slate-700 dark:bg-slate-900"
                                     />
                                     <Button

@@ -151,6 +151,19 @@ const parcelSchema = new mongoose.Schema(
       ref: "CourierCompany",
       default: null,
     },
+    /** Coupon applied at booking time, if any. Discount comes out of admin
+     *  margin only — `fare` (and everything derived from it, like rider
+     *  earning) is untouched; `payableFare` is what the customer is actually
+     *  charged and what payment/COD collection must read. */
+    coupon: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Coupon",
+      default: null,
+      index: true,
+    },
+    couponSnapshot: { type: Object, default: null },
+    discountAmount: { type: Number, default: 0 },
+    payableFare: { type: Number, default: 0 },
     paymentStatus: {
       type: String,
       // REFUNDED joined the set when porter payments gained a real gateway
@@ -334,5 +347,17 @@ const parcelSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+/**
+ * Keeps `payableFare` (what payment/COD collection reads) correct even for
+ * code paths that set `fare`/`discountAmount` without also setting
+ * `payableFare` explicitly — it always equals `fare - discountAmount`.
+ */
+parcelSchema.pre("validate", function syncPayableFare(next) {
+  if (this.isModified("fare") || this.isModified("discountAmount") || this.payableFare == null) {
+    this.payableFare = Math.max(0, Number(this.fare || 0) - Number(this.discountAmount || 0));
+  }
+  next();
+});
 
 export default mongoose.model("Parcel", parcelSchema);

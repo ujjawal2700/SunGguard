@@ -37,6 +37,7 @@ jest.unstable_mockModule("../app/services/porter/porterPaymentService.js", () =>
   verifyBookingReceipt,
   openBookingPayment: jest.fn(),
   getBookingPaymentHistory: jest.fn(),
+  refundBookingPayment: jest.fn().mockResolvedValue({ attempted: false, reason: "NOT_PAID_ONLINE" }),
 }));
 jest.unstable_mockModule("../app/services/porter/porterDispatchService.js", () => ({
   activatePorterBookingAfterPayment,

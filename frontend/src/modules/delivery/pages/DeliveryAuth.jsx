@@ -27,6 +27,7 @@ import deliveryRiding from "@/assets/Delivery Riding.json";
 import { deliveryApi } from "../services/deliveryApi";
 import { useAuth } from "@core/context/AuthContext";
 import { useSettings } from "@core/context/SettingsContext";
+import LegalSheet from "@shared/components/auth/LegalSheet";
 import { toast } from "sonner";
 import { compressImage } from "@shared/utils/compressImage";
 
@@ -231,6 +232,7 @@ const DeliveryAuth = () => {
   const [agreed, setAgreed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [timer, setTimer] = useState(30);
+  const [legalKind, setLegalKind] = useState(null);
 
 
   useEffect(() => {
@@ -952,9 +954,9 @@ const DeliveryAuth = () => {
 
                       <p className="text-center text-xs text-gray-400 font-semibold pt-1">
                         By joining, you agree to our{" "}
-                        <span className="text-brand-500 font-bold cursor-pointer hover:underline">Terms</span>{" "}
+                        <span className="text-brand-500 font-bold cursor-pointer hover:underline" onClick={() => setLegalKind("terms")}>Terms</span>{" "}
                         &amp;{" "}
-                        <span className="text-brand-500 font-bold cursor-pointer hover:underline">Privacy Policy</span>
+                        <span className="text-brand-500 font-bold cursor-pointer hover:underline" onClick={() => setLegalKind("privacy")}>Privacy Policy</span>
                       </p>
                     </div>
                   )}
@@ -1073,8 +1075,8 @@ const DeliveryAuth = () => {
                     />
                     <label htmlFor="terms" className="text-xs text-gray-500 leading-relaxed cursor-pointer">
                       I confirm my phone number is correct and I agree to the{" "}
-                      <span className="text-brand-600 font-bold">Terms of Service</span> &amp;{" "}
-                      <span className="text-brand-600 font-bold">Privacy Policy</span>.
+                      <span className="text-brand-600 font-bold cursor-pointer hover:underline" onClick={() => setLegalKind("terms")}>Terms of Service</span> &amp;{" "}
+                      <span className="text-brand-600 font-bold cursor-pointer hover:underline" onClick={() => setLegalKind("privacy")}>Privacy Policy</span>.
                     </label>
                   </div>
 
@@ -1114,6 +1116,13 @@ const DeliveryAuth = () => {
           {appName} Partner Ecosystem • v1.0
         </p>
       </motion.div>
+
+      <LegalSheet
+        audience="delivery"
+        kind={legalKind}
+        onClose={() => setLegalKind(null)}
+        onAccept={() => setLegalKind(null)}
+      />
     </div>
   );
 };

@@ -195,6 +195,11 @@ const ParcelDetailDrawer = ({ cityParcelId, onClose }) => {
               <Row label="Payment">
                 {parcel.paymentMethod} · {parcel.paymentStatus}
               </Row>
+              {parcel.paymentStatus === "REFUNDED" ? (
+                <Row label="Refund">
+                  {money(parcel.payableFare || parcel.fare)} refunded to the customer's original payment method
+                </Row>
+              ) : null}
               {/* COD cash: where it is, not just that the booking was COD.
                   RIDER_HOLDING means the rider still has it and owes a
                   deposit; REMITTED_TO_ADMIN means an approved deposit

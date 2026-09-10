@@ -9,6 +9,8 @@ import {
 } from "../validation/porterAdminValidation.js";
 import {
   calculateFare,
+  getAvailableCoupons,
+  validateBookingCoupon,
   createParcel,
   verifyParcelPayment,
   getBookingConfig,
@@ -83,6 +85,8 @@ router.param("parcelId", (req, res, next, value) => {
    CUSTOMER API ROUTES
    ========================================================================== */
 router.post("/calculate-fare", verifyToken, calculateFare);
+router.get("/coupons/available", verifyToken, requireActiveCustomer, getAvailableCoupons);
+router.post("/coupon/validate", verifyToken, requireActiveCustomer, validateBookingCoupon);
 router.post("/create", verifyToken, requireActiveCustomer, createParcel);
 router.post("/verify-payment", verifyToken, verifyParcelPayment);
 router.get("/booking-config", verifyToken, getBookingConfig);

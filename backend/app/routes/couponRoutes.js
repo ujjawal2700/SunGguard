@@ -6,14 +6,15 @@ import {
     deleteCoupon,
     validateCoupon,
 } from "../controller/couponController.js";
+import { verifyToken, allowRoles } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
 // Admin management
-router.get("/admin/coupons", listCoupons);
-router.post("/admin/coupons", createCoupon);
-router.put("/admin/coupons/:id", updateCoupon);
-router.delete("/admin/coupons/:id", deleteCoupon);
+router.get("/admin/coupons", verifyToken, allowRoles("admin", "parcel_admin"), listCoupons);
+router.post("/admin/coupons", verifyToken, allowRoles("admin", "parcel_admin"), createCoupon);
+router.put("/admin/coupons/:id", verifyToken, allowRoles("admin", "parcel_admin"), updateCoupon);
+router.delete("/admin/coupons/:id", verifyToken, allowRoles("admin", "parcel_admin"), deleteCoupon);
 
 // Customer‑facing
 router.post("/coupons/validate", validateCoupon);

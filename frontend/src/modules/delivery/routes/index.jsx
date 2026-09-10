@@ -22,6 +22,7 @@ import Documents from "../pages/profile/Documents";
 import SafetyPrivacy from "../pages/profile/SafetyPrivacy";
 import Settings from "../pages/profile/Settings";
 import HelpSupport from "../pages/profile/HelpSupport";
+import HelpSupportChat from "../pages/profile/HelpSupportChat";
 import Withdrawals from "../pages/profile/Withdrawals";
 import Wallet from "../pages/profile/Wallet";
 import Notifications from "../pages/Notifications";
@@ -64,6 +65,7 @@ const DeliveryRoutes = () => {
         <Route path="profile/safety-privacy" element={<SafetyPrivacy />} />
         <Route path="profile/settings" element={<Settings />} />
         <Route path="profile/help-support" element={<HelpSupport />} />
+        <Route path="profile/help-support/chat" element={<HelpSupportChat />} />
         <Route path="profile/withdrawals" element={<Withdrawals />} />
         <Route path="profile/wallet" element={<Wallet />} />
         {/* Legal / Informational pages for delivery partners */}

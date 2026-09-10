@@ -315,8 +315,21 @@ const CityParcelAdmin = () => {
 
     setBusyId(parcel._id);
     try {
-      await cityParcelAdminApi.cancel(parcel._id, reason.trim());
-      toast.success("Parcel cancelled");
+      const { data } = await cityParcelAdminApi.cancel(parcel._id, reason.trim());
+      const refund = data?.result?.refund;
+      if (refund?.attempted && refund.ok) {
+        toast.success(
+          refund.status === "REFUNDED"
+            ? `Parcel cancelled — ₹${refund.amountRupees} refunded to the customer.`
+            : "Parcel cancelled — refund is being processed.",
+        );
+      } else if (refund?.attempted && !refund.ok) {
+        toast.error(
+          "Parcel cancelled, but the automatic refund failed — check the payment record and refund manually.",
+        );
+      } else {
+        toast.success("Parcel cancelled");
+      }
       await load();
     } catch (err) {
       toast.error(err?.response?.data?.message || "Couldn't cancel this parcel");

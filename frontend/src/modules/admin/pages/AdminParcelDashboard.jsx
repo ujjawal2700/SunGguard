@@ -2924,6 +2924,12 @@ const AdminParcelDashboard = () => {
                       </p>
                     </div>
                   )}
+                  {selectedParcel.paymentStatus === "REFUNDED" && (
+                    <p className="mt-2 text-[11px] font-bold text-emerald-700">
+                      ₹{Number(selectedParcel.payableFare || selectedParcel.fare || 0).toFixed(2)}{" "}
+                      refunded to the customer's original payment method
+                    </p>
+                  )}
                 </div>
 
                 <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">

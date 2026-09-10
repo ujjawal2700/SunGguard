@@ -38,7 +38,7 @@ const PrivacyPage = () => {
                     {cmsContent ? (
                         /* Admin-authored content from CMS */
                         <div
-                            className="prose prose-slate prose-sm max-w-none text-slate-600"
+                            className="cms-content"
                             dangerouslySetInnerHTML={{ __html: cmsContent }}
                         />
                     ) : (

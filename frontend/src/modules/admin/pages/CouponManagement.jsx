@@ -34,7 +34,40 @@ const CouponManagement = () => {
 
     const [coupons, setCoupons] = useState([]);
 
-    const [formData, setFormData] = useState({
+    // This admin is a delivery (Porter) operations desk only — Quick Commerce
+    // product-order coupons are not something this deployment creates, so
+    // "Product Orders" is deliberately not offered as a scope here. The
+    // underlying `Coupon` model/engine still supports it (untouched) in case
+    // Quick is ever switched back on; only this creation form is scoped down.
+    const APPLIES_TO_OPTIONS = [
+        { value: 'porter_local', label: 'Local Delivery' },
+        { value: 'porter_outstation', label: 'Outstation Delivery' },
+    ];
+
+    // couponType strategies that only mean something against a product cart
+    // (categories, item counts, monthly product spend). A porter fare has no
+    // items or categories, so a porter-only coupon is restricted to the two
+    // strategies that are actually implemented for it.
+    const PORTER_COUPON_TYPES = ['generic', 'min_order_value'];
+    const COUPON_TYPE_OPTIONS = [
+        { value: 'generic', label: 'Generic Discount' },
+        { value: 'min_order_value', label: 'Minimum Fare Coupon' },
+        { value: 'bulk_order', label: 'Bulk Order Discount', orderOnly: true },
+        { value: 'free_delivery', label: 'Free Delivery Coupon', orderOnly: true },
+        { value: 'category_based', label: 'Category-Based Coupon', orderOnly: true },
+        { value: 'monthly_volume', label: 'Monthly Volume Coupon', orderOnly: true },
+    ];
+    const COUPON_TYPE_LABELS = COUPON_TYPE_OPTIONS.reduce((acc, opt) => {
+        acc[opt.value] = opt.label;
+        return acc;
+    }, {});
+
+    // This deployment's admin sidebar runs porter-only right now (see
+    // Sidebar.jsx SHOW_QUICK_TAB) — defaulting a new coupon to both porter
+    // scopes, with "Product Orders" left unchecked, means a fresh coupon
+    // works for delivery bookings without the admin having to know that
+    // scope checkbox exists.
+    const emptyFormData = {
         code: '',
         title: '',
         couponType: 'generic',
@@ -47,7 +80,40 @@ const CouponManagement = () => {
         validFrom: '',
         validTill: '',
         description: '',
-    });
+        appliesTo: ['porter_local', 'porter_outstation'],
+    };
+
+    const [formData, setFormData] = useState(emptyFormData);
+
+    const hasPorterScope = formData.appliesTo.some((s) => s === 'porter_local' || s === 'porter_outstation');
+    const hasOrderScope = formData.appliesTo.includes('order');
+    // Porter-only: no product-order strategies, no free-delivery discount kind.
+    const porterOnly = hasPorterScope && !hasOrderScope;
+    const visibleCouponTypeOptions = porterOnly
+        ? COUPON_TYPE_OPTIONS.filter((opt) => !opt.orderOnly)
+        : COUPON_TYPE_OPTIONS;
+
+    const toggleAppliesTo = (value) => {
+        setFormData((prev) => {
+            const has = prev.appliesTo.includes(value);
+            const nextAppliesTo = has
+                ? prev.appliesTo.filter((v) => v !== value)
+                : [...prev.appliesTo, value];
+            const nextIsPorterOnly =
+                nextAppliesTo.some((s) => s === 'porter_local' || s === 'porter_outstation') &&
+                !nextAppliesTo.includes('order');
+            const nextDiscountType =
+                nextIsPorterOnly && prev.discountType === 'free_delivery' ? 'percentage' : prev.discountType;
+            const nextCouponType =
+                nextIsPorterOnly && !PORTER_COUPON_TYPES.includes(prev.couponType) ? 'generic' : prev.couponType;
+            return {
+                ...prev,
+                appliesTo: nextAppliesTo,
+                discountType: nextDiscountType,
+                couponType: nextCouponType,
+            };
+        });
+    };
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -100,11 +166,20 @@ const CouponManagement = () => {
     const handleOpenModal = (coupon = null) => {
         if (coupon) {
             setEditingCoupon(coupon);
+            const appliesTo = Array.isArray(coupon.appliesTo) && coupon.appliesTo.length > 0 ? coupon.appliesTo : ['order'];
+            const isPorterOnly =
+                appliesTo.some((s) => s === 'porter_local' || s === 'porter_outstation') && !appliesTo.includes('order');
             setFormData({
                 code: coupon.code || '',
                 title: coupon.title || '',
-                couponType: coupon.couponType || 'generic',
-                discountType: coupon.discountType || 'percentage',
+                couponType:
+                    isPorterOnly && !PORTER_COUPON_TYPES.includes(coupon.couponType)
+                        ? 'generic'
+                        : coupon.couponType || 'generic',
+                discountType:
+                    isPorterOnly && coupon.discountType === 'free_delivery'
+                        ? 'percentage'
+                        : coupon.discountType || 'percentage',
                 discountValue: coupon.discountValue ?? '',
                 minOrderValue: coupon.minOrderValue ?? '',
                 maxDiscount: coupon.maxDiscount ?? '',
@@ -113,29 +188,25 @@ const CouponManagement = () => {
                 validFrom: coupon.validFrom ? coupon.validFrom.substring(0, 10) : '',
                 validTill: coupon.validTill ? coupon.validTill.substring(0, 10) : '',
                 description: coupon.description || '',
+                appliesTo,
             });
         } else {
             setEditingCoupon(null);
-            setFormData({
-                code: '',
-                title: '',
-                couponType: 'generic',
-                discountType: 'percentage',
-                discountValue: '',
-                minOrderValue: '',
-                maxDiscount: '',
-                usageLimit: '',
-                perUserLimit: '1',
-                validFrom: '',
-                validTill: '',
-                description: '',
-            });
+            setFormData(emptyFormData);
         }
         setIsModalOpen(true);
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (!formData.appliesTo || formData.appliesTo.length === 0) {
+            showToast('Select at least one "Applies To" scope', 'error');
+            return;
+        }
+        if (formData.validTill && formData.validFrom && formData.validTill <= formData.validFrom) {
+            showToast('End date must be after the start date', 'error');
+            return;
+        }
         try {
             const payload = {
                 ...formData,
@@ -153,7 +224,7 @@ const CouponManagement = () => {
                 showToast('Coupon updated successfully', 'success');
             } else {
                 await adminApi.createCoupon(payload);
-                showToast('New coupon launched!', 'success');
+                showToast('Delivery coupon created!', 'success');
             }
             setIsModalOpen(false);
             setEditingCoupon(null);
@@ -184,17 +255,16 @@ const CouponManagement = () => {
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 px-1">
                 <div>
                     <h1 className="ds-h1 flex items-center gap-3">
-                        Promo Engine
-                        <Badge variant="primary" className="text-[10px] font-black uppercase tracking-widest">v4.2 PRO</Badge>
+                        Delivery Coupons
                     </h1>
-                    <p className="ds-description mt-1">Design, deploy, and track high-conversion discount campaigns.</p>
+                    <p className="ds-description mt-1">Discount codes for local and outstation delivery bookings.</p>
                 </div>
                 <button
                     onClick={() => handleOpenModal()}
                     className="flex items-center gap-2 px-6 py-3.5 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl hover:scale-[1.02] active:scale-95 transition-all"
                 >
                     <HiOutlinePlus className="h-5 w-5" />
-                    CREATE NEW PROMO
+                    CREATE DELIVERY COUPON
                 </button>
             </div>
 
@@ -296,9 +366,18 @@ const CouponManagement = () => {
                                                 {c.discountType === 'percentage' ? `${c.discountValue}% OFF` : c.discountType === 'free_delivery' ? 'Free Delivery' : `₹${c.discountValue} OFF`}
                                             </p>
                                             {c.minOrderValue > 0 && (
-                                                <p className="text-xs text-slate-500 font-medium">Min. Order: ₹{c.minOrderValue}</p>
+                                                <p className="text-xs text-slate-500 font-medium">Min. Fare: ₹{c.minOrderValue}</p>
                                             )}
-                                            <p className="text-xs text-slate-400 font-normal capitalize">Type: {c.couponType?.replace(/_/g, ' ') || 'generic'}</p>
+                                            <p className="text-xs text-slate-400 font-normal">
+                                                Type: {COUPON_TYPE_LABELS[c.couponType] || 'Generic Discount'}
+                                            </p>
+                                            <div className="flex flex-wrap gap-1 pt-1">
+                                                {(Array.isArray(c.appliesTo) && c.appliesTo.length > 0 ? c.appliesTo : ['order']).map((scope) => (
+                                                    <Badge key={scope} variant="secondary" className="text-[9px] px-1.5 py-0.5 font-bold">
+                                                        {scope === 'porter_local' ? 'Local' : scope === 'porter_outstation' ? 'Outstation' : 'Orders'}
+                                                    </Badge>
+                                                ))}
+                                            </div>
                                         </div>
                                     </td>
                                     <td className="px-6 py-4.5">
@@ -388,7 +467,7 @@ const CouponManagement = () => {
                                         Cancel
                                     </button>
                                     <button
-                                        onClick={() => handleDelete(deleteTarget.id)}
+                                        onClick={() => handleDelete(deleteTarget._id)}
                                         className="px-4 py-2.5 bg-rose-600 text-white rounded-xl font-medium hover:bg-rose-700 transition-colors"
                                     >
                                         Delete
@@ -404,7 +483,13 @@ const CouponManagement = () => {
             <Modal
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
-                title={editingCoupon ? "Modify Promotion" : "New Promotion Protocol"}
+                title={
+                    editingCoupon
+                        ? "Modify Coupon"
+                        : porterOnly
+                            ? "New Delivery Coupon"
+                            : "New Coupon"
+                }
             >
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="grid grid-cols-2 gap-6">
@@ -427,9 +512,47 @@ const CouponManagement = () => {
                             >
                                 <option value="percentage">Percentage (%)</option>
                                 <option value="fixed">Fixed Amount (₹)</option>
-                                <option value="free_delivery">Free Delivery</option>
+                                {!hasPorterScope && <option value="free_delivery">Free Delivery</option>}
                             </select>
                         </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Headline (optional)</label>
+                        <input
+                            value={formData.title}
+                            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                            placeholder="E.G. Flat 10% off local delivery"
+                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-xs font-black outline-none ring-1 ring-transparent focus:ring-primary/20"
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Delivery Type</label>
+                        <div className="flex flex-wrap gap-3">
+                            {APPLIES_TO_OPTIONS.map((opt) => (
+                                <label
+                                    key={opt.value}
+                                    className={cn(
+                                        "flex items-center gap-2 px-4 py-2.5 rounded-2xl text-[11px] font-bold cursor-pointer transition-all ring-1",
+                                        formData.appliesTo.includes(opt.value)
+                                            ? "bg-primary/10 text-primary ring-primary/30"
+                                            : "bg-slate-50 text-slate-500 ring-transparent hover:ring-slate-200"
+                                    )}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.appliesTo.includes(opt.value)}
+                                        onChange={() => toggleAppliesTo(opt.value)}
+                                        className="accent-primary"
+                                    />
+                                    {opt.label}
+                                </label>
+                            ))}
+                        </div>
+                        <p className="text-[10px] text-slate-400">
+                            Pick which delivery bookings this coupon works on — local, outstation, or both together over the same date range.
+                        </p>
                     </div>
 
                     <div className="space-y-2">
@@ -439,15 +562,14 @@ const CouponManagement = () => {
                             onChange={(e) => setFormData({ ...formData, couponType: e.target.value })}
                             className="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-xs font-black outline-none"
                         >
-                            <option value="generic">Generic Discount</option>
-                            <option value="bulk_order">Bulk Order Discount</option>
-                            <option value="min_order_value">Minimum Order Value Coupon</option>
-                            <option value="free_delivery">Free Delivery Coupon</option>
-                            <option value="category_based">Category-Based Coupon</option>
-                            <option value="monthly_volume">Monthly Volume Coupon</option>
+                            {visibleCouponTypeOptions.map((opt) => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
                         </select>
                         <p className="text-[10px] text-slate-400">
-                            Choose the logic: bulk order, MOV, free delivery, specific categories, or monthly volume buyers.
+                            {porterOnly
+                                ? "A delivery fare has no items or categories, so only a plain discount or a minimum-fare condition apply here."
+                                : "Choose the logic: bulk order, MOV, free delivery, specific categories, or monthly volume buyers."}
                         </p>
                     </div>
 
@@ -464,7 +586,9 @@ const CouponManagement = () => {
                             />
                         </div>
                         <div className="space-y-2">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Min Order Requirement</label>
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                {hasPorterScope ? 'Minimum Fare' : 'Min Order Requirement'}
+                            </label>
                             <input
                                 required
                                 type="number"
@@ -539,13 +663,13 @@ const CouponManagement = () => {
                     </div>
 
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Campaign Description</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Description</label>
                         <textarea
                             required
                             rows={3}
                             value={formData.description}
                             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                            placeholder="Briefly describe the campaign..."
+                            placeholder="Briefly describe this delivery offer..."
                             className="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-xs font-black outline-none resize-none"
                         />
                     </div>
@@ -562,7 +686,7 @@ const CouponManagement = () => {
                             type="submit"
                             className="flex-1 py-4 bg-primary text-primary-foreground rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-primary/20"
                         >
-                            {editingCoupon ? 'SAVE CHANGES' : 'LAUNCH CAMPAIGN'}
+                            {editingCoupon ? 'SAVE CHANGES' : 'CREATE COUPON'}
                         </button>
                     </div>
                 </form>

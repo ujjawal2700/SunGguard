@@ -24,6 +24,10 @@ export const cityParcelApi = {
 
   calculateFare: (body) => axiosInstance.post("/city-parcel/calculate-fare", body),
 
+  getAvailableCoupons: (params) => axiosInstance.get("/city-parcel/coupons/available", { params }),
+
+  validateCoupon: (body) => axiosInstance.post("/city-parcel/coupon/validate", body),
+
   create: (body) => axiosInstance.post("/city-parcel/create", body),
 
   /** Sends the gateway's signed receipt back for verification. */

@@ -5,6 +5,7 @@ import getPagination from "../utils/pagination.js";
 import { emitTicketCreated, emitTicketMessage } from "../services/ticketSocketEmitter.js";
 import { emitNotificationEvent } from "../modules/notifications/notification.emitter.js";
 import { NOTIFICATION_EVENTS } from "../modules/notifications/notification.constants.js";
+import { canonicalUserModelName } from "../constants/refModels.js";
 
 async function getAdminIds() {
     const admins = await Admin.find().select("_id").lean();
@@ -39,16 +40,20 @@ export const createTicket = async (req, res) => {
             "product",
             "refund",
             "app",
+            "earnings",
+            "account",
+            "vehicle",
+            "safety",
             "other",
         ];
         const safeCategory = allowedCategories.includes(String(category || "").toLowerCase())
             ? String(category).toLowerCase()
             : "other";
 
-        // Canonical customer model name is "User" (legacy "Customer" still accepted by schema).
+        // Must resolve to a real model name ("User" / "Delivery" / "Seller" / "Admin")
+        // so `userId` populates correctly — the schema's refPath is "userType".
         const rawType = String(userType || "User").trim();
-        const normalizedUserType =
-            rawType === "Customer" || rawType === "User" ? "User" : rawType;
+        const normalizedUserType = canonicalUserModelName(rawType) || "User";
 
         const newTicket = new Ticket({
             userId,

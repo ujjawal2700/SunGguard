@@ -3,8 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
     User, MapPin, Package, CreditCard, Wallet, ChevronRight,
     LogOut, ShieldCheck, Heart, HelpCircle, Info, Edit2, ChevronLeft, Bell, History,
-    AlertTriangle
-    // CAR WASH DISABLED — Car, Sparkles
+    ScrollText
+    // CAR WASH DISABLED — Car, Sparkles, AlertTriangle
 } from 'lucide-react';
 import { useAuth } from '@core/context/AuthContext';
 import { useSettings } from '@core/context/SettingsContext';
@@ -240,18 +240,18 @@ const ProfilePage = () => {
                                 bg="rgba(59,130,246,0.08)"
                             />
                             <MenuItem
-                                icon={AlertTriangle}
-                                label="File a Complaint"
-                                path="/support?complaint=1"
-                                color="#f59e0b"
-                                bg="rgba(245,158,11,0.10)"
-                            />
-                            <MenuItem
                                 icon={ShieldCheck}
                                 label="Privacy Policy"
                                 path="/privacy"
                                 color="#a855f7"
                                 bg="rgba(168,85,247,0.08)"
+                            />
+                            <MenuItem
+                                icon={ScrollText}
+                                label="Terms & Conditions"
+                                path="/terms"
+                                color="#6366f1"
+                                bg="rgba(99,102,241,0.08)"
                             />
                             <MenuItem
                                 icon={Info}

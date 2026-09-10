@@ -1,6 +1,8 @@
 import Parcel from "../models/parcel.js";
 import ParcelConfig from "../models/parcelConfig.js";
 import CourierCompany from "../models/courierCompany.js";
+import Coupon from "../models/coupon.js";
+import { computeBookingDiscount, incrementCouponUsage } from "../services/finance/couponService.js";
 import Delivery from "../models/delivery.js";
 import User from "../models/customer.js";
 import Admin from "../models/admin.js";
@@ -34,9 +36,10 @@ import { createParcelCodRemitRazorpayOrder } from "../services/parcelRazorpaySer
 import {
   openBookingPayment,
   verifyBookingReceipt,
+  refundBookingPayment,
 } from "../services/porter/porterPaymentService.js";
 import { activatePorterBookingAfterPayment } from "../services/porter/porterDispatchService.js";
-import { PORTER_BOOKING_KIND } from "../constants/porterPayment.js";
+import { PORTER_BOOKING_KIND, PORTER_PAYMENT_SOURCE } from "../constants/porterPayment.js";
 import logger from "../services/logger.js";
 import { findNearestParcelSellerWithDistance } from "../services/sellerNearbyService.js";
 import { applyParcelDeliveredRiderEarning } from "../services/parcelRiderSettlementService.js";
@@ -72,7 +75,7 @@ function getParcelCollectAmount(parcel) {
   if (!isParcelCod(parcel)) return 0;
   const fromSettlement = Number(parcel?.codSettlement?.collectAmount);
   if (Number.isFinite(fromSettlement) && fromSettlement > 0) return fromSettlement;
-  return Math.max(0, Number(parcel?.fare) || 0);
+  return Math.max(0, Number(parcel?.payableFare) || Number(parcel?.fare) || 0);
 }
 
 function buildInitialCodSettlement(paymentMethod, fare) {
@@ -325,6 +328,129 @@ export const calculateFare = async (req, res) => {
   }
 };
 
+/** Active coupons the customer can pick from before entering a code by hand. */
+export const getAvailableCoupons = async (req, res) => {
+  try {
+    const now = new Date();
+    const { fare, parcelType } = req.query;
+    const bookingKind = String(parcelType || "outstation").toLowerCase() === "local"
+      ? "porter_local"
+      : "porter_outstation";
+    const query = {
+      isActive: true,
+      validFrom: { $lte: now },
+      validTill: { $gte: now },
+      appliesTo: bookingKind,
+    };
+    if (fare !== undefined && Number.isFinite(Number(fare))) {
+      query.minOrderValue = { $lte: Number(fare) };
+    }
+    const coupons = await Coupon.find(query).sort({ discountValue: -1 }).lean();
+    return handleResponse(res, 200, "Available coupons", coupons);
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+/**
+ * Pre-payment coupon check. Re-quotes the fare server-side with the exact
+ * same pricing path `calculateFare` uses, so the fare a coupon discounts is
+ * never a number the client sent.
+ */
+export const validateBookingCoupon = async (req, res) => {
+  try {
+    const {
+      pickupLat,
+      pickupLng,
+      weight,
+      courierCompany,
+      courierCompanyId,
+      pickupWindow,
+      pickupWindowDays,
+      preferredPickupDate,
+      deliverySpeed,
+      parcelType,
+      couponCode,
+    } = req.body;
+
+    if (!couponCode) {
+      return handleResponse(res, 400, "Coupon code is required");
+    }
+    if (pickupLat == null || pickupLng == null) {
+      return handleResponse(res, 400, "Pickup location is required");
+    }
+
+    const pickupLatN = Number(pickupLat);
+    const pickupLngN = Number(pickupLng);
+    if (!Number.isFinite(pickupLatN) || !Number.isFinite(pickupLngN)) {
+      return handleResponse(res, 400, "Invalid pickup location");
+    }
+
+    const config = await ParcelConfig.getOrCreate();
+    const maxWeightKg = Math.min(50, Math.max(0.1, Number(config.maxWeightKg) || 1));
+    const pkgWeight = Number(weight || 0.1);
+    if (pkgWeight <= 0 || pkgWeight > maxWeightKg) {
+      return handleResponse(
+        res,
+        400,
+        `Weight must be greater than 0 and maximum ${maxWeightKg} KG`,
+      );
+    }
+
+    const isLocal = String(parcelType || "outstation").toLowerCase() === "local";
+    const firstMile = await resolveFirstMile({
+      lat: pickupLatN,
+      lng: pickupLngN,
+      isOutstation: !isLocal,
+    });
+    if (firstMile.error) {
+      return handleResponse(res, 400, firstMile.error);
+    }
+    const { distanceKm } = firstMile;
+
+    let platformCharge = 0;
+    const courierKey = courierCompanyId || courierCompany;
+    if (courierKey) {
+      const courier = await CourierCompany.findActiveByNameOrId(courierKey);
+      if (courier) {
+        platformCharge = Math.round((Number(courier.platformCharge) || 0) * 100) / 100;
+      }
+    }
+
+    const daily = computeParcelDailyFare({
+      config,
+      distanceKm,
+      weightKg: pkgWeight,
+      platformCharge,
+      deliverySpeed,
+    });
+    const billableDays = resolveParcelBillableDays({
+      pickupWindow,
+      pickupWindowDays,
+      preferredPickupDate,
+    });
+    const priced = applyBillableDaysToFare(daily, billableDays, config.gst);
+
+    const discount = await computeBookingDiscount({
+      couponCode,
+      customerId: req.user.id,
+      bookingKind: isLocal ? "porter_local" : "porter_outstation",
+      fareAmount: priced.fare,
+    });
+
+    return handleResponse(res, 200, "Coupon applied", {
+      couponId: discount.coupon._id,
+      code: discount.coupon.code,
+      fare: priced.fare,
+      discountAmount: discount.discountAmount,
+      payableFare: discount.payableFare,
+      couponSnapshot: discount.couponSnapshot,
+    });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
 /* ==========================================================================
    Booking input rules
    ==========================================================================
@@ -410,6 +536,7 @@ export const createParcel = async (req, res) => {
       pickupWindow,
       pickupWindowDays,
       deliverySpeed,
+      couponCode,
     } = req.body;
 
     if (!pickupAddress || !dropAddress || !packageDetails || !paymentMethod) {
@@ -597,6 +724,19 @@ export const createParcel = async (req, res) => {
     });
     const priced = applyBillableDaysToFare(daily, billableDays, config.gst);
 
+    // Re-validated server-side against the freshly computed fare — never
+    // trust a client-supplied fare for coupon math.
+    let discount = null;
+    if (couponCode) {
+      discount = await computeBookingDiscount({
+        couponCode,
+        customerId: req.user.id,
+        bookingKind: isOutstation ? "porter_outstation" : "porter_local",
+        fareAmount: priced.fare,
+      });
+    }
+    const payableFare = discount?.payableFare ?? priced.fare;
+
     // Everything about the booking except its identity, OTP and payment
     // state — shared by both the fresh-create path and the resume-in-place
     // path below.
@@ -629,10 +769,14 @@ export const createParcel = async (req, res) => {
         dailyFare: priced.dailyFare,
         billableDays: priced.billableDays,
       },
+      coupon: discount?.coupon?._id || null,
+      couponSnapshot: discount?.couponSnapshot || null,
+      discountAmount: discount?.discountAmount || 0,
     };
 
     let parcel = null;
     let resumed = false;
+    let previousCouponId = null;
 
     /**
      * A cancelled or abandoned Razorpay sheet leaves the row it already
@@ -664,6 +808,7 @@ export const createParcel = async (req, res) => {
       }).sort({ createdAt: -1 });
 
       if (resumable) {
+        previousCouponId = resumable.coupon ? String(resumable.coupon) : null;
         resumable.set(parcelFields);
         // The old order cannot be reopened once its sheet was dismissed;
         // a fresh one is requested further down regardless.
@@ -683,7 +828,7 @@ export const createParcel = async (req, res) => {
         ...parcelFields,
         paymentStatus: "PENDING",
         paymentMethod: method,
-        codSettlement: buildInitialCodSettlement(method, priced.fare),
+        codSettlement: buildInitialCodSettlement(method, payableFare),
         otp,
         status: "REQUESTED",
       });
@@ -696,6 +841,14 @@ export const createParcel = async (req, res) => {
       actorId: req.user.id,
       note: resumed ? "Payment retried on the same booking" : "Booking created",
     });
+
+    // Only bump usage when this booking is newly claiming the coupon — a
+    // retried payment on the SAME resumable booking with the SAME coupon
+    // must not count twice.
+    const newCouponId = discount?.coupon?._id ? String(discount.coupon._id) : null;
+    if (newCouponId && (!resumed || previousCouponId !== newCouponId)) {
+      await incrementCouponUsage({ couponId: discount.coupon._id });
+    }
 
     /**
      * Online: open a gateway order; broadcast only once the money is
@@ -766,7 +919,7 @@ export const createParcel = async (req, res) => {
       requiresPayment: false,
     });
   } catch (error) {
-    return handleResponse(res, 500, error.message);
+    return handleResponse(res, error.statusCode || 500, error.message);
   }
 };
 
@@ -1021,7 +1174,45 @@ export const cancelParcelByCustomer = async (req, res) => {
       },
     });
 
-    return handleResponse(res, 200, "Parcel search cancelled successfully", updated);
+    // Online and already paid — refund automatically. COD and never-paid
+    // bookings are a no-op inside this call.
+    const refund = await refundBookingPayment({
+      kind: PORTER_BOOKING_KIND.PARCEL,
+      bookingId: updated._id,
+      reason: "Booking cancelled by customer",
+      source: PORTER_PAYMENT_SOURCE.SYSTEM,
+    }).catch((err) => {
+      logger.error("parcel_cancel_refund_threw", {
+        parcelId: String(updated._id),
+        message: err?.message,
+      });
+      return { attempted: true, ok: false, error: err?.message || "Refund failed" };
+    });
+
+    if (refund.booking) {
+      emitToAdmins("parcel:status:update", refund.booking);
+      emitToCustomer(refund.booking.customerId, {
+        event: "parcel:status:update",
+        payload: {
+          parcelId: String(refund.booking._id),
+          status: "CANCELLED",
+          parcel: refund.booking,
+          message:
+            refund.status === "REFUNDED"
+              ? `₹${refund.amountRupees} has been refunded to your original payment method.`
+              : "Your refund is being processed.",
+        },
+      });
+    }
+
+    // `result` stays parcel-shaped for existing callers (`setParcel(result)`);
+    // `refund` rides along as an extra field on the same object rather than
+    // changing the response envelope.
+    const responseParcel = refund.booking || updated;
+    const payload = responseParcel.toObject ? responseParcel.toObject() : responseParcel;
+    payload.refund = refund;
+
+    return handleResponse(res, 200, "Parcel search cancelled successfully", payload);
   } catch (error) {
     return handleResponse(res, 500, error.message);
   }
@@ -1510,13 +1701,18 @@ export const adminGetReports = async (req, res) => {
     const completed = parcels.filter(p => p.status === "DELIVERED").length;
     const cancelled = parcels.filter(p => p.status === "CANCELLED").length;
     
-    // Revenue is calculated from DELIVERED parcels or PAID paymentStatus
-    const revenue = parcels
-      .filter(p => p.status === "DELIVERED")
-      .reduce((sum, p) => sum + p.fare, 0);
+    // Revenue is what the customer actually pays — `payableFare` when a
+    // coupon discounted the booking, otherwise `fare`. Rider payout is
+    // computed from the fare breakdown regardless of any coupon, so a
+    // discount only ever reduces `adminCommission` below, never the rider's
+    // share.
+    const delivered = parcels.filter((p) => p.status === "DELIVERED");
+    const revenue = delivered.reduce((sum, p) => sum + (p.payableFare || p.fare), 0);
+    const totalDiscountGiven = Math.round(
+      (delivered.reduce((sum, p) => sum + (p.discountAmount || 0), 0) + Number.EPSILON) * 100,
+    ) / 100;
 
     const settings = await ParcelConfig.getSearchSettings();
-    const delivered = parcels.filter((p) => p.status === "DELIVERED");
     const riderPayout = Math.round(
       (delivered.reduce(
         (sum, p) => sum + computeRiderParcelEarnings(p, settings),
@@ -1534,6 +1730,7 @@ export const adminGetReports = async (req, res) => {
       completed,
       cancelled,
       revenue,
+      totalDiscountGiven,
       riderSharePercent: settings.riderSharePercent,
       riderBaseFareSharePercent: settings.riderBaseFareSharePercent,
       riderDistanceFareSharePercent: settings.riderDistanceFareSharePercent,

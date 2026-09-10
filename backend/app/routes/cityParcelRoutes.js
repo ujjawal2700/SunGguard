@@ -24,6 +24,8 @@ import {
   getServiceability,
   getZoneForPoint,
   calculateFare,
+  getAvailableCoupons,
+  validateBookingCoupon,
   createCityParcel,
   verifyPayment,
   getHistory,
@@ -103,6 +105,8 @@ router.get(
   getZoneForPoint,
 );
 router.post("/calculate-fare", verifyToken, validate(calculateCityFareSchema), calculateFare);
+router.get("/coupons/available", verifyToken, requireActiveCustomer, getAvailableCoupons);
+router.post("/coupon/validate", verifyToken, requireActiveCustomer, validateBookingCoupon);
 router.post("/create", verifyToken, requireActiveCustomer, validate(createCityParcelSchema), createCityParcel);
 // Signature-verified. Replaces the earlier confirm-payment route, which
 // marked a booking PAID on request alone.

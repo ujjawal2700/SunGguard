@@ -18,11 +18,13 @@ export const adminPorterApi = {
         axiosInstance.get('/porter/admin/rider-payouts', { params }),
 
     /**
-     * Parcel-category support tickets. Reuses the shared ticket endpoints —
-     * the general support queue passes no category and is unaffected.
+     * All support tickets — raised by customers (/support) or delivery
+     * partners (/delivery/profile/help-support). Reuses the shared ticket
+     * endpoints; this is the porter desk's own view of the same inbox the
+     * general Help Tickets screen shows.
      */
     getTickets: (params) =>
-        axiosInstance.get('/tickets/admin/all', { params: { ...params, category: 'parcel' } }),
+        axiosInstance.get('/tickets/admin/all', { params }),
     replyTicket: (id, text) =>
         axiosInstance.post(`/tickets/reply/${id}`, { text, isAdmin: true }),
     updateTicketStatus: (id, status) =>

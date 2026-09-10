@@ -369,7 +369,23 @@ export async function buildPorterInvoice({ kind, bookingId, requesterId, isAdmin
       : parcelInvoiceBody(booking);
 
   const charges = fareLines(breakdown, kind);
+  const discountAmount = round2(booking.discountAmount || 0);
+  if (discountAmount > 0) {
+    // Bypasses `fareLines`'s zero-value filter on purpose — a negative
+    // amount would otherwise be silently dropped by its `> 0` guard.
+    charges.push(
+      line(
+        `Coupon discount${booking.couponSnapshot?.code ? ` (${booking.couponSnapshot.code})` : ""}`,
+        -discountAmount,
+      ),
+    );
+  }
   const tax = taxBlock(breakdown);
+  const payableTotal = round2(
+    Number.isFinite(Number(booking.payableFare)) && booking.payableFare > 0
+      ? booking.payableFare
+      : booking.fare,
+  );
 
   /**
    * The subtotal is the taxable value, not the sum of the printed lines.
@@ -398,8 +414,12 @@ export async function buildPorterInvoice({ kind, bookingId, requesterId, isAdmin
     charges,
     subtotal,
     tax,
-    total: round2(booking.fare),
-    amountInWords: rupeesInWords(booking.fare),
+    discount:
+      discountAmount > 0
+        ? { code: booking.couponSnapshot?.code || "", amount: discountAmount }
+        : null,
+    total: payableTotal,
+    amountInWords: rupeesInWords(payableTotal),
     payment,
     timeline,
     // A cancelled or refunded booking must say so on its face, or an invoice

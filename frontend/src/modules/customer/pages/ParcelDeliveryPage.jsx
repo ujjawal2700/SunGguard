@@ -851,6 +851,13 @@ const ParcelDeliveryPage = () => {
   const [fareEstimation, setFareEstimation] = useState(null);
   const [estimating, setEstimating] = useState(false);
 
+  // Coupon
+  const [availableCoupons, setAvailableCoupons] = useState([]);
+  const [couponCode, setCouponCode] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponError, setCouponError] = useState(null);
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
+
   // Map Selection states
   const [mapPickerTarget, setMapPickerTarget] = useState(null); // 'pickup' only
 
@@ -972,6 +979,64 @@ const ParcelDeliveryPage = () => {
     parsedCustomDays,
     deliverySpeed,
   ]);
+
+  // Offers surfaced once the fare is known; a stale applied coupon (fare
+  // recomputed after the customer changed weight/route) is cleared rather
+  // than silently kept against a number it was never validated for.
+  useEffect(() => {
+    setAppliedCoupon(null);
+    setCouponError(null);
+    if (!fareEstimation?.fare) {
+      setAvailableCoupons([]);
+      return;
+    }
+    (async () => {
+      try {
+        const res = await parcelApi.getAvailableCoupons({
+          fare: fareEstimation.fare,
+          parcelType: "outstation",
+        });
+        setAvailableCoupons(res.data?.result || res.data?.results || []);
+      } catch {
+        setAvailableCoupons([]);
+      }
+    })();
+  }, [fareEstimation?.fare]);
+
+  const applyCoupon = async (code) => {
+    const value = String(code || couponCode || "").trim().toUpperCase();
+    if (!value || !pickupDetails.lat || !pickupDetails.lng) return;
+    setApplyingCoupon(true);
+    setCouponError(null);
+    try {
+      const res = await parcelApi.validateCoupon({
+        pickupLat: pickupDetails.lat,
+        pickupLng: pickupDetails.lng,
+        parcelType: "outstation",
+        weight: weightKg,
+        courierCompanyId: selectedCourier?.id || undefined,
+        courierCompany: selectedCourier?.name || undefined,
+        pickupWindow: bookingDurationParams.pickupWindow,
+        pickupWindowDays: bookingDurationParams.pickupWindowDays,
+        preferredPickupDate: bookingDurationParams.preferredPickupDate,
+        deliverySpeed,
+        couponCode: value,
+      });
+      setAppliedCoupon(res.data?.result || null);
+      setCouponCode(value);
+    } catch (err) {
+      setAppliedCoupon(null);
+      setCouponError(err?.response?.data?.message || "Couldn't apply this coupon");
+    } finally {
+      setApplyingCoupon(false);
+    }
+  };
+
+  const removeCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCode("");
+    setCouponError(null);
+  };
 
   // Map Selection Confirmation
   const handleMapConfirm = (location) => {
@@ -1237,6 +1302,7 @@ const ParcelDeliveryPage = () => {
         preferredPickupDate: resolvedPickupDate,
         deliverySpeed,
         paymentMethod,
+        couponCode: appliedCoupon?.code || undefined,
       });
 
       if (response.data && response.data.success) {
@@ -1334,7 +1400,9 @@ const ParcelDeliveryPage = () => {
     (isOtherCourier && !customCourierNameSaved) ||
     !paymentMethod;
 
-  const totalFare = fareEstimation ? Number(fareEstimation.fare) || 0 : 0;
+  const totalFare = fareEstimation
+    ? Number(appliedCoupon?.payableFare ?? fareEstimation.fare) || 0
+    : 0;
 
   return (
     <div className="min-h-screen bg-slate-100 font-outfit">
@@ -2255,6 +2323,12 @@ const ParcelDeliveryPage = () => {
                                     />
                                   </>
                                 )}
+                                {appliedCoupon && (
+                                  <LeaderRow
+                                    label={`Coupon (${appliedCoupon.code})`}
+                                    value={`-₹${Number(appliedCoupon.discountAmount).toFixed(2)}`}
+                                  />
+                                )}
                               </div>
                             </>
                           )}
@@ -2270,6 +2344,74 @@ const ParcelDeliveryPage = () => {
                           </div>
                         </div>
                       </motion.div>
+
+                      {fareEstimation && (
+                        <motion.div variants={stackItem}>
+                          <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[12px] font-bold uppercase tracking-wide text-slate-500">
+                                Coupon
+                              </span>
+                              {appliedCoupon && (
+                                <button
+                                  type="button"
+                                  onClick={removeCoupon}
+                                  className="text-[12px] font-semibold text-red-600"
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </div>
+                            {appliedCoupon ? (
+                              <p className="text-[13px] text-emerald-700">
+                                <strong>{appliedCoupon.code}</strong> applied — you saved ₹
+                                {Number(appliedCoupon.discountAmount).toFixed(2)}
+                              </p>
+                            ) : (
+                              <>
+                                <div className="flex gap-2">
+                                  <input
+                                    value={couponCode}
+                                    onChange={(e) =>
+                                      setCouponCode(e.target.value.toUpperCase())
+                                    }
+                                    placeholder="Enter coupon code"
+                                    className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-[13px] outline-none focus:border-slate-400"
+                                  />
+                                  <button
+                                    type="button"
+                                    disabled={!couponCode || applyingCoupon}
+                                    onClick={() => applyCoupon(couponCode)}
+                                    className="rounded-xl bg-slate-900 px-4 text-[13px] font-semibold text-white disabled:opacity-50"
+                                  >
+                                    {applyingCoupon ? "…" : "Apply"}
+                                  </button>
+                                </div>
+                                {couponError && (
+                                  <p className="text-[12px] text-red-600">{couponError}</p>
+                                )}
+                                {availableCoupons.length > 0 && (
+                                  <div className="flex gap-2 overflow-x-auto pb-1">
+                                    {availableCoupons.map((c) => (
+                                      <button
+                                        key={c.code}
+                                        type="button"
+                                        onClick={() => applyCoupon(c.code)}
+                                        className="flex-shrink-0 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-1.5 text-[12px] font-semibold text-slate-700"
+                                      >
+                                        {c.code} ·{" "}
+                                        {c.discountType === "percentage"
+                                          ? `${c.discountValue}% OFF`
+                                          : `₹${c.discountValue} OFF`}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
 
                       {!pickupDetails.lat && (
                         <motion.div variants={stackItem}>

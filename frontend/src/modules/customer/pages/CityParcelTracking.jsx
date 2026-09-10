@@ -509,8 +509,21 @@ const CityParcelTracking = () => {
             className="w-full"
             onClick={async () => {
               try {
-                await cityParcelApi.cancel(parcel._id, {});
-                toast.success("Cancelled");
+                const { data } = await cityParcelApi.cancel(parcel._id, {});
+                const refund = data?.result?.refund;
+                if (refund?.attempted && refund.ok) {
+                  toast.success(
+                    refund.status === "REFUNDED"
+                      ? `Cancelled — ₹${refund.amountRupees} refunded to your original payment method.`
+                      : "Cancelled — your refund is being processed.",
+                  );
+                } else if (refund?.attempted && !refund.ok) {
+                  toast.success(
+                    "Cancelled. We're having trouble refunding automatically — our team will process it shortly.",
+                  );
+                } else {
+                  toast.success("Cancelled");
+                }
                 navigate("/");
               } catch (err) {
                 toast.error(err?.response?.data?.message || "Couldn't cancel");

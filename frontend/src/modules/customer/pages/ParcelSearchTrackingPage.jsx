@@ -362,7 +362,20 @@ const ParcelSearchTrackingPage = () => {
     try {
       const response = await parcelApi.cancelSearch(parcel._id);
       if (response.data?.success) {
-        toast.success("Search cancelled");
+        const refund = response.data.result?.refund;
+        if (refund?.attempted && refund.ok) {
+          toast.success(
+            refund.status === "REFUNDED"
+              ? `Cancelled — ₹${refund.amountRupees} refunded to your original payment method.`
+              : "Cancelled — your refund is being processed.",
+          );
+        } else if (refund?.attempted && !refund.ok) {
+          toast.success(
+            "Cancelled. We're having trouble refunding automatically — our team will process it shortly.",
+          );
+        } else {
+          toast.success("Search cancelled");
+        }
         setParcel(response.data.result);
         navigate("/parcel");
       } else {

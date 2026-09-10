@@ -20,6 +20,7 @@ import { motion } from "framer-motion";
 import Button from "@/shared/components/ui/Button";
 import { useAuth } from "@core/context/AuthContext";
 import { useSettings } from "@core/context/SettingsContext";
+import { useSupportUnread } from "@core/context/SupportUnreadContext";
 import axiosInstance from '@core/api/axios';
 import { useEffect } from 'react';
 import { toast } from "sonner";
@@ -29,6 +30,7 @@ const Profile = () => {
   const navigate = useNavigate();
   const { logout, user, refreshUser } = useAuth();
   const { settings } = useSettings();
+  const { totalUnread } = useSupportUnread();
   const appName = settings?.appName || "App";
   const [faqs, setFaqs] = useState([]);
   const [stats, setStats] = useState(null);
@@ -330,8 +332,13 @@ const Profile = () => {
             onClick={() => navigate(item.path)}>
             <div className="flex items-center">
               <div
-                className={`p-3 rounded-full mr-4 transition-colors ${item.color}`}>
+                className={`p-3 rounded-full mr-4 transition-colors relative ${item.color}`}>
                 <item.icon size={20} />
+                {item.path === "/delivery/profile/help-support" && totalUnread > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center ring-2 ring-white">
+                    {totalUnread > 99 ? "99+" : totalUnread}
+                  </span>
+                )}
               </div>
               <div className="text-left">
                 <p className="font-bold text-gray-900 group-hover:text-primary transition-colors">

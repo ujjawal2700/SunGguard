@@ -42,6 +42,7 @@ const SupportTickets = () => {
     const [reply, setReply] = useState('');
     const [menuOpen, setMenuOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [originFilter, setOriginFilter] = useState('all');
     const [loading, setLoading] = useState(true);
     const [tickets, setTickets] = useState([]);
     const [page, setPage] = useState(1);
@@ -333,11 +334,19 @@ const SupportTickets = () => {
         return handleSetStatus(id, 'closed');
     };
 
-    const filteredTickets = tickets.filter(t =>
-        t.id.toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
-        t.user.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        t.subject.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const isDeliveryTicket = (t) => t.userType === 'Delivery' || t.userType === 'Rider';
+    const isCustomerTicket = (t) => t.userType === 'User' || t.userType === 'Customer';
+
+    const filteredTickets = tickets.filter(t => {
+        const matchesSearch =
+            t.id.toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
+            t.user.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            t.subject.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesOrigin =
+            originFilter === 'all' ||
+            (originFilter === 'delivery' ? isDeliveryTicket(t) : isCustomerTicket(t));
+        return matchesSearch && matchesOrigin;
+    });
 
     return (
         <div className="h-[calc(100vh-140px)] flex flex-col lg:flex-row gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -361,6 +370,25 @@ const SupportTickets = () => {
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-2 border-slate-800/40 focus:border-slate-900 rounded-2xl text-xs font-bold outline-none transition-all"
                             />
+                        </div>
+                        <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl">
+                            {[
+                                { id: 'all', label: 'All' },
+                                { id: 'customer', label: 'Customer' },
+                                { id: 'delivery', label: 'Delivery' },
+                            ].map((tab) => (
+                                <button
+                                    key={tab.id}
+                                    type="button"
+                                    onClick={() => setOriginFilter(tab.id)}
+                                    className={cn(
+                                        "flex-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all",
+                                        originFilter === tab.id ? "bg-white text-slate-900 shadow-sm" : "text-slate-400 hover:text-slate-600",
+                                    )}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
                         </div>
                     </div>
 

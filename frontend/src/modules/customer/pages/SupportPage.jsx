@@ -2,11 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   MessageCircle,
-  Phone,
-  Mail,
-  ChevronDown,
-  ChevronUp,
-  FileText,
   ChevronLeft,
   PlusCircle,
   X,
@@ -22,16 +17,10 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { useToast } from '@shared/components/ui/Toast';
-import { useSettings } from '@core/context/SettingsContext';
 import { customerApi } from '../services/customerApi';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import axiosInstance from '@core/api/axios';
-import { getJSON, setJSON, STORAGE_KEYS } from '@core/utils/storage';
-
-const FAQ_CACHE_KEY = STORAGE_KEYS.FAQ_CACHE;
-const FAQ_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const COMPLAINT_CATEGORIES = [
   { id: 'order', label: 'Order issue', icon: Package, subject: 'Order complaint' },
@@ -54,13 +43,6 @@ const SupportPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { showToast } = useToast();
-  const { settings } = useSettings();
-  const supportEmail = settings?.supportEmail || '';
-  const supportEmailShort = supportEmail
-    ? supportEmail.length > 12
-      ? `${supportEmail.slice(0, 12)}...`
-      : supportEmail
-    : 'support@...';
 
   const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
   const [ticketLoading, setTicketLoading] = useState(false);
@@ -74,7 +56,6 @@ const SupportPage = () => {
     relatedOrderId: '',
     relatedParcelId: '',
   });
-  const [faqs, setFaqs] = useState([]);
 
   const fetchMyTickets = useCallback(async () => {
     try {
@@ -111,34 +92,6 @@ const SupportPage = () => {
     }));
     setIsTicketModalOpen(true);
   }, [searchParams]);
-
-  useEffect(() => {
-    const fetchFaqs = async () => {
-      const cached = getJSON(FAQ_CACHE_KEY, null, { storage: 'session' });
-      if (cached && Array.isArray(cached.items)) {
-        setFaqs(cached.items);
-        return;
-      }
-
-      try {
-        const response = await axiosInstance.get('/public/faqs', {
-          params: { category: 'Customer', status: 'published' },
-        });
-        const data = response.data?.result ?? response.data;
-        const list = Array.isArray(data?.items)
-          ? data.items
-          : Array.isArray(data?.results)
-            ? data.results
-            : [];
-        setFaqs(list);
-        setJSON(FAQ_CACHE_KEY, { items: list }, { storage: 'session', ttlMs: FAQ_CACHE_TTL_MS });
-      } catch (error) {
-        console.error('Error fetching FAQs:', error);
-      }
-    };
-
-    fetchFaqs();
-  }, []);
 
   const openComplaint = (categoryId = 'other') => {
     const cat = COMPLAINT_CATEGORIES.find((c) => c.id === categoryId) || COMPLAINT_CATEGORIES[7];
@@ -243,17 +196,14 @@ const SupportPage = () => {
           </div>
         </div>
 
-        {/* Contact Channels */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <ContactCard icon={MessageCircle} label="Chat Us" sub="Live support" to="/chat" />
+        {/* New complaint */}
+        <div>
           <ContactCard
             icon={PlusCircle}
             label="New Complaint"
             sub="Write details"
             onClick={() => openComplaint('other')}
           />
-          <ContactCard icon={Phone} label="Call Us" sub="+91 98765..." />
-          <ContactCard icon={Mail} label="Email Us" sub={supportEmailShort} />
         </div>
 
         {/* My complaints */}
@@ -327,34 +277,6 @@ const SupportPage = () => {
           )}
         </div>
 
-        {/* FAQ Section */}
-        <div>
-          <h2 className="text-base font-semibold text-slate-800 mb-3 px-1">Frequently Asked Questions</h2>
-          <div className="space-y-3">
-            {faqs.length > 0 ? (
-              faqs.map((faq) => (
-                <FAQItem key={faq._id} question={faq.question} answer={faq.answer} />
-              ))
-            ) : (
-              <div className="bg-white rounded-2xl shadow-[0_4px_10px_rgb(0,0,0,0.02)] border border-slate-100 px-5 py-4 text-sm text-slate-400 text-center">
-                No FAQs available right now.
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Legal Links */}
-        <div className="bg-white rounded-xl p-4 border border-slate-200">
-          <h3 className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-3">Legal</h3>
-          <div className="space-y-3">
-            <Link to="/terms" className="flex items-center gap-2.5 text-slate-700 hover:text-slate-900 font-medium">
-              <FileText size={18} /> Terms & Conditions
-            </Link>
-            <Link to="/privacy" className="flex items-center gap-2.5 text-slate-700 hover:text-slate-900 font-medium">
-              <FileText size={18} /> Privacy Policy
-            </Link>
-          </div>
-        </div>
       </div>
 
       {/* Complaint modal */}
@@ -549,31 +471,6 @@ const ContactCard = ({ icon: Icon, label, sub, to, onClick }) => {
     </Link>
   ) : (
     CardContent
-  );
-};
-
-const FAQItem = ({ question, answer }) => {
-  const [isOpen, setIsOpen] = useState(false);
-
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-slate-50 transition-colors"
-      >
-        <span className="font-semibold text-slate-800 text-sm">{question}</span>
-        {isOpen ? (
-          <ChevronUp size={18} className="text-slate-700" />
-        ) : (
-          <ChevronDown size={18} className="text-slate-400" />
-        )}
-      </button>
-      {isOpen && (
-        <div className="px-5 pb-4 text-sm text-slate-500 font-medium leading-relaxed bg-slate-50/50">
-          {answer}
-        </div>
-      )}
-    </div>
   );
 };
 

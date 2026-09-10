@@ -1,6 +1,7 @@
 import CityParcel, { RIDER_SAFE_FIELDS } from "../models/cityParcel.js";
 import CityParcelConfig from "../models/cityParcelConfig.js";
 import CityParcelEvent from "../models/cityParcelEvent.js";
+import Coupon from "../models/coupon.js";
 import { handleResponse } from "../utils/helper.js";
 import { transition, recordEvent } from "../services/cityParcelStateMachine.js";
 import {
@@ -45,9 +46,10 @@ import {
   openBookingPayment,
   verifyBookingReceipt,
   getBookingPaymentHistory,
+  refundBookingPayment,
 } from "../services/porter/porterPaymentService.js";
 import { activatePorterBookingAfterPayment } from "../services/porter/porterDispatchService.js";
-import { PORTER_BOOKING_KIND } from "../constants/porterPayment.js";
+import { PORTER_BOOKING_KIND, PORTER_PAYMENT_SOURCE } from "../constants/porterPayment.js";
 import {
   visibleCityParcels,
   CITY_PARCEL_AWAITING_PAYMENT,
@@ -66,6 +68,7 @@ import {
 } from "../constants/cityParcelWorkflow.js";
 import { recordCodCollection } from "../services/riderCashService.js";
 import { recordPorterCodCollected } from "../services/porter/customerLedgerService.js";
+import { computeBookingDiscount, incrementCouponUsage } from "../services/finance/couponService.js";
 import logger from "../services/logger.js";
 
 /** Turn a thrown service error into the status code it asked for. */
@@ -192,6 +195,69 @@ export const calculateFare = async (req, res) => {
   }
 };
 
+/** Active coupons the customer can pick from before entering a code by hand. */
+export const getAvailableCoupons = async (req, res) => {
+  try {
+    const now = new Date();
+    const { fare } = req.query;
+    const query = {
+      isActive: true,
+      validFrom: { $lte: now },
+      validTill: { $gte: now },
+      appliesTo: "porter_local",
+    };
+    if (fare !== undefined && Number.isFinite(Number(fare))) {
+      query.minOrderValue = { $lte: Number(fare) };
+    }
+    const coupons = await Coupon.find(query).sort({ discountValue: -1 }).lean();
+    return handleResponse(res, 200, "Available coupons", coupons);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
+/**
+ * Pre-payment coupon check. Re-quotes the trip server-side so the fare a
+ * coupon discounts is never a number the client sent — mirrors
+ * `calculateFare` for the trip quote, then delegates to the shared engine.
+ */
+export const validateBookingCoupon = async (req, res) => {
+  try {
+    const { pickupAddress, dropAddress, package: pkg, deliverySpeed, couponCode } = req.body;
+    if (!couponCode) {
+      return handleResponse(res, 400, "Coupon code is required");
+    }
+
+    const quote = await quoteTrip({
+      pickup: pickupAddress,
+      drop: dropAddress,
+      weightKg: pkg?.weightKg,
+      deliverySpeed,
+    });
+    if (!quote.serviceable) {
+      return handleResponse(res, 400, quote.reason, { code: quote.code });
+    }
+
+    const discount = await computeBookingDiscount({
+      couponCode,
+      customerId: req.user.id,
+      bookingKind: "porter_local",
+      fareAmount: quote.fare,
+    });
+
+    return handleResponse(res, 200, "Coupon applied", {
+      couponId: discount.coupon._id,
+      code: discount.coupon.code,
+      fare: quote.fare,
+      discountAmount: discount.discountAmount,
+      payableFare: discount.payableFare,
+      couponSnapshot: discount.couponSnapshot,
+    });
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
 export const createCityParcel = async (req, res) => {
   try {
     const {
@@ -202,6 +268,7 @@ export const createCityParcel = async (req, res) => {
       package: pkg,
       deliverySpeed = "normal",
       paymentMethod,
+      couponCode,
     } = req.body;
 
     const quote = await quoteTrip({
@@ -213,6 +280,20 @@ export const createCityParcel = async (req, res) => {
 
     if (!quote.serviceable) {
       return handleResponse(res, 400, quote.reason, { code: quote.code });
+    }
+
+    // Re-validated server-side against the freshly quoted fare — the fare a
+    // coupon discounts is never trusted from the client. A failure here
+    // (expired, wrong scope, below minimum fare, usage limit...) surfaces as
+    // the coupon engine's own message via `fail()` below.
+    let discount = null;
+    if (couponCode) {
+      discount = await computeBookingDiscount({
+        couponCode,
+        customerId: req.user.id,
+        bookingKind: "porter_local",
+        fareAmount: quote.fare,
+      });
     }
 
     const isCod = String(paymentMethod).toUpperCase() === "COD";
@@ -251,10 +332,15 @@ export const createCityParcel = async (req, res) => {
       fareBreakdown: quote.fareBreakdown,
       deliveryEta: sla.deliveryEta,
       deliveryDeadline: sla.deliveryDeadline,
+      coupon: discount?.coupon?._id || null,
+      couponSnapshot: discount?.couponSnapshot || null,
+      discountAmount: discount?.discountAmount || 0,
     };
+    const payableFare = discount?.payableFare ?? quote.fare;
 
     let parcel = null;
     let resumed = false;
+    let previousCouponId = null;
 
     /**
      * A cancelled or abandoned Razorpay sheet leaves the row it already
@@ -287,6 +373,7 @@ export const createCityParcel = async (req, res) => {
       }).sort({ createdAt: -1 });
 
       if (resumable) {
+        previousCouponId = resumable.coupon ? String(resumable.coupon) : null;
         resumable.set(bookingFields);
         // Always not-applicable here — the match above excludes COD.
         resumable.codCollection = { amount: 0, status: "NOT_APPLICABLE" };
@@ -307,7 +394,7 @@ export const createCityParcel = async (req, res) => {
         paymentMethod: method,
         paymentStatus: "PENDING",
         codCollection: isCod
-          ? { amount: quote.fare, status: "COLLECT_PENDING" }
+          ? { amount: payableFare, status: "COLLECT_PENDING" }
           : { amount: 0, status: "NOT_APPLICABLE" },
         trackToDoor: true,
         status: S.REQUESTED,
@@ -321,6 +408,14 @@ export const createCityParcel = async (req, res) => {
       actorId: req.user.id,
       note: resumed ? "Payment retried on the same booking" : "Booking created",
     });
+
+    // Only bump usage when this booking is newly claiming the coupon — a
+    // retried payment on the SAME resumable booking with the SAME coupon
+    // must not count twice.
+    const newCouponId = discount?.coupon?._id ? String(discount.coupon._id) : null;
+    if (newCouponId && (!resumed || previousCouponId !== newCouponId)) {
+      await incrementCouponUsage({ couponId: discount.coupon._id });
+    }
 
     // COD needs no gateway step — start looking for a rider immediately.
     if (isCod) {
@@ -686,7 +781,39 @@ export const cancelCityParcel = async (req, res) => {
     }
     emitToAdmins("cityparcel:status:update", updated);
 
-    return handleResponse(res, 200, "Cancelled", { parcel: updated });
+    // Online and already paid — send the money back automatically rather
+    // than making the customer ask for it. COD and never-paid bookings are a
+    // no-op inside this call, so it is always safe to run.
+    const refund = await refundBookingPayment({
+      kind: PORTER_BOOKING_KIND.CITY_PARCEL,
+      bookingId: updated._id,
+      reason: `Booking cancelled by customer${req.body?.reason ? `: ${req.body.reason}` : ""}`,
+      source: PORTER_PAYMENT_SOURCE.SYSTEM,
+    }).catch((err) => {
+      logger.error("city_parcel_cancel_refund_threw", {
+        cityParcelId: String(updated._id),
+        message: err?.message,
+      });
+      return { attempted: true, ok: false, error: err?.message || "Refund failed" };
+    });
+
+    if (refund.booking) {
+      emitToAdmins("cityparcel:status:update", refund.booking);
+      emitToCustomer(refund.booking.customerId, {
+        event: "cityparcel:status:update",
+        payload: {
+          cityParcelId: String(refund.booking._id),
+          status: S.CANCELLED,
+          parcel: refund.booking,
+          message:
+            refund.status === "REFUNDED"
+              ? `₹${refund.amountRupees} has been refunded to your original payment method.`
+              : "Your refund is being processed.",
+        },
+      });
+    }
+
+    return handleResponse(res, 200, "Cancelled", { parcel: refund.booking || updated, refund });
   } catch (error) {
     return fail(res, error);
   }
@@ -1352,9 +1479,14 @@ export const adminGetStats = async (req, res) => {
           $group: {
             _id: null,
             delivered: { $sum: 1 },
-            revenue: { $sum: "$fare" },
+            // What the customer actually paid — `payableFare` when a coupon
+            // discounted the booking, `fare` for legacy documents that
+            // predate the field (`$gt 0` also covers those cleanly, since a
+            // missing field compares as less than 0 in aggregation).
+            revenue: { $sum: { $cond: [{ $gt: ["$payableFare", 0] }, "$payableFare", "$fare"] } },
             riderPay: { $sum: "$riderEarning" },
             distanceKm: { $sum: "$distanceKm" },
+            totalDiscountGiven: { $sum: { $ifNull: ["$discountAmount", 0] } },
           },
         },
       ]),
@@ -1386,8 +1518,10 @@ export const adminGetStats = async (req, res) => {
       delivered: totals.delivered || 0,
       revenue: Math.round((totals.revenue || 0) * 100) / 100,
       riderPay: Math.round((totals.riderPay || 0) * 100) / 100,
-      // What the platform keeps once riders are paid.
+      // What the platform keeps once riders are paid — a coupon discount
+      // reduces this and only this, never the rider's payout.
       margin: Math.round(((totals.revenue || 0) - (totals.riderPay || 0)) * 100) / 100,
+      totalDiscountGiven: Math.round((totals.totalDiscountGiven || 0) * 100) / 100,
       distanceKm: Math.round((totals.distanceKm || 0) * 10) / 10,
       needsAttention: { withheld, unassigned, stuck, failed },
     });
@@ -1676,7 +1810,40 @@ export const adminCancelParcel = async (req, res) => {
       reason,
     });
 
-    return handleResponse(res, 200, "Parcel cancelled", { parcel: cancelled });
+    // Same automatic refund an admin cancel gets as a customer cancel — an
+    // admin cancelling a paid booking must not leave a support ticket behind
+    // asking why the money hasn't come back.
+    const refund = await refundBookingPayment({
+      kind: PORTER_BOOKING_KIND.CITY_PARCEL,
+      bookingId: cancelled._id,
+      reason: `Cancelled by admin: ${reason}`,
+      source: PORTER_PAYMENT_SOURCE.ADMIN,
+      initiatedByAdminId: req.user.id,
+    }).catch((err) => {
+      logger.error("city_parcel_admin_cancel_refund_threw", {
+        cityParcelId: String(cancelled._id),
+        message: err?.message,
+      });
+      return { attempted: true, ok: false, error: err?.message || "Refund failed" };
+    });
+
+    if (refund.booking) {
+      emitToAdmins("cityparcel:status:update", refund.booking);
+      emitToCustomer(refund.booking.customerId, {
+        event: "cityparcel:status:update",
+        payload: {
+          cityParcelId: String(refund.booking._id),
+          status: S.CANCELLED,
+          parcel: refund.booking,
+          message:
+            refund.status === "REFUNDED"
+              ? `₹${refund.amountRupees} has been refunded to your original payment method.`
+              : "Your refund is being processed.",
+        },
+      });
+    }
+
+    return handleResponse(res, 200, "Parcel cancelled", { parcel: refund.booking || cancelled, refund });
   } catch (error) {
     return fail(res, error);
   }

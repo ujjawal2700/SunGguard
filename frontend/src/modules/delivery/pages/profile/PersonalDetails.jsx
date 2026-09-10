@@ -1,28 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, User, Mail, Phone, MapPin, Calendar, Droplet } from "lucide-react";
+import { ArrowLeft, User, Mail, Phone, MapPin } from "lucide-react";
 import Button from "@/shared/components/ui/Button";
 import Input from "@/shared/components/ui/Input";
 import { toast } from "sonner";
 import { useAuth } from "@core/context/AuthContext";
 import { deliveryApi } from "../../services/deliveryApi";
 
-const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
-
-/** Delivery model stores dob as a Date; the input needs "YYYY-MM-DD". */
-const toDateInputValue = (value) => {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toISOString().slice(0, 10);
-};
-
 const buildFormFromUser = (user) => ({
   fullName: user?.name || "",
   email: user?.email || "",
   address: user?.address || "",
-  dob: toDateInputValue(user?.dob),
-  bloodGroup: user?.bloodGroup || "",
 });
 
 const PersonalDetails = () => {
@@ -62,8 +50,6 @@ const PersonalDetails = () => {
         name: formData.fullName.trim(),
         email: formData.email.trim(),
         address: formData.address.trim(),
-        dob: formData.dob,
-        bloodGroup: formData.bloodGroup,
       });
       if (response.data?.success) {
         // Pulls the saved copy back into the shared AuthContext user, so
@@ -171,45 +157,6 @@ const PersonalDetails = () => {
                 }`}
                 rows={3}
               />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Date of Birth"
-              type="date"
-              value={formData.dob}
-              readOnly={!isEditing}
-              onChange={(e) => setFormData({ ...formData, dob: e.target.value })}
-              icon={Calendar}
-              className={!isEditing ? "bg-gray-50 border-transparent" : ""}
-            />
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1 ml-1">Blood Group</label>
-              {isEditing ? (
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-                    <Droplet size={18} />
-                  </div>
-                  <select
-                    value={formData.bloodGroup}
-                    onChange={(e) => setFormData({ ...formData, bloodGroup: e.target.value })}
-                    className="w-full pl-10 pr-4 py-2 rounded-xl text-sm border bg-white border-gray-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all appearance-none"
-                  >
-                    <option value="">Not set</option>
-                    {BLOOD_GROUPS.map((group) => (
-                      <option key={group} value={group}>{group}</option>
-                    ))}
-                  </select>
-                </div>
-              ) : (
-                <Input
-                  value={formData.bloodGroup || "Not set"}
-                  readOnly
-                  icon={Droplet}
-                  className="bg-gray-50 border-transparent"
-                />
-              )}
             </div>
           </div>
         </div>

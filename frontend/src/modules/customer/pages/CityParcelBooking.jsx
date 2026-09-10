@@ -242,6 +242,11 @@ const CityParcelBooking = () => {
   const [quote, setQuote] = useState(null);
   const [quoting, setQuoting] = useState(false);
   const [quoteError, setQuoteError] = useState(null);
+  const [availableCoupons, setAvailableCoupons] = useState([]);
+  const [couponCode, setCouponCode] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponError, setCouponError] = useState(null);
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [pickupZone, setPickupZone] = useState(null);
   const [dropZone, setDropZone] = useState(null);
@@ -450,6 +455,46 @@ const CityParcelBooking = () => {
     if (step === 3) fetchQuote();
   }, [step, fetchQuote]);
 
+  // Offers surfaced once the fare is known — a coupon below the fare's
+  // minimum has no business being shown as an option.
+  useEffect(() => {
+    if (!quote) return;
+    (async () => {
+      try {
+        const { data } = await cityParcelApi.getAvailableCoupons({ fare: quote.fare });
+        setAvailableCoupons(unwrap({ data }) || []);
+      } catch {
+        setAvailableCoupons([]);
+      }
+    })();
+  }, [quote]);
+
+  const applyCoupon = async (code) => {
+    const value = String(code || couponCode || "").trim().toUpperCase();
+    if (!value) return;
+    setApplyingCoupon(true);
+    setCouponError(null);
+    try {
+      const { data } = await cityParcelApi.validateCoupon({
+        ...buildPayload(),
+        couponCode: value,
+      });
+      setAppliedCoupon(unwrap({ data }));
+      setCouponCode(value);
+    } catch (err) {
+      setAppliedCoupon(null);
+      setCouponError(err?.response?.data?.message || "Couldn't apply this coupon");
+    } finally {
+      setApplyingCoupon(false);
+    }
+  };
+
+  const removeCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCode("");
+    setCouponError(null);
+  };
+
   const place = async () => {
     setPlacing(true);
     try {
@@ -467,6 +512,7 @@ const CityParcelBooking = () => {
           allowAlternate: receiver.allowAlternate,
         },
         paymentMethod: payment,
+        couponCode: appliedCoupon?.code || undefined,
       });
       const payload = unwrap({ data });
       const parcel = payload?.parcel;
@@ -725,11 +771,19 @@ const CityParcelBooking = () => {
                           <Data className="text-sg-ink">₹{Number(value).toFixed(2)}</Data>
                         </div>
                       ))}
+                    {appliedCoupon ? (
+                      <div className="flex justify-between text-[13px]">
+                        <span className="text-emerald-700">Coupon ({appliedCoupon.code})</span>
+                        <Data className="text-emerald-700">
+                          -₹{Number(appliedCoupon.discountAmount).toFixed(2)}
+                        </Data>
+                      </div>
+                    ) : null}
                     <div className="sg-perforation my-2" />
                     <div className="flex items-baseline justify-between">
                       <span className="sg-label text-sg-ink">Total</span>
                       <Data className="text-[22px] font-bold text-sg-ink">
-                        ₹{Number(quote.fare).toFixed(2)}
+                        ₹{Number(appliedCoupon?.payableFare ?? quote.fare).toFixed(2)}
                       </Data>
                     </div>
                     <p className="text-[12px] text-sg-ink-3">
@@ -754,6 +808,68 @@ const CityParcelBooking = () => {
                   </div>
                 )}
               </Card>
+
+              {quote ? (
+                <Card className="space-y-3 p-4">
+                  <div className="flex items-center justify-between">
+                    <span className="sg-label text-sg-ink">Coupon</span>
+                    {appliedCoupon ? (
+                      <button
+                        type="button"
+                        onClick={removeCoupon}
+                        className="text-[12px] font-semibold text-red-600"
+                      >
+                        Remove
+                      </button>
+                    ) : null}
+                  </div>
+                  {appliedCoupon ? (
+                    <p className="text-[13px] text-emerald-700">
+                      <strong>{appliedCoupon.code}</strong> applied — you saved ₹
+                      {Number(appliedCoupon.discountAmount).toFixed(2)}
+                    </p>
+                  ) : (
+                    <>
+                      <div className="flex gap-2">
+                        <input
+                          value={couponCode}
+                          onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                          placeholder="Enter coupon code"
+                          className={cn(inputClass, "flex-1")}
+                        />
+                        <button
+                          type="button"
+                          disabled={!couponCode || applyingCoupon}
+                          onClick={() => applyCoupon(couponCode)}
+                          className="rounded-[var(--sg-r)] border border-sg-accent bg-sg-accent-soft px-4 text-[13px] font-semibold text-sg-ink disabled:opacity-50"
+                        >
+                          {applyingCoupon ? "…" : "Apply"}
+                        </button>
+                      </div>
+                      {couponError ? (
+                        <p className="text-[12px] text-red-600">{couponError}</p>
+                      ) : null}
+                      {availableCoupons.length > 0 ? (
+                        <div className="flex gap-2 overflow-x-auto pb-1">
+                          {availableCoupons.map((c) => (
+                            <button
+                              key={c.code}
+                              type="button"
+                              onClick={() => applyCoupon(c.code)}
+                              className="flex-shrink-0 rounded-[var(--sg-r)] border border-dashed border-sg-accent bg-sg-accent-soft px-3 py-1.5 text-[12px] font-semibold text-sg-ink"
+                            >
+                              {c.code} ·{" "}
+                              {c.discountType === "percentage"
+                                ? `${c.discountValue}% OFF`
+                                : `₹${c.discountValue} OFF`}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+                </Card>
+              ) : null}
 
               <div className="grid grid-cols-3 gap-2">
                 {["UPI", "CARD", "COD"].map((method) => (
@@ -819,7 +935,7 @@ const CityParcelBooking = () => {
                 ? "Booking…"
                 : !payment
                   ? "Select a payment method"
-                  : `Pay ₹${quote ? Number(quote.fare).toFixed(0) : "0"}`}
+                  : `Pay ₹${quote ? Number(appliedCoupon?.payableFare ?? quote.fare).toFixed(0) : "0"}`}
             </PrimaryButton>
           )}
         </div>

@@ -279,6 +279,55 @@ export class RazorpayAdapter extends PaymentProviderPort {
   mapStatusToInternal(gatewayState) {
     return mapPaymentState(gatewayState);
   }
+
+  /**
+   * Refund a captured payment.
+   *
+   * `speed: "optimum"` lets Razorpay pick instant refund when the instrument
+   * supports it and fall back to the normal 5-7 day cycle otherwise — the
+   * merchant balance is debited immediately in both cases, only the time it
+   * takes to reach the customer's account differs. A refund is requested
+   * against the PAYMENT id, not the order id: an order can carry more than
+   * one payment attempt, and only the one that actually captured has money to
+   * give back.
+   */
+  async initiateRefund({ gatewayPaymentId, amountPaise, notes = {}, receipt = null }) {
+    if (!gatewayPaymentId) {
+      const err = new Error("No gateway payment to refund");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const amount = Math.round(Number(amountPaise));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      const err = new Error("Invalid refund amount");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const client = getClient();
+    try {
+      const refund = await client.payments.refund(gatewayPaymentId, {
+        amount,
+        speed: "optimum",
+        notes,
+        ...(receipt ? { receipt: String(receipt).slice(0, 40) } : {}),
+      });
+
+      return {
+        gatewayRefundId: refund.id,
+        // Razorpay returns "processed" for an instant refund and "pending"
+        // for one still queued — never "failed" synchronously; a refund that
+        // cannot ultimately be completed arrives later as a webhook.
+        status: refund.status || "pending",
+        speed: refund.speed_processed || refund.speed_requested || "",
+        amount: refund.amount,
+        gatewayResponse: refund,
+      };
+    } catch (err) {
+      throw toHttpError(err, "Could not initiate the refund");
+    }
+  }
 }
 
 export default RazorpayAdapter;

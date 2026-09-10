@@ -111,7 +111,7 @@ export const SupportUnreadProvider = ({ children }) => {
   useEffect(() => {
     if (!token) return;
     const r = String(role || "").toLowerCase();
-    if (r !== "admin" && r !== "customer" && r !== "user") return;
+    if (r !== "admin" && r !== "customer" && r !== "user" && r !== "delivery") return;
     // On /admin/settings the admin shouldn't accumulate unread-ticket
     // counts (the page already manages its own ticket view). Skip
     // attaching this listener — and let React's effect cleanup detach
@@ -132,7 +132,7 @@ export const SupportUnreadProvider = ({ children }) => {
       const isAdminMsg = Boolean(msg?.isAdmin);
       const isRelevant =
         (r === "admin" && !isAdminMsg) ||
-        ((r === "customer" || r === "user") && isAdminMsg);
+        ((r === "customer" || r === "user" || r === "delivery") && isAdminMsg);
 
       if (!isRelevant) return;
 

@@ -16,8 +16,9 @@ import {
  * closed by accepting.
  *
  * @param {'terms'|'privacy'|null} kind  which document to show; null closes it
+ * @param {'customer'|'delivery'} audience  which audience's CMS content to use
  */
-const LegalSheet = ({ kind, onClose, onAccept }) => {
+const LegalSheet = ({ kind, onClose, onAccept, audience = 'customer' }) => {
     const reduce = useReducedMotion();
     const { settings } = useSettings();
     const appName = settings?.appName || 'App';
@@ -26,6 +27,11 @@ const LegalSheet = ({ kind, onClose, onAccept }) => {
     const isTerms = kind === 'terms';
     const title = isTerms ? 'Terms & Conditions' : 'Privacy Policy';
     const Icon = isTerms ? ScrollText : Shield;
+
+    const prefix = audience === 'delivery' ? 'delivery' : 'customer';
+    const cmsContent = isTerms
+        ? settings?.legalContent?.[`${prefix}Terms`] || ''
+        : settings?.legalContent?.[`${prefix}PrivacyPolicy`] || '';
 
     /* Escape closes, and the page behind must not scroll under the sheet. */
     useEffect(() => {
@@ -89,7 +95,12 @@ const LegalSheet = ({ kind, onClose, onAccept }) => {
                         </div>
 
                         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-                            {isTerms ? (
+                            {cmsContent ? (
+                                <div
+                                    className="cms-content"
+                                    dangerouslySetInnerHTML={{ __html: cmsContent }}
+                                />
+                            ) : isTerms ? (
                                 <TermsBody appName={appName} companyName={companyName} />
                             ) : (
                                 <PrivacyBody appName={appName} />

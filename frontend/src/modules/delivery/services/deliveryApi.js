@@ -132,4 +132,18 @@ export const deliveryApi = {
     axiosInstance.post(`/orders/workflow/${orderId}/return-drop-otp/request`, body),
   verifyReturnDropOtp: (orderId, body) =>
     axiosInstance.post(`/orders/workflow/${orderId}/return-drop-otp/verify`, body),
+
+  /** Support tickets raised by the rider. Admin sees these in the same inbox as customer complaints. */
+  createTicket: (data) => axiosInstance.post("/tickets/create", { ...data, userType: "Delivery" }),
+  getMyTickets: () => getWithDedupe("/tickets/my-tickets"),
+  replyTicket: (ticketId, text, options = {}) => {
+    const { mediaUrl = "", mediaType = "", mimeType = "" } = options || {};
+    return axiosInstance.post(`/tickets/reply/${encodeURIComponent(String(ticketId))}`, {
+      text,
+      isAdmin: false,
+      mediaUrl,
+      mediaType,
+      mimeType,
+    });
+  },
 };

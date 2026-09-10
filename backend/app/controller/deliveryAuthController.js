@@ -457,7 +457,6 @@ export const getDeliveryProfile = async (req, res) => {
    UPDATE PROFILE
 ================================ */
 const PROFILE_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-const BLOOD_GROUPS = new Set(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]);
 
 export const updateDeliveryProfile = async (req, res) => {
     try {
@@ -465,8 +464,6 @@ export const updateDeliveryProfile = async (req, res) => {
             name,
             email,
             address,
-            dob,
-            bloodGroup,
             vehicleType,
             vehicleNumber,
             drivingLicenseNumber,
@@ -494,26 +491,6 @@ export const updateDeliveryProfile = async (req, res) => {
         }
 
         if (typeof address !== 'undefined') delivery.address = String(address).trim();
-
-        if (typeof dob !== 'undefined') {
-            if (dob === "" || dob === null) {
-                delivery.dob = undefined;
-            } else {
-                const parsedDob = new Date(dob);
-                if (Number.isNaN(parsedDob.getTime()) || parsedDob > new Date()) {
-                    return handleResponse(res, 400, "Please enter a valid date of birth");
-                }
-                delivery.dob = parsedDob;
-            }
-        }
-
-        if (typeof bloodGroup !== 'undefined') {
-            const trimmedBloodGroup = String(bloodGroup).trim().toUpperCase();
-            if (trimmedBloodGroup && !BLOOD_GROUPS.has(trimmedBloodGroup)) {
-                return handleResponse(res, 400, "Please choose a valid blood group");
-            }
-            delivery.bloodGroup = trimmedBloodGroup;
-        }
 
         if (vehicleType) delivery.vehicleType = vehicleType;
         if (vehicleNumber) delivery.vehicleNumber = vehicleNumber;

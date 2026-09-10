@@ -41,6 +41,16 @@
  *  mapStatusToInternal(gatewayState)
  *    → one of the PAYMENT_STATUS constants
  *
+ *  initiateRefund({ gatewayPaymentId, amountPaise, notes, receipt })
+ *    → { gatewayRefundId, status, speed?, amount, gatewayResponse }
+ *
+ *    `status` is the gateway's own refund state ("processed" | "pending" for
+ *    Razorpay) — money leaves the merchant balance the instant the refund is
+ *    created either way; the status only describes how fast it reaches the
+ *    customer's bank. Callers should treat a successful call as "refund
+ *    initiated" regardless of which value comes back, and let the webhook
+ *    confirm a "pending" one later.
+ *
  *  isConfigured()
  *    → boolean — credentials present, so callers can fall back to cash
  *
@@ -79,6 +89,10 @@ export class PaymentProviderPort {
 
   mapStatusToInternal(_gatewayState) {
     throw new Error("mapStatusToInternal must be implemented");
+  }
+
+  async initiateRefund(_args) {
+    throw new Error("initiateRefund must be implemented");
   }
 }
 

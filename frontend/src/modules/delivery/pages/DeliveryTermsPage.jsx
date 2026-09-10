@@ -43,7 +43,7 @@ const DeliveryTermsPage = () => {
 
                     {cmsContent ? (
                         <div
-                            className="prose prose-slate prose-sm max-w-none text-slate-600"
+                            className="cms-content"
                             dangerouslySetInnerHTML={{ __html: cmsContent }}
                         />
                     ) : (

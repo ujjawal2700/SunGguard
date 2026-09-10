@@ -99,6 +99,7 @@ export const createCityParcelSchema = Joi.object({
   package: packageSchema.required(),
   deliverySpeed: trimmed.valid("normal", "express").optional(),
   paymentMethod: trimmed.valid("UPI", "CARD", "WALLET", "COD").required(),
+  couponCode: Joi.string().trim().uppercase().max(40).optional().allow("", null),
 });
 
 export const serviceabilitySchema = Joi.object({

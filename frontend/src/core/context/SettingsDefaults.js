@@ -43,6 +43,14 @@ export const DEFAULT_SETTINGS = {
     sellerCreateRequiresApproval: false,
     sellerEditRequiresApproval: false,
   },
+  legalContent: {
+    customerPrivacyPolicy: "",
+    customerTerms: "",
+    customerAboutUs: "",
+    deliveryPrivacyPolicy: "",
+    deliveryTerms: "",
+    deliveryAboutUs: "",
+  },
 };
 
 /**

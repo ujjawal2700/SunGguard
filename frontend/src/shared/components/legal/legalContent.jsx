@@ -18,7 +18,7 @@ const Section = ({ title, children }) => (
 );
 
 export const TermsBody = ({ appName = 'App', companyName = appName }) => (
-    <div className="prose prose-slate prose-sm max-w-none text-slate-600 space-y-4">
+    <div className="cms-content space-y-4">
         <p>
             Welcome to {appName}. By accessing or using our mobile application and
             services, you agree to be bound by these Terms and Conditions.
@@ -53,7 +53,7 @@ export const TermsBody = ({ appName = 'App', companyName = appName }) => (
 );
 
 export const PrivacyBody = ({ appName = 'App' }) => (
-    <div className="prose prose-slate prose-sm max-w-none text-slate-600 space-y-4">
+    <div className="cms-content space-y-4">
         <p>
             At {appName}, we take your privacy seriously. This Privacy Policy
             explains how we collect, use, and protect your personal information.
