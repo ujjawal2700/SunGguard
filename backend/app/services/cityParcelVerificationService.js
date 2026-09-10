@@ -25,18 +25,18 @@ import logger from "./logger.js";
  * their bag. That is the exact hole the proximity gate closes.
  */
 
-function sixDigit() {
-  return String(Math.floor(100000 + Math.random() * 900000));
+function fourDigit() {
+  return String(Math.floor(1000 + Math.random() * 9000));
 }
 
 /**
  * Mirrors `utils/otp.js`: when USE_REAL_SMS is off, every code is the fixed
- * mock value and nothing is sent. That is how this deployment runs before
- * launch, and it must behave identically here or testing the flow would need
- * a live SMS account.
+ * mock value (1234) and nothing is sent. That is how this deployment runs
+ * before launch, and it must behave identically here or testing the flow
+ * would need a live SMS account.
  */
 function newCode() {
-  return useRealSMS() ? sixDigit() : MOCK_OTP;
+  return useRealSMS() ? fourDigit() : MOCK_OTP;
 }
 
 async function deliverCode({ phone, code, type, referenceId }) {

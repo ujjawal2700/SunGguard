@@ -282,6 +282,9 @@ export const signupDelivery = async (req, res) => {
             experienceDetails: pickBodyString(body, ["experienceDetails", "experience_details"]),
             isParcelService: serviceFlags.isParcelService,
             isQuickCommerceService: serviceFlags.isQuickCommerceService,
+            // A resubmission after rejection is a fresh application, not a
+            // continuation of the rejected one — send it back to the queue.
+            applicationStatus: "pending",
             documents: {
                 aadhar: aadharUrl,
                 pan: panUrl,
@@ -346,6 +349,15 @@ export const loginDelivery = async (req, res) => {
             return handleResponse(res, 403, "Your application is pending admin approval.");
         }
 
+        if (delivery.isActive === false) {
+            return handleResponse(
+                res,
+                403,
+                "Your account has been deactivated by admin. Please contact support for help.",
+                { code: "ACCOUNT_DEACTIVATED" },
+            );
+        }
+
         let otp = generateOTP();
 
         delivery.otp = otp;
@@ -387,6 +399,18 @@ export const verifyDeliveryOTP = async (req, res) => {
 
         if (!delivery) {
             return handleResponse(res, 400, "Invalid or expired OTP");
+        }
+
+        // Covers the gap between an OTP being sent and admin deactivating the
+        // account in between — loginDelivery already blocks the send step,
+        // this stops that already-issued code from still completing login.
+        if (delivery.isActive === false) {
+            return handleResponse(
+                res,
+                403,
+                "Your account has been deactivated by admin. Please contact support for help.",
+                { code: "ACCOUNT_DEACTIVATED" },
+            );
         }
 
         // Only set isOnline to true if the rider is verified
@@ -432,10 +456,17 @@ export const getDeliveryProfile = async (req, res) => {
 /* ===============================
    UPDATE PROFILE
 ================================ */
+const PROFILE_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const BLOOD_GROUPS = new Set(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]);
+
 export const updateDeliveryProfile = async (req, res) => {
     try {
         const {
             name,
+            email,
+            address,
+            dob,
+            bloodGroup,
             vehicleType,
             vehicleNumber,
             drivingLicenseNumber,
@@ -453,6 +484,37 @@ export const updateDeliveryProfile = async (req, res) => {
         }
 
         if (name) delivery.name = name;
+
+        if (typeof email !== 'undefined') {
+            const trimmedEmail = String(email).trim();
+            if (trimmedEmail && !PROFILE_EMAIL_REGEX.test(trimmedEmail)) {
+                return handleResponse(res, 400, "Please enter a valid email address");
+            }
+            delivery.email = trimmedEmail;
+        }
+
+        if (typeof address !== 'undefined') delivery.address = String(address).trim();
+
+        if (typeof dob !== 'undefined') {
+            if (dob === "" || dob === null) {
+                delivery.dob = undefined;
+            } else {
+                const parsedDob = new Date(dob);
+                if (Number.isNaN(parsedDob.getTime()) || parsedDob > new Date()) {
+                    return handleResponse(res, 400, "Please enter a valid date of birth");
+                }
+                delivery.dob = parsedDob;
+            }
+        }
+
+        if (typeof bloodGroup !== 'undefined') {
+            const trimmedBloodGroup = String(bloodGroup).trim().toUpperCase();
+            if (trimmedBloodGroup && !BLOOD_GROUPS.has(trimmedBloodGroup)) {
+                return handleResponse(res, 400, "Please choose a valid blood group");
+            }
+            delivery.bloodGroup = trimmedBloodGroup;
+        }
+
         if (vehicleType) delivery.vehicleType = vehicleType;
         if (vehicleNumber) delivery.vehicleNumber = vehicleNumber;
         if (drivingLicenseNumber) delivery.drivingLicenseNumber = drivingLicenseNumber;

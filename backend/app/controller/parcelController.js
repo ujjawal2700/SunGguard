@@ -22,6 +22,7 @@ import {
 } from "../services/parcelWorkflowService.js";
 import { resetAllParcelData } from "../services/parcelDataResetService.js";
 import { recordCodCollection } from "../services/riderCashService.js";
+import { recordPorterCodCollected } from "../services/porter/customerLedgerService.js";
 import { generateParcelOtp } from "../utils/otp.js";
 import { getCachedRoute } from "../services/mapsRouteService.js";
 import {
@@ -29,11 +30,14 @@ import {
   applyBillableDaysToFare,
   computeParcelDailyFare,
 } from "../utils/parcelFare.js";
+import { createParcelCodRemitRazorpayOrder } from "../services/parcelRazorpayService.js";
 import {
-  createParcelRazorpayOrder,
-  createParcelCodRemitRazorpayOrder,
-  verifyParcelRazorpaySignature,
-} from "../services/parcelRazorpayService.js";
+  openBookingPayment,
+  verifyBookingReceipt,
+} from "../services/porter/porterPaymentService.js";
+import { activatePorterBookingAfterPayment } from "../services/porter/porterDispatchService.js";
+import { PORTER_BOOKING_KIND } from "../constants/porterPayment.js";
+import logger from "../services/logger.js";
 import { findNearestParcelSellerWithDistance } from "../services/sellerNearbyService.js";
 import { applyParcelDeliveredRiderEarning } from "../services/parcelRiderSettlementService.js";
 import {
@@ -45,6 +49,16 @@ import {
   NORMAL_PICKUP_SLA_MINUTES,
 } from "../services/parcelLateRefundService.js";
 import { roundCurrency } from "../utils/money.js";
+import { recordParcelEvent, PARCEL_EVENT_ACTOR } from "../services/parcelEventService.js";
+import ParcelEvent from "../models/parcelEvent.js";
+import {
+  visibleParcels,
+  PARCEL_AWAITING_PAYMENT,
+} from "../services/bookingCheckoutService.js";
+import {
+  canTransition as canParcelTransition,
+  transitionRefusal as parcelTransitionRefusal,
+} from "../services/parcelStateMachine.js";
 
 function isParcelCod(parcelOrMethod) {
   const method =
@@ -268,7 +282,7 @@ export const calculateFare = async (req, res) => {
       pickupWindowDays,
       preferredPickupDate,
     });
-    const priced = applyBillableDaysToFare(daily, billableDays);
+    const priced = applyBillableDaysToFare(daily, billableDays, config.gst);
 
     // Whatever the rider actually hands the parcel to. An outstation pickup
     // with no warehouse and no hub in range still quotes, so this has to
@@ -295,6 +309,15 @@ export const calculateFare = async (req, res) => {
       expressCharge: priced.expressCharge,
       dailyFare: priced.dailyFare,
       billableDays: priced.billableDays,
+      // Tax, itemised. The booking screen shows these as their own lines, so
+      // a customer can see what they are paying tax on before they commit
+      // rather than discovering it on the invoice.
+      taxableAmount: priced.taxableAmount,
+      gstPercent: priced.gstPercent,
+      gstAmount: priced.gstAmount,
+      cgst: priced.cgst,
+      sgst: priced.sgst,
+      gstInclusive: priced.gstInclusive,
       fare: priced.fare,
     });
   } catch (error) {
@@ -362,6 +385,15 @@ function checkBookingAddress(address, label) {
 }
 
 const PARCEL_PAYMENT_METHODS = ["UPI", "CARD", "WALLET", "COD"];
+
+/**
+ * How long an unpaid UPI parcel stays eligible to be resumed rather than
+ * duplicated. Mirrors CITY_PARCEL_RESUMABLE_BOOKING_WINDOW_MS — a customer
+ * who dismisses the Razorpay sheet and taps Pay again within this window gets
+ * the SAME parcel row re-priced and a fresh gateway order opened on it.
+ */
+const PARCEL_RESUMABLE_BOOKING_WINDOW_MS = () =>
+  parseInt(process.env.PARCEL_RESUMABLE_BOOKING_WINDOW_MS || "3600000", 10);
 
 export const createParcel = async (req, res) => {
   try {
@@ -563,13 +595,12 @@ export const createParcel = async (req, res) => {
       pickupWindowDays: resolvedWindowDays,
       preferredPickupDate: pickupDay,
     });
-    const priced = applyBillableDaysToFare(daily, billableDays);
+    const priced = applyBillableDaysToFare(daily, billableDays, config.gst);
 
-    // Generate 6-digit OTP code
-    const otp = generateParcelOtp();
-
-    const parcel = await Parcel.create({
-      customerId: req.user.id,
+    // Everything about the booking except its identity, OTP and payment
+    // state — shared by both the fresh-create path and the resume-in-place
+    // path below.
+    const parcelFields = {
       pickupAddress,
       dropAddress: resolvedDropAddress,
       packageDetails,
@@ -598,43 +629,135 @@ export const createParcel = async (req, res) => {
         dailyFare: priced.dailyFare,
         billableDays: priced.billableDays,
       },
-      paymentStatus: "PENDING",
-      paymentMethod: method,
-      codSettlement: buildInitialCodSettlement(method, priced.fare),
-      otp,
+    };
+
+    let parcel = null;
+    let resumed = false;
+
+    /**
+     * A cancelled or abandoned Razorpay sheet leaves the row it already
+     * created sitting unpaid in the database. Tapping "Pay" again used to
+     * insert a brand new Parcel every single time — one hesitant customer
+     * could leave a string of duplicate REQUESTED rows behind, each with its
+     * own Razorpay order.
+     *
+     * COD/CARD/WALLET never hit this: they activate immediately below with
+     * no gateway sheet to cancel. Only a UPI retry looks for an existing
+     * unpaid attempt to resume, and only resumes one that agrees on
+     * customer, route, courier, destination and package — anything looser
+     * risks resuming the wrong booking. Fields that could have changed
+     * since the first attempt (weight, dates, price if admin edited the
+     * rate card) are refreshed onto the SAME row rather than left stale.
+     */
+    if (method === "UPI") {
+      const resumable = await Parcel.findOne({
+        customerId: req.user.id,
+        status: "REQUESTED",
+        paymentStatus: "PENDING",
+        paymentMethod: "UPI",
+        parcelType,
+        courierCompanyId: courierDoc._id,
+        destinationCity: city,
+        "pickupAddress.lat": pickupAddress.lat,
+        "pickupAddress.lng": pickupAddress.lng,
+        createdAt: { $gte: new Date(Date.now() - PARCEL_RESUMABLE_BOOKING_WINDOW_MS()) },
+      }).sort({ createdAt: -1 });
+
+      if (resumable) {
+        resumable.set(parcelFields);
+        // The old order cannot be reopened once its sheet was dismissed;
+        // a fresh one is requested further down regardless.
+        resumable.razorpayOrderId = null;
+        resumable.razorpayPaymentId = null;
+        await resumable.save();
+        parcel = resumable;
+        resumed = true;
+      }
+    }
+
+    if (!parcel) {
+      // Generate 6-digit OTP code
+      const otp = generateParcelOtp();
+      parcel = await Parcel.create({
+        customerId: req.user.id,
+        ...parcelFields,
+        paymentStatus: "PENDING",
+        paymentMethod: method,
+        codSettlement: buildInitialCodSettlement(method, priced.fare),
+        otp,
+        status: "REQUESTED",
+      });
+    }
+
+    await recordParcelEvent({
+      parcelId: parcel._id,
       status: "REQUESTED",
+      actor: PARCEL_EVENT_ACTOR.CUSTOMER,
+      actorId: req.user.id,
+      note: resumed ? "Payment retried on the same booking" : "Booking created",
     });
 
-    // `method` is the normalized value validated at the top of this handler.
-
-    // UPI: create Razorpay order; broadcast only after payment verify.
+    /**
+     * Online: open a gateway order; broadcast only once the money is
+     * confirmed captured.
+     *
+     * Routed through `porterPaymentService`, which writes a real PorterPayment
+     * row per attempt with a full status history, the instrument used, the
+     * gateway's own fee, a refund trail — and, crucially, a webhook leg. The
+     * previous version wrote a bare order id onto the parcel and nothing
+     * else, so a customer whose app died between paying and returning had, as
+     * far as this database was concerned, not paid at all.
+     */
     if (method === "UPI") {
       try {
-        const razorpay = await createParcelRazorpayOrder(parcel);
-        parcel.razorpayOrderId = razorpay.orderId;
+        const { payment, checkout } = await openBookingPayment({
+          kind: PORTER_BOOKING_KIND.PARCEL,
+          booking: parcel,
+          idempotencyKey: req.headers?.["idempotency-key"] || null,
+          correlationId: req.correlationId || null,
+        });
+        parcel.razorpayOrderId = checkout.orderId;
         await parcel.save();
         return handleResponse(res, 201, "Complete UPI payment to confirm parcel", {
           parcel,
           requiresPayment: true,
-          razorpay,
+          // The shape the existing booking screens already read, kept
+          // verbatim so they need no coordinated change.
+          razorpay: {
+            keyId: checkout.keyId,
+            orderId: checkout.orderId,
+            amount: checkout.amount,
+            currency: checkout.currency,
+          },
+          paymentId: String(payment._id),
         });
       } catch (payErr) {
+        /**
+         * The parcel is deleted rather than left behind, as before — but only
+         * on the path where no gateway order was ever opened. A PorterPayment
+         * row survives either way and records the failed attempt, so the
+         * reason a customer could not start checkout is no longer lost.
+         */
         await Parcel.findByIdAndDelete(parcel._id).catch(() => {});
-        console.error("[createParcel] Razorpay order failed:", {
+        logger.error("parcel_payment_open_failed", {
+          parcelId: String(parcel._id),
           message: payErr?.message,
           statusCode: payErr?.statusCode,
-          error: payErr?.error,
         });
         const status = payErr.statusCode || 500;
         return handleResponse(
           res,
           status,
-          payErr.message || "Failed to start Razorpay payment",
+          payErr.message || "Failed to start the payment",
         );
       }
     }
 
-    // COD (and any non-UPI): start search immediately.
+    /**
+     * COD: no gateway step, so the search starts now. The cash is recorded
+     * against the customer's own ledger when the rider actually collects it
+     * at pickup, not here — nothing has been paid yet.
+     */
     const resultParcel = await activateParcelAfterPayment(parcel);
     await notifyParcelRequested(resultParcel, req.user.id);
 
@@ -683,23 +806,40 @@ export const verifyParcelPayment = async (req, res) => {
       });
     }
 
-    verifyParcelRazorpaySignature({
-      razorpayOrderId,
-      razorpayPaymentId,
-      razorpaySignature,
-    });
-
     if (parcel.razorpayOrderId && parcel.razorpayOrderId !== razorpayOrderId) {
-      return handleResponse(res, 400, "Razorpay order mismatch for this parcel");
+      return handleResponse(res, 400, "This payment belongs to another parcel");
     }
 
-    parcel.paymentStatus = "PAID";
-    parcel.razorpayOrderId = razorpayOrderId;
-    parcel.razorpayPaymentId = razorpayPaymentId;
-    await parcel.save();
+    /**
+     * Signature AND capture, not signature alone.
+     *
+     * A valid signature proves the receipt is genuine. It does not prove the
+     * money was taken — an authorised-but-uncaptured payment produces a
+     * perfectly valid receipt, and the old code marked the parcel PAID on it
+     * and dispatched a rider.
+     */
+    const result = await verifyBookingReceipt({
+      kind: PORTER_BOOKING_KIND.PARCEL,
+      bookingId: parcel._id,
+      customerId: req.user.id,
+      gatewayOrderId: razorpayOrderId,
+      gatewayPaymentId: razorpayPaymentId,
+      signature: razorpaySignature,
+      correlationId: req.correlationId || null,
+      onPaid: activatePorterBookingAfterPayment,
+    });
 
-    const resultParcel = await activateParcelAfterPayment(parcel);
-    await notifyParcelRequested(resultParcel, req.user.id);
+    if (result.status !== "CAPTURED" && result.status !== "PARTIALLY_REFUNDED") {
+      // Genuine receipt, capture not confirmed yet. The webhook will finish
+      // the job on its own, so there is nothing for the customer to redo.
+      return handleResponse(res, 202, "Waiting for your bank to confirm the payment", {
+        parcel: await Parcel.findById(parcel._id),
+        paymentStatus: result.status,
+        requiresPayment: false,
+      });
+    }
+
+    const resultParcel = result.booking || (await Parcel.findById(parcel._id));
 
     return handleResponse(res, 200, "Payment verified. Searching for rider...", {
       parcel: resultParcel,
@@ -713,7 +853,13 @@ export const verifyParcelPayment = async (req, res) => {
 
 export const getParcelHistory = async (req, res) => {
   try {
-    const parcels = await Parcel.find({ customerId: req.user.id })
+    /**
+     * A UPI booking whose Razorpay sheet was dismissed leaves a REQUESTED
+     * row behind so the gateway order has something to attach to. It is not
+     * a booking the customer made — nothing was paid and no rider was ever
+     * sent — so it does not belong in their waybill history.
+     */
+    const parcels = await Parcel.find(visibleParcels({ customerId: req.user.id }))
       .populate("deliveryPartnerId", "name phone vehicleType")
       .sort({ createdAt: -1 });
 
@@ -776,7 +922,17 @@ export const trackParcel = async (req, res) => {
       acceptedAt: plain.acceptedAt || null,
     };
 
-    return handleResponse(res, 200, "Parcel details retrieved successfully", plain);
+    // The full status history — when it was booked, accepted, picked up,
+    // dropped, or cancelled, and by whom. The document only ever holds the
+    // CURRENT status; this is what actually answers "what happened to it".
+    const timeline = await ParcelEvent.find({ parcelId: parcel._id })
+      .sort({ at: 1 })
+      .lean();
+
+    return handleResponse(res, 200, "Parcel details retrieved successfully", {
+      ...plain,
+      timeline,
+    });
   } catch (error) {
     return handleResponse(res, 500, error.message);
   }
@@ -846,6 +1002,15 @@ export const cancelParcelByCustomer = async (req, res) => {
       await retractParcelBroadcast(String(parcel._id), null);
     }
 
+    await recordParcelEvent({
+      parcelId: updated._id,
+      status: "CANCELLED",
+      previousStatus: parcel.status,
+      actor: PARCEL_EVENT_ACTOR.CUSTOMER,
+      actorId: req.user.id,
+      note: "Cancelled by the customer",
+    });
+
     emitToAdmins("parcel:status:update", updated);
     emitToCustomer(updated.customerId, {
       event: "parcel:status:update",
@@ -868,7 +1033,16 @@ export const cancelParcelByCustomer = async (req, res) => {
 
 export const adminGetParcels = async (req, res) => {
   try {
-    const parcels = await Parcel.find()
+    // Same rule as the customer's own history: an abandoned checkout is not
+    // a live job, and an admin trying to assign a rider to one would be
+    // dispatching against money that never moved. `?awaitingPayment=true`
+    // surfaces them for support.
+    const filter =
+      String(req.query.awaitingPayment) === "true"
+        ? PARCEL_AWAITING_PAYMENT
+        : visibleParcels();
+
+    const parcels = await Parcel.find(filter)
       .populate("customerId", "name phone email")
       .populate("deliveryPartnerId", "name phone vehicleType")
       .sort({ createdAt: -1 });
@@ -924,7 +1098,14 @@ export const adminGetParcelById = async (req, res) => {
       };
     }
 
-    return handleResponse(res, 200, "Parcel retrieved successfully", plain);
+    const timeline = await ParcelEvent.find({ parcelId: parcel._id })
+      .sort({ at: 1 })
+      .lean();
+
+    return handleResponse(res, 200, "Parcel retrieved successfully", {
+      ...plain,
+      timeline,
+    });
   } catch (error) {
     return handleResponse(res, 500, error.message);
   }
@@ -1137,12 +1318,22 @@ export const adminAssignRider = async (req, res) => {
       return handleResponse(res, 404, "Delivery partner not found");
     }
 
+    const previousStatus = parcel.status;
     parcel.deliveryPartnerId = riderId;
     parcel.status = "ACCEPTED";
     parcel.acceptedAt = new Date();
     parcel.searchExpiresAt = null;
     parcel.searchMeta = undefined;
     await parcel.save();
+
+    await recordParcelEvent({
+      parcelId: parcel._id,
+      status: "ACCEPTED",
+      previousStatus,
+      actor: PARCEL_EVENT_ACTOR.ADMIN,
+      actorId: req.user.id,
+      note: `Assigned to ${rider.name} by an admin`,
+    });
 
     rider.isBusy = await syncDeliveryPartnerBusyFlag(riderId);
     await rider.save();
@@ -1311,8 +1502,10 @@ export const adminUpdatePricingConfig = async (req, res) => {
 
 export const adminGetReports = async (req, res) => {
   try {
-    const parcels = await Parcel.find();
-    
+    // "Total deliveries" counted rows nobody had paid for, so an abandoned
+    // pay screen quietly moved the completion rate.
+    const parcels = await Parcel.find(visibleParcels());
+
     const totalDeliveries = parcels.length;
     const completed = parcels.filter(p => p.status === "DELIVERED").length;
     const cancelled = parcels.filter(p => p.status === "CANCELLED").length;
@@ -1354,9 +1547,24 @@ export const adminGetReports = async (req, res) => {
 
 export const adminGetActiveDeliveries = async (req, res) => {
   try {
-    const activeParcels = await Parcel.find({
-      status: { $in: ["SEARCHING", "REQUESTED", "ACCEPTED", "RIDER_ASSIGNED", "PICKUP_REACHED", "PICKED_UP", "OUT_FOR_DELIVERY"] }
-    })
+    // REQUESTED is in this list, which is exactly where an unpaid booking
+    // sits — so the live board used to show jobs that had never been paid
+    // for and that no rider would ever be dispatched to.
+    const activeParcels = await Parcel.find(
+      visibleParcels({
+        status: {
+          $in: [
+            "SEARCHING",
+            "REQUESTED",
+            "ACCEPTED",
+            "RIDER_ASSIGNED",
+            "PICKUP_REACHED",
+            "PICKED_UP",
+            "OUT_FOR_DELIVERY",
+          ],
+        },
+      }),
+    )
       .populate("customerId", "name phone")
       .populate("deliveryPartnerId", "name phone");
 
@@ -1534,6 +1742,34 @@ export const riderUpdateStatus = async (req, res) => {
       );
     }
 
+    /**
+     * Tapping the same step twice is a double-tap or a retried request, not
+     * a second event. Answering it as a no-op keeps the timeline honest —
+     * replaying the write below would record the parcel arriving somewhere
+     * it had already arrived.
+     */
+    if (parcel.status === status) {
+      return handleResponse(res, 200, "Parcel status already up to date", parcel);
+    }
+
+    /**
+     * The list above only says the status is a real one. This says the
+     * parcel can actually get there from where it is standing.
+     *
+     * Without it a rider could set OUT_FOR_DELIVERY straight from ACCEPTED,
+     * skipping PICKUP_REACHED and PICKED_UP — and with them the pickup OTP
+     * and the proof photo, which are the only evidence the parcel ever
+     * changed hands. It also let a status move backwards, writing a history
+     * that described a journey the parcel never made.
+     */
+    if (!canParcelTransition(parcel.status, status)) {
+      return handleResponse(
+        res,
+        409,
+        parcelTransitionRefusal(parcel.status, status),
+      );
+    }
+
     // Pickup from customer requires OTP confirmation before hub-drop screen.
     if (status === "PICKED_UP") {
       const providedOtp = String(req.body?.otp || "").trim();
@@ -1564,6 +1800,7 @@ export const riderUpdateStatus = async (req, res) => {
       parcel.pickupProofImage = proofUrl;
     }
 
+    const previousStatus = parcel.status;
     parcel.status = status;
 
     // COD: rider collects full fare cash from customer at pickup.
@@ -1581,16 +1818,41 @@ export const riderUpdateStatus = async (req, res) => {
     // OTP is only verified at customer pickup. Hub drop needs no OTP/SMS.
     await parcel.save();
 
+    await recordParcelEvent({
+      parcelId: parcel._id,
+      status,
+      previousStatus,
+      actor: PARCEL_EVENT_ACTOR.DELIVERY,
+      actorId: parcel.deliveryPartnerId,
+      note: status === "PICKED_UP" ? "Picked up from customer, OTP verified" : "",
+    });
+
     // Put the cash on the rider's ledger so the admin cash screens see it.
     // Upserted on a deterministic reference, so a repeated status call
     // cannot count the same pickup twice.
     if (recordedCodCollection) {
-      await recordCodCollection({
-        riderId: parcel.deliveryPartnerId,
-        kind: "parcel",
-        refId: parcel._id,
-        amount: recordedCodCollection,
-      });
+      await Promise.all([
+        recordCodCollection({
+          riderId: parcel.deliveryPartnerId,
+          kind: "parcel",
+          refId: parcel._id,
+          amount: recordedCodCollection,
+        }),
+        /**
+         * And onto the customer's own money trail. Cash is still a payment:
+         * without this a COD booking left nothing on the customer's history,
+         * so "what have I paid you" could only be answered for the people
+         * who happened to pay online.
+         */
+        recordPorterCodCollected({
+          customerId: parcel.customerId,
+          bookingKind: PORTER_BOOKING_KIND.PARCEL,
+          bookingId: parcel._id,
+          referenceId: `PCL-${String(parcel._id).slice(-6).toUpperCase()}`,
+          amount: recordedCodCollection,
+          gstAmount: parcel.fareBreakdown?.gstAmount || 0,
+        }),
+      ]);
     }
 
     const populated = await Parcel.findById(parcel._id)
@@ -1693,6 +1955,7 @@ export const riderCompleteDelivery = async (req, res) => {
       );
     }
 
+    const previousStatus = parcel.status;
     parcel.status = "DELIVERED";
     parcel.deliveryProofImage = hubProofUrl;
 
@@ -1732,6 +1995,15 @@ export const riderCompleteDelivery = async (req, res) => {
     }
 
     await parcel.save();
+
+    await recordParcelEvent({
+      parcelId: parcel._id,
+      status: "DELIVERED",
+      previousStatus,
+      actor: PARCEL_EVENT_ACTOR.DELIVERY,
+      actorId: parcel.deliveryPartnerId,
+      note: parcel.warehouseId ? "Dropped at warehouse" : "Dropped at seller hub",
+    });
 
     try {
       await applyParcelDeliveredRiderEarning(parcel);
@@ -1837,7 +2109,7 @@ export const riderGetAvailableParcels = async (req, res) => {
 export const riderAcceptParcel = async (req, res) => {
   try {
     const { parcelId } = req.params;
-    const idempotencyKey = req.headers["idempotency-key"] || req.body?.idempotencyKey;
+    const idempotencyKey = req.headers?.["idempotency-key"] || req.body?.idempotencyKey;
 
     if (!parcelId) {
       return handleResponse(res, 400, "Parcel ID is required");

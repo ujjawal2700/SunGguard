@@ -43,7 +43,6 @@
   "dependencies": {
     "@googlemaps/google-maps-services-js": "^3.4.2",
     "@mapbox/polyline": "^1.2.1",
-    "@phonepe-pg/pg-sdk-node": "^2.0.5",
     "axios": "^1.13.5",
     "bcrypt": "^6.0.0",
     "bull": "^4.16.5",

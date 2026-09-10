@@ -6,7 +6,7 @@ import { zonesForPoint, smallestZone } from "../../services/deliveryZoneService.
 
 export const getDeliveryPartners = async (req, res) => {
   try {
-    const { status, verified, search } = req.query;
+    const { status, verified, applicationStatus, search } = req.query;
     const query = {};
 
     if (status === "online") {
@@ -19,6 +19,16 @@ export const getDeliveryPartners = async (req, res) => {
       query.isVerified = true;
     } else if (verified === "false") {
       query.isVerified = false;
+      // The pending-review queue (verified=false) is for applications still
+      // awaiting a decision — a rejected one is unverified too, but it's
+      // already been decided and shouldn't clutter that queue. $ne also
+      // matches documents from before this field existed, so older pending
+      // riders keep showing up unaffected.
+      query.applicationStatus = { $ne: "rejected" };
+    }
+
+    if (["pending", "approved", "rejected"].includes(applicationStatus)) {
+      query.applicationStatus = applicationStatus;
     }
 
     if (search && String(search).trim()) {
@@ -53,6 +63,10 @@ export const getDeliveryPartners = async (req, res) => {
       "profileImage",
       "documents",
       "isVerified",
+      "applicationStatus",
+      "isActive",
+      "isOnline",
+      "isBusy",
       "isParcelService",
       "isQuickCommerceService",
       // CAR WASH DISABLED — "isCarWashService",
@@ -72,8 +86,24 @@ export const getDeliveryPartners = async (req, res) => {
       Delivery.countDocuments(query),
     ]);
 
+    const riderIds = deliveryPartners.map((r) => r._id);
+    const deliveryCounts = riderIds.length
+      ? await Order.aggregate([
+          { $match: { deliveryBoy: { $in: riderIds }, status: "delivered" } },
+          { $group: { _id: "$deliveryBoy", count: { $sum: 1 } } },
+        ])
+      : [];
+    const deliveryCountMap = new Map(
+      deliveryCounts.map((row) => [String(row._id), row.count]),
+    );
+
+    const items = deliveryPartners.map((r) => ({
+      ...r,
+      totalDeliveries: deliveryCountMap.get(String(r._id)) || 0,
+    }));
+
     return handleResponse(res, 200, "Delivery partners fetched successfully", {
-      items: deliveryPartners,
+      items,
       page,
       limit,
       total,
@@ -88,7 +118,7 @@ export const getDeliveryPartnerById = async (req, res) => {
   try {
     const rider = await Delivery.findById(req.params.id)
       .select(
-        "name phone email address vehicleType vehicleNumber drivingLicenseNumber aadharNumber panNumber accountHolder accountNumber ifsc profileImage documents isVerified isParcelService isQuickCommerceService experience experienceDetails currentArea createdAt",
+        "name phone email address vehicleType vehicleNumber drivingLicenseNumber aadharNumber panNumber accountHolder accountNumber ifsc profileImage documents isVerified applicationStatus isParcelService isQuickCommerceService experience experienceDetails currentArea createdAt",
         // CAR WASH DISABLED — removed isCarWashService from select
       )
       .lean();
@@ -143,7 +173,7 @@ export const approveDeliveryPartner = async (req, res) => {
     const { id } = req.params;
     const rider = await Delivery.findByIdAndUpdate(
       id,
-      { isVerified: true },
+      { isVerified: true, applicationStatus: "approved" },
       { new: true },
     );
 
@@ -157,10 +187,54 @@ export const approveDeliveryPartner = async (req, res) => {
   }
 };
 
+/**
+ * Rejects a pending application. This used to hard-delete the document,
+ * which silently orphaned every Order/Transaction row still pointing at that
+ * rider's id, and left no trail of why someone stopped appearing. Marking it
+ * instead means a resubmission (see signupDelivery) finds this same record
+ * and reopens it as pending, rather than colliding on the unique phone number.
+ *
+ * For an already-approved rider, use setDeliveryPartnerActive instead — that
+ * suspends without touching the approval decision this endpoint records.
+ */
 export const rejectDeliveryPartner = async (req, res) => {
   try {
     const { id } = req.params;
-    const rider = await Delivery.findByIdAndDelete(id);
+    const rider = await Delivery.findByIdAndUpdate(
+      id,
+      { isVerified: false, isOnline: false, applicationStatus: "rejected" },
+      { new: true },
+    );
+
+    if (!rider) {
+      return handleResponse(res, 404, "Rider not found");
+    }
+
+    return handleResponse(res, 200, "Rider application rejected", rider);
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+/**
+ * Suspends or restores an already-approved rider without touching their
+ * application decision. Deactivating also forces them offline and — via
+ * requireActiveDelivery on every delivery/* route — blocks every further
+ * authenticated action and a fresh login until an admin flips this back on.
+ */
+export const setDeliveryPartnerActive = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body || {};
+
+    if (typeof isActive !== "boolean") {
+      return handleResponse(res, 400, "isActive must be true or false");
+    }
+
+    const update = { isActive };
+    if (!isActive) update.isOnline = false;
+
+    const rider = await Delivery.findByIdAndUpdate(id, update, { new: true });
 
     if (!rider) {
       return handleResponse(res, 404, "Rider not found");
@@ -169,7 +243,8 @@ export const rejectDeliveryPartner = async (req, res) => {
     return handleResponse(
       res,
       200,
-      "Rider application rejected and removed",
+      isActive ? "Rider reactivated" : "Rider deactivated",
+      rider,
     );
   } catch (error) {
     return handleResponse(res, 500, error.message);

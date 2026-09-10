@@ -7,6 +7,8 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { cityParcelApi } from "../services/cityParcelApi";
+import { customerPorterApi } from "../services/customerPorterApi";
+import InvoiceDownloadButton from "@shared/components/InvoiceDownloadButton";
 import { createSocketTokenReader } from "@core/utils/authStorage";
 import { STORAGE_KEYS } from "@core/utils/storage";
 import {
@@ -397,6 +399,29 @@ const CityParcelTracking = () => {
                 <Phone className="h-4 w-4" />
               </a>
             ) : null}
+          </Card>
+        ) : null}
+
+        {/* invoice — offered once the booking has actually been sold: paid
+            online, or COD, which the customer owes regardless. An unpaid online
+            booking gets none, because nothing has been sold yet. */}
+        {(parcel.paymentStatus === "PAID" ||
+          String(parcel.paymentMethod).toUpperCase() === "COD") &&
+        parcel.status !== "CANCELLED" ? (
+          <Card className="flex items-center justify-between gap-3 p-4">
+            <div className="min-w-0">
+              <Label>Invoice</Label>
+              <Data className="mt-0.5 block text-[13px] text-sg-ink">
+                {parcel.referenceId} · ₹{Number(parcel.fare || 0).toFixed(2)}
+              </Data>
+            </div>
+            <InvoiceDownloadButton
+              fetchInvoice={() =>
+                customerPorterApi.getBookingInvoice("city_parcel", parcel._id)
+              }
+              label="Download"
+              size="sm"
+            />
           </Card>
         ) : null}
 

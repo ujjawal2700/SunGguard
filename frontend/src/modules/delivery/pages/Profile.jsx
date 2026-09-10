@@ -281,7 +281,14 @@ const Profile = () => {
             Rating
           </p>
           <p className="font-bold text-gray-900 text-lg flex justify-center items-center">
-            {Number(user?.rating || stats?.rating || 4.8).toFixed(1)} <span className="text-yellow-400 text-sm ml-1">★</span>
+            {user?.rating || stats?.rating ? (
+              <>
+                {Number(user?.rating ?? stats?.rating).toFixed(1)}{" "}
+                <span className="text-yellow-400 text-sm ml-1">★</span>
+              </>
+            ) : (
+              <span className="text-gray-400 text-sm">New</span>
+            )}
           </p>
         </div>
       </motion.div>

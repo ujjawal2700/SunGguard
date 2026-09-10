@@ -99,6 +99,9 @@ export const customerApi = {
   // Payments
   createPaymentOrder: (data) =>
     axiosInstance.post("/payments/create-order", data),
+  /** Hands the gateway's signed receipt back for server-side verification. */
+  verifyCheckoutPayment: (receipt) =>
+    axiosInstance.post("/payments/verify", receipt),
   verifyPaymentStatus: (id) => axiosInstance.get(`/payments/status/${id}`),
 
   // Support & Reviews

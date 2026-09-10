@@ -7,6 +7,8 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { parcelApi } from "../services/parcelApi";
+import { customerPorterApi } from "../services/customerPorterApi";
+import InvoiceDownloadButton from "@shared/components/InvoiceDownloadButton";
 import { unwrap } from "@core/api/unwrap";
 import {
   Card, Label, Data, Barcode, StatusChip, Perforation, PrimaryButton,
@@ -33,7 +35,13 @@ const STATUS_META = {
   CANCELLED: { tone: "idle", label: "Cancelled" },
 };
 
-/** The journey an outstation parcel actually takes, in order. */
+/**
+ * The journey an outstation parcel actually takes, in order.
+ *
+ * `at` is a fallback for bookings made before the event timeline existed —
+ * the real timestamp comes from `parcel.timeline` (one row per status
+ * change, written as it happens) whenever that event is present.
+ */
 const TIMELINE = [
   { key: "REQUESTED", label: "Booked", at: (p) => p.createdAt },
   { key: "ACCEPTED", label: "Rider assigned", at: (p) => p.acceptedAt },
@@ -165,6 +173,16 @@ const ParcelDetail = () => {
             <Data className="mt-0.5 block text-[17px] font-semibold text-sg-ink">
               {reference}
             </Data>
+            {/* Offered only once there is something to invoice — an unpaid
+                online booking has not been sold yet. COD is invoiceable from
+                the start, because the customer owes the fare regardless. */}
+            {(parcel.paymentStatus === "PAID" || isCod) && !cancelled && (
+              <InvoiceDownloadButton
+                fetchInvoice={() => customerPorterApi.getBookingInvoice("parcel", parcel._id)}
+                size="sm"
+                className="mt-2"
+              />
+            )}
           </div>
           <StatusChip tone={meta.tone} icon={cancelled ? undefined : Truck}>
             {meta.label}
@@ -189,7 +207,10 @@ const ParcelDetail = () => {
           <ol className="mt-3 space-y-0">
             {TIMELINE.map((step, i) => {
               const done = i <= reached;
-              const at = fmt(step.at(parcel));
+              // Prefer the real event's timestamp; fall back to the flat
+              // field for a booking made before the timeline existed.
+              const event = (parcel.timeline || []).find((e) => e.status === step.key);
+              const at = fmt(event?.at || step.at(parcel));
               return (
                 <li key={step.key} className="flex gap-3">
                   <div className="flex flex-col items-center">

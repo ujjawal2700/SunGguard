@@ -112,6 +112,57 @@ const userSchema = new mongoose.Schema(
         addresses: [addressSchema],
 
         /**
+         * The customer's own money trail, denormalised onto their document.
+         *
+         * Deliberately CAPPED (see `pushCustomerTransaction` in
+         * services/porter/customerLedgerService.js, which writes it with
+         * `$slice`). An uncapped array on a user document is a document that
+         * grows without bound until a heavy user's profile stops loading —
+         * the canonical, complete history lives in the `PorterPayment` and
+         * `Transaction` collections, which are indexed and paginated.
+         *
+         * What this array is for is the "recent activity" strip every app
+         * screen wants without a second round trip, and being able to answer
+         * "what has this customer paid us" from the one document support
+         * already has open.
+         */
+        transactions: {
+            type: [
+                new mongoose.Schema(
+                    {
+                        /** PorterPayment / Payment / Transaction row this mirrors. */
+                        refId: { type: mongoose.Schema.Types.ObjectId, default: null },
+                        /** Which collection `refId` points into. */
+                        refModel: {
+                            type: String,
+                            enum: ["PorterPayment", "Payment", "Transaction", ""],
+                            default: "",
+                        },
+                        /** PAYMENT | REFUND | COD | WALLET_CREDIT | WALLET_DEBIT */
+                        kind: { type: String, default: "PAYMENT" },
+                        /** city_parcel | parcel | order */
+                        source: { type: String, default: "" },
+                        /** Waybill / order id the customer would recognise. */
+                        reference: { type: String, default: "" },
+                        /** Rupees, signed: positive is money out of the customer. */
+                        amount: { type: Number, default: 0 },
+                        currency: { type: String, default: "INR" },
+                        status: { type: String, default: "" },
+                        method: { type: String, default: "" },
+                        gatewayPaymentId: { type: String, default: "" },
+                        /** GST charged on this line, for the customer's own records. */
+                        gstAmount: { type: Number, default: 0 },
+                        note: { type: String, default: "" },
+                        at: { type: Date, default: Date.now },
+                    },
+                    { _id: false },
+                ),
+            ],
+            default: [],
+            select: false,
+        },
+
+        /**
          * @deprecated Phase 4 (P4-7). Use the canonical
          * `Wallet({ownerType:"CUSTOMER", ownerId:<userId>}).availableBalance`
          * via `walletService.getCustomerBalance(userId)` instead.

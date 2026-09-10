@@ -49,11 +49,68 @@ export const adminPorterApi = {
     reviewCashDeposit: (id, data) =>
         axiosInstance.patch(`/porter/admin/cash-deposits/${id}/review`, data),
 
-    /** Where riders should send that cash — UPI / QR / bank account. */
+    /**
+     * @deprecated Riders now deposit through the gateway, so there is no
+     * destination to publish. Kept for the fallback path only.
+     */
     getCashPayoutDestination: () =>
         axiosInstance.get('/porter/admin/cash-payout-destination'),
     updateCashPayoutDestination: (data) =>
         axiosInstance.put('/porter/admin/cash-payout-destination', data),
+
+    /* ----------------------------------------------------------------------
+       Cash limits
+       ----------------------------------------------------------------------
+       Every rider with their limit, what they are holding, and what is left.
+       Replaces the old balances endpoint, which read a `limit` field that has
+       never existed on the rider model — so every rider showed the same
+       ₹5,000 that nothing could change and nothing enforced.
+       -------------------------------------------------------------------- */
+    getCashOverview: (params) =>
+        axiosInstance.get('/porter/admin/cash-overview', { params }),
+    getCashSettings: () => axiosInstance.get('/porter/admin/cash-settings'),
+    updateCashSettings: (data) =>
+        axiosInstance.put('/porter/admin/cash-settings', data),
+    /** `cashLimit: null` clears the override; `0` means this rider carries no cash. */
+    setRiderCashLimit: (riderId, cashLimit) =>
+        axiosInstance.patch(`/porter/admin/riders/${riderId}/cash-limit`, { cashLimit }),
+
+    /* ----------------------------------------------------------------------
+       GST
+       -------------------------------------------------------------------- */
+    getGstSettings: () => axiosInstance.get('/porter/admin/gst-settings'),
+    updateGstSettings: (data) =>
+        axiosInstance.put('/porter/admin/gst-settings', data),
+    /** Charged vs collected, split by product, with a monthly series. */
+    getGstReport: (params) =>
+        axiosInstance.get('/porter/admin/gst-report', { params }),
+    /** Line-by-line, for export to an accountant. */
+    getGstLedger: (params) =>
+        axiosInstance.get('/porter/admin/gst-ledger', { params }),
+
+    /* ----------------------------------------------------------------------
+       Rider zone assignment
+       ----------------------------------------------------------------------
+       A rider with zones assigned is offered local jobs from those zones
+       only. A rider with none falls back to their live GPS location.
+       -------------------------------------------------------------------- */
+    getRiderZones: (params) =>
+        axiosInstance.get('/porter/admin/rider-zones', { params }),
+    setRiderZones: (riderId, zoneIds) =>
+        axiosInstance.patch(`/porter/admin/riders/${riderId}/zones`, { zoneIds }),
+
+    /* ----------------------------------------------------------------------
+       Invoices
+       ----------------------------------------------------------------------
+       Not under /admin: a customer downloads the same invoice from the same
+       endpoint, and the server scopes the read by role. One code path means
+       the money on the invoice cannot differ depending on who printed it.
+       `kind` is 'city_parcel' | 'parcel'.
+       -------------------------------------------------------------------- */
+    getBookingInvoice: (kind, id) =>
+        axiosInstance.get(`/porter/invoice/${kind}/${id}`),
+    getBookingPayments: (kind, id) =>
+        axiosInstance.get(`/porter/payments/${kind}/${id}`),
 
     /** Supports search, status (active|inactive) and city. */
     getZones: (params) => axiosInstance.get('/porter/admin/zones', { params }),

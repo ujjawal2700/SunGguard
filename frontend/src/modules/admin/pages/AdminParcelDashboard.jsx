@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import InvoiceDownloadButton from "@shared/components/InvoiceDownloadButton";
+import { adminPorterApi } from "../services/api/porterApi";
 import { createPortal } from "react-dom";
 import { useSearchParams, useParams, useNavigate, useLocation } from "react-router-dom";
 import {
@@ -25,6 +27,7 @@ import {
   EyeOff,
   Eye,
   Warehouse as WarehouseIcon,
+  Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { parcelApi } from "../../customer/services/parcelApi";
@@ -2663,11 +2666,22 @@ const AdminParcelDashboard = () => {
                   booking ID: #{selectedParcel._id.slice(-6)}
                 </p>
               </div>
-              <button
-                onClick={() => setSelectedParcel(null)}
-                className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
-                <XCircle size={22} />
-              </button>
+              <div className="flex items-center gap-2">
+                {/* The same invoice the customer downloads — one server-side
+                    builder, so the two copies can never disagree. */}
+                <InvoiceDownloadButton
+                  fetchInvoice={() =>
+                    adminPorterApi.getBookingInvoice("parcel", selectedParcel._id)
+                  }
+                  label="Invoice"
+                  size="sm"
+                />
+                <button
+                  onClick={() => setSelectedParcel(null)}
+                  className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
+                  <XCircle size={22} />
+                </button>
+              </div>
             </div>
 
             {/* Content - Scrollable */}
@@ -3134,6 +3148,57 @@ const AdminParcelDashboard = () => {
                     )}
                   </div>
                 </div>
+              </div>
+
+              {/* Event Log — the document only ever holds the current
+                  status; this is what actually answers "what happened to
+                  this booking, and when, and who did it". */}
+              <div className="space-y-3 border-t border-slate-100 pt-4">
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                  Status History ({(selectedParcel.timeline || []).length})
+                </h4>
+                {(selectedParcel.timeline || []).length === 0 ? (
+                  <p className="text-[11px] text-slate-400">
+                    No event history recorded for this booking yet.
+                  </p>
+                ) : (
+                  <ol className="space-y-0">
+                    {selectedParcel.timeline.map((e, i) => (
+                      <li key={i} className="flex gap-3">
+                        <div className="flex flex-col items-center">
+                          <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                          {i < selectedParcel.timeline.length - 1 ? (
+                            <span className="my-1 w-px flex-1 bg-slate-200" />
+                          ) : null}
+                        </div>
+                        <div className="flex-1 pb-3">
+                          <div className="flex items-center gap-2">
+                            <p className="text-[12px] font-bold text-slate-800">
+                              {String(e.status || "").replace(/_/g, " ")}
+                            </p>
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold uppercase text-slate-500">
+                              {e.actor}
+                            </span>
+                          </div>
+                          {e.note ? (
+                            <p className="mt-0.5 text-[11px] text-slate-500">{e.note}</p>
+                          ) : null}
+                          <p className="mt-0.5 flex items-center gap-1 text-[10px] text-slate-400">
+                            <Clock className="h-3 w-3" />
+                            {e.at
+                              ? new Date(e.at).toLocaleString("en-IN", {
+                                  day: "numeric",
+                                  month: "short",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
+                              : ""}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                )}
               </div>
             </div>
 

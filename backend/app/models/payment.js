@@ -69,14 +69,27 @@ const paymentSchema = new mongoose.Schema(
       type: String,
       enum: ALL_PAYMENT_GATEWAYS,
       required: true,
-      default: "PHONEPE",
+      default: "RAZORPAY",
       index: true,
     },
+    /** The gateway's own order id — what its webhooks and lookups quote. */
     gatewayOrderId: {
       type: String,
       required: true,
       unique: true,
       index: true,
+    },
+    /**
+     * Our own reference for the attempt, sent to the gateway as the order
+     * receipt and echoed back in webhook notes. Kept separately because the
+     * gateway assigns its own id and a payment has to be findable by either.
+     * Sparse, so historical rows without one do not collide on null.
+     */
+    merchantOrderId: {
+      type: String,
+      default: null,
+      index: true,
+      sparse: true,
     },
     gatewayPaymentId: {
       type: String,

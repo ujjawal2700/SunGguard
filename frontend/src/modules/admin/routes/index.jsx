@@ -70,6 +70,8 @@ const PorterCustomers = React.lazy(() => import("../pages/porter/PorterCustomers
 const PorterCustomerDetail = React.lazy(() => import("../pages/porter/PorterCustomerDetail"));
 const FleetZoneMap = React.lazy(() => import("../pages/porter/FleetZoneMap"));
 const PorterWallet = React.lazy(() => import("../pages/porter/PorterWallet"));
+const PorterGst = React.lazy(() => import("../pages/porter/PorterGst"));
+const PorterRiderZones = React.lazy(() => import("../pages/porter/PorterRiderZones"));
 const PorterCashDeposits = React.lazy(
   () => import("../pages/porter/PorterCashDeposits"),
 );
@@ -202,6 +204,20 @@ const navItems = [
     path: "/admin/porter/cash-deposits",
     icon: Banknote,
     color: "amber",
+    group: "porter",
+  },
+  {
+    label: "GST",
+    path: "/admin/porter/gst",
+    icon: Receipt,
+    color: "emerald",
+    group: "porter",
+  },
+  {
+    label: "Rider Zones",
+    path: "/admin/porter/rider-zones",
+    icon: Truck,
+    color: "blue",
     group: "porter",
   },
   {
@@ -393,6 +409,8 @@ const AdminRoutes = () => {
         <Route path="/porter/zones" element={<DeliveryZones />} />
         <Route path="/porter/wallet" element={<PorterWallet />} />
         <Route path="/porter/cash-deposits" element={<PorterCashDeposits />} />
+        <Route path="/porter/gst" element={<PorterGst />} />
+        <Route path="/porter/rider-zones" element={<PorterRiderZones />} />
         <Route path="/porter/rider-payouts" element={<PorterRiderPayouts />} />
         <Route path="/porter/support" element={<PorterTickets />} />
         <Route path="/porter/customers" element={<PorterCustomers />} />

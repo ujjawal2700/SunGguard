@@ -15,7 +15,7 @@ const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
 
 const EditProfilePage = () => {
     const navigate = useNavigate();
-    const { user, login } = useAuth();
+    const { user, refreshUser } = useAuth();
     const fileRef = useRef(null);
 
     const [isLoading, setIsLoading] = useState(false);
@@ -26,6 +26,16 @@ const EditProfilePage = () => {
         email: user?.email || '',
     });
     const [errors, setErrors] = useState({ name: '', email: '' });
+    /**
+     * The uploaded photo would not render — a slow CDN, an offline moment.
+     *
+     * Kept separate from `avatar` on purpose. This used to clear the URL
+     * itself on the image's error handler, which turned a display hiccup
+     * into data loss: the customer saw the placeholder come back, pressed
+     * Save believing nothing had changed, and wrote an empty avatar over the
+     * photo that was on the server perfectly intact.
+     */
+    const [avatarBroken, setAvatarBroken] = useState(false);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -86,6 +96,7 @@ const EditProfilePage = () => {
                 response.data?.url ||
                 '';
             if (!url) throw new Error('Upload did not return an image URL');
+            setAvatarBroken(false);
             setAvatar(url);
             toast.success('Photo ready — press Save to apply it.');
         } catch (error) {
@@ -101,15 +112,27 @@ const EditProfilePage = () => {
 
         setIsLoading(true);
         try {
-            const response = await customerApi.updateProfile({
+            await customerApi.updateProfile({
                 name: formData.name.trim(),
                 email: formData.email.trim(),
                 avatar,
             });
-            const updatedUser = response.data.result;
 
-            // Update local auth state
-            login({ ...user, ...updatedUser });
+            /**
+             * The save genuinely succeeded here even when the whole feature
+             * looked broken: this used to call `login({ ...user, ...updatedUser })`,
+             * but `login()` is an authentication entry point that requires a
+             * `token` field — the profile-update response carries none, so
+             * that call silently hit the "missing token" branch and did
+             * nothing. The name/avatar were saved on the server, the toast
+             * said success, but the in-memory `user` never updated, so the
+             * new photo never appeared anywhere until a manual refresh —
+             * indistinguishable from the upload having failed.
+             *
+             * `refreshUser` re-fetches the real profile and is safe to call
+             * with no token argument at all.
+             */
+            await refreshUser();
 
             toast.success('Profile updated successfully!');
             navigate('/profile');
@@ -139,12 +162,12 @@ const EditProfilePage = () => {
                 <div className="flex flex-col items-center mb-8">
                     <div className="relative">
                         <div className="h-28 w-28 rounded-full bg-slate-200 border-4 border-white shadow-md flex items-center justify-center overflow-hidden">
-                            {avatar ? (
+                            {avatar && !avatarBroken ? (
                                 <img
                                     src={avatar}
                                     alt=""
                                     className="h-full w-full object-cover"
-                                    onError={() => setAvatar('')}
+                                    onError={() => setAvatarBroken(true)}
                                 />
                             ) : (
                                 <User size={48} className="text-slate-400" />
@@ -180,6 +203,15 @@ const EditProfilePage = () => {
                     >
                         {uploading ? 'Uploading…' : 'Change Photo'}
                     </button>
+                    {avatarBroken && (
+                        // Says why the placeholder is showing. Without this the
+                        // photo simply looks lost, and the obvious reaction is
+                        // to upload it again over a picture that is already
+                        // saved and fine.
+                        <p className="mt-1.5 max-w-xs text-center text-xs font-medium text-slate-400">
+                            Your photo is saved but wouldn&apos;t load just now. Saving keeps it.
+                        </p>
+                    )}
                 </div>
 
                 {/* Edit Form */}

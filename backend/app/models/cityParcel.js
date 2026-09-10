@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import crypto from "crypto";
+import { gstBreakdownFields } from "./shared/gstSchemas.js";
 import {
   CITY_PARCEL_STATUS,
   CITY_PARCEL_STATUSES,
@@ -151,6 +152,14 @@ const cityParcelSchema = new mongoose.Schema(
     /**
      * The customer always pays, at booking. There is no receiver-pays mode
      * in this module and no seller in the settlement chain.
+     *
+     * This is the GRAND TOTAL — tax included. Everything downstream that
+     * quotes money to a human (the Razorpay order, the COD amount the rider
+     * collects, the invoice total) reads this one field, so keeping the tax
+     * inside it is what stops the three from ever disagreeing. The pre-tax
+     * value lives in `fareBreakdown.taxableAmount`, and the rider's share is
+     * computed from the pre-tax line items, so no rider is ever paid a
+     * percentage of somebody's GST.
      */
     fare: { type: Number, required: true, min: 0 },
     fareBreakdown: {
@@ -163,6 +172,7 @@ const cityParcelSchema = new mongoose.Schema(
       returnCharge: { type: Number, default: 0 },
       surgeMultiplier: { type: Number, default: 1 },
       minFareApplied: { type: Boolean, default: false },
+      ...gstBreakdownFields,
     },
 
     paymentMethod: {

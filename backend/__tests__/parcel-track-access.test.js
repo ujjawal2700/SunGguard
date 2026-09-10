@@ -30,6 +30,27 @@ jest.unstable_mockModule("../app/models/parcel.js", () => ({
   default: { findById: parcelFindById },
 }));
 
+/**
+ * The tracking response now carries the parcel's status history alongside
+ * the parcel. Unmocked, that read goes to a real mongoose model with no
+ * connection behind it, which buffers rather than failing — every test that
+ * got as far as a 200 hung until the suite timed out instead of asserting
+ * anything about access.
+ */
+jest.unstable_mockModule("../app/models/parcelEvent.js", () => ({
+  default: {
+    find: () => ({ sort: () => ({ lean: async () => [] }) }),
+  },
+  PARCEL_EVENT_ACTOR: {
+    CUSTOMER: "customer",
+    DELIVERY: "delivery",
+    ADMIN: "admin",
+    SYSTEM: "system",
+  },
+  PARCEL_STATUSES: [],
+  PARCEL_EVENT_ACTORS: ["customer", "delivery", "admin", "system"],
+}));
+
 const { trackParcel } = await import("../app/controller/parcelController.js");
 
 function mockRes() {

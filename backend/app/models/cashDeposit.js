@@ -62,24 +62,45 @@ const cashDepositSchema = new mongoose.Schema(
     },
 
     /**
-     * How the rider says they returned it. CASH means handed over in person
-     * at the office — the other three move money electronically and should
-     * carry a reference the admin can look up.
+     * How the money came back.
+     *
+     * ONLINE is the current flow: the rider pays through the gateway into the
+     * platform's own account, and `porterPaymentId` points at the captured
+     * PorterPayment that proves it. The admin still approves — approval is
+     * what moves the covered bookings to REMITTED_TO_ADMIN — but they are now
+     * approving against a real payment rather than a screenshot.
+     *
+     * UPI / BANK_TRANSFER / CASH / OTHER are the legacy out-of-band methods,
+     * kept so historical deposits still load and so an operation can fall
+     * back if the gateway is down.
      */
     method: {
       type: String,
-      enum: ["UPI", "BANK_TRANSFER", "CASH", "OTHER"],
+      enum: ["ONLINE", "UPI", "BANK_TRANSFER", "CASH", "OTHER"],
       required: true,
     },
 
-    /** UTR / transaction id the rider typed in. */
+    /** Gateway payment id on an ONLINE deposit; the UTR a rider typed on a legacy one. */
     reference: {
       type: String,
       trim: true,
       default: "",
     },
 
-    /** Screenshot or receipt photo. The whole point of the approval step. */
+    /**
+     * The captured gateway payment behind an ONLINE deposit.
+     *
+     * This is what makes the admin's approval a check rather than a guess:
+     * the money is provably in the platform's account before anyone clicks.
+     */
+    porterPaymentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "PorterPayment",
+      default: null,
+      index: true,
+    },
+
+    /** Screenshot or receipt photo. Only ever set on a legacy out-of-band deposit. */
     proofImageUrl: {
       type: String,
       trim: true,

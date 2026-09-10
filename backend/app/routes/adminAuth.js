@@ -14,6 +14,7 @@ import {
     updateDeliveryPartnerIdentity,
     approveDeliveryPartner,
     rejectDeliveryPartner,
+    setDeliveryPartnerActive,
     getActiveFleet,
     getAdminWalletData,
     getDeliveryTransactions,
@@ -201,6 +202,13 @@ router.delete(
     verifyToken,
     allowRoles("admin"),
     rejectDeliveryPartner
+);
+
+router.patch(
+    "/delivery-partners/:id/active",
+    verifyToken,
+    allowRoles("admin"),
+    setDeliveryPartnerActive
 );
 
 router.get("/active-fleet", verifyToken, allowRoles("admin"), getActiveFleet);

@@ -163,14 +163,50 @@ const settingSchema = new mongoose.Schema(
         },
 
         /**
-         * Where a rider sends COD cash back to the platform.
+         * COD cash policy for the porter fleet.
          *
-         * The rider cash-deposit flow (see riderCashService.js) previously had
-         * no destination on screen at all — a rider picked "UPI" or "Bank" and
-         * typed a reference with no idea whose account it was supposed to go
-         * to. This is admin-editable (Porter → Cash Deposits) and rider-visible
-         * (read-only, via a dedicated endpoint) so the deposit form can show a
-         * real UPI ID / QR / account before the rider transfers anything.
+         * The admin cash screen used to aggregate `{ $ifNull: ["$limit", 5000] }`
+         * over the Delivery collection. `limit` was never a field on that
+         * model, so every rider read as having a ₹5,000 limit, nothing could
+         * change it, and nothing enforced it — the number on screen was
+         * decoration. These are the real settings, resolved (together with the
+         * per-rider `Delivery.cashLimit` override) by
+         * services/porter/riderCashLimitService.js.
+         */
+        porterCash: {
+            /**
+             * Off by default. Turning enforcement on stops work reaching every
+             * rider already over the limit, the moment it flips — that has to
+             * be a deliberate act, never a field that defaulted to true on a
+             * deploy.
+             */
+            enforceCashLimit: { type: Boolean, default: false },
+            /** Fleet-wide default, used by any rider with no own override. */
+            globalCashLimit: { type: Number, default: 5000, min: 0 },
+            /** Share of the limit at which the rider app starts warning them. */
+            warnAtPercent: { type: Number, default: 80, min: 0, max: 100 },
+            /**
+             * Whether an APPROVED deposit is required before work resumes, or
+             * a raised one is enough. True is the business rule as stated;
+             * false exists for an operation that trusts its riders and wants
+             * the block lifted the moment they pay.
+             */
+            requireApprovalToResume: { type: Boolean, default: true },
+        },
+
+        /**
+         * @deprecated Superseded by the online rider deposit flow.
+         *
+         * A rider used to be shown an admin-configured UPI ID / QR / bank
+         * account, transfer to it out of band, and upload a screenshot for an
+         * admin to eyeball. That is a manual reconciliation step for every
+         * deposit and it proves nothing — a screenshot is not a payment.
+         *
+         * Deposits now go through the gateway (see
+         * services/porter/riderDepositService.js), so the destination is the
+         * platform's own Razorpay account and there is nothing to configure.
+         * The field is retained so historical deposits still render, and so a
+         * deployment can fall back if the gateway is unavailable.
          */
         cashDepositPayout: {
             upiId: { type: String, trim: true, default: "" },

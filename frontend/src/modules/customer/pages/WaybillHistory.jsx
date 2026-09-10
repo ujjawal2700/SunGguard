@@ -40,6 +40,25 @@ const LOCAL_META = {
   CANCELLED: { tone: "idle", label: "Cancelled" },
 };
 
+/**
+ * The outstation flow has its own, shorter lifecycle — there is no drop
+ * receiver and no return leg, because the parcel is handed to a courier hub.
+ * It used to render its raw enum with the underscores swapped for spaces,
+ * so a customer read "RIDER ASSIGNED" and "OUT FOR DELIVERY" in caps next to
+ * a local booking that said "On The Way". Same vocabulary, both services.
+ */
+const OUTSTATION_META = {
+  REQUESTED: { tone: "idle", label: "Booked" },
+  SEARCHING: { tone: "warn", label: "Finding Rider" },
+  ACCEPTED: { tone: "transit", label: "Rider Assigned" },
+  RIDER_ASSIGNED: { tone: "transit", label: "On The Way" },
+  PICKUP_REACHED: { tone: "transit", label: "At Pickup" },
+  PICKED_UP: { tone: "transit", label: "In Transit" },
+  OUT_FOR_DELIVERY: { tone: "transit", label: "To The Hub" },
+  DELIVERED: { tone: "done", label: "Handed To Courier" },
+  CANCELLED: { tone: "idle", label: "Cancelled" },
+};
+
 const ACTIVE_LOCAL = new Set([
   "REQUESTED", "SEARCHING", "ACCEPTED", "RIDER_ASSIGNED", "PICKUP_REACHED",
   "PICKED_UP", "OUT_FOR_DELIVERY", "DROP_REACHED", "DELIVERY_FAILED",
@@ -67,10 +86,12 @@ const fmt = (date) =>
 /* -------------------------------------------------------------------------- */
 
 const WaybillCard = ({ row, onOpen }) => {
+  const table = row.kind === "local" ? LOCAL_META : OUTSTATION_META;
   const meta =
-    row.kind === "local"
-      ? LOCAL_META[row.status] || LOCAL_META.REQUESTED
-      : { tone: row.status === "DELIVERED" ? "done" : "transit", label: (row.status || "").replace(/_/g, " ") };
+    table[row.status] || {
+      tone: "transit",
+      label: (row.status || "").replace(/_/g, " "),
+    };
 
   const isActive = bucketOf(row) === "active";
 

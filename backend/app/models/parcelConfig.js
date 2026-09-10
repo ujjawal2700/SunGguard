@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { gstConfigSchema } from "./shared/gstSchemas.js";
 
 export const DEFAULT_PACKAGE_TYPES = [
   { value: "document", label: "Document / Paper", isActive: true },
@@ -122,6 +123,12 @@ const parcelConfigSchema = new mongoose.Schema(
       default: "E.g. keys, critical document papers...",
       trim: true,
     },
+    /**
+     * GST on the outstation fare. Deliberately independent of the local rate
+     * card in models/cityParcelConfig.js — the two products are commonly
+     * brought under tax at different times, and at different rates.
+     */
+    gst: { type: gstConfigSchema, default: () => ({}) },
   },
   {
     timestamps: true,

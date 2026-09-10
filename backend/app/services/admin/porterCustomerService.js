@@ -3,6 +3,10 @@ import Customer from "../../models/customer.js";
 import Parcel from "../../models/parcel.js";
 import CityParcel from "../../models/cityParcel.js";
 import { escapeRegex } from "../../utils/regex.js";
+import {
+  visibleCityParcels,
+  visibleParcels,
+} from "../bookingCheckoutService.js";
 
 /**
  * Admin "Porter Customers" desk.
@@ -34,14 +38,24 @@ const SORT_FIELDS = {
 
 const cityParcelCollection = () => CityParcel.collection.name;
 
+/**
+ * Both halves of the union skip bookings whose payment sheet never closed.
+ *
+ * Those rows are written before the customer pays, so counting them made
+ * this desk claim bookings that do not exist — a customer who opened the
+ * pay screen twice and walked away read as "2 total bookings", with a last
+ * booking date, next to a lifetime spend of zero. The two collections need
+ * separate predicates because they open a gateway sheet for different
+ * payment methods.
+ */
 const bookingUnionPipeline = (extraMatch = {}) => [
-  { $match: extraMatch },
+  { $match: visibleParcels(extraMatch) },
   { $project: { customerId: 1, fare: 1, status: 1, createdAt: 1 } },
   {
     $unionWith: {
       coll: cityParcelCollection(),
       pipeline: [
-        { $match: extraMatch },
+        { $match: visibleCityParcels(extraMatch) },
         { $project: { customerId: 1, fare: 1, status: 1, createdAt: 1 } },
       ],
     },
@@ -209,12 +223,12 @@ export async function getPorterCustomerByIdData(id) {
         },
       },
     ]),
-    Parcel.find({ customerId: id })
+    Parcel.find(visibleParcels({ customerId: id }))
       .sort({ createdAt: -1 })
       .limit(RECENT_BOOKINGS_LIMIT)
       .select("status fare paymentMethod paymentStatus pickupAddress dropAddress createdAt")
       .lean(),
-    CityParcel.find({ customerId: id })
+    CityParcel.find(visibleCityParcels({ customerId: id }))
       .sort({ createdAt: -1 })
       .limit(RECENT_BOOKINGS_LIMIT)
       .select(

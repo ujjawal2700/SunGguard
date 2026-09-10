@@ -2,33 +2,44 @@ import { jest } from "@jest/globals";
 import mongoose from "mongoose";
 
 /**
- * Verifying a Razorpay receipt on a local booking.
+ * Verifying a gateway receipt on a local booking.
  *
- * A receipt whose signature does not check out means "this cannot be
- * trusted", not "the customer's payment failed" — but this used to write
- * `paymentStatus: FAILED` on any signature error. A mangled or re-posted
- * receipt from a customer still inside the checkout sheet would flip their
- * own booking to FAILED, and the real payment could then never be applied to
- * it. The booking must stay PENDING so checkout can be completed or retried.
+ * Two behaviours are protected here.
+ *
+ * First: a receipt whose signature does not check out means "this cannot be
+ * trusted", not "the customer's payment failed". This once wrote
+ * `paymentStatus: FAILED` on any signature error, so a mangled or re-posted
+ * receipt from a customer still inside the checkout sheet flipped their own
+ * booking to FAILED and the real payment could never be applied to it. The
+ * booking must stay PENDING so checkout can be completed or retried.
+ *
+ * Second: a genuine signature is not proof the money was taken. An authorised
+ * but uncaptured payment produces a perfectly valid receipt, and dispatching
+ * a rider against one means riding to a pickup nobody has paid for. The
+ * controller must wait for CAPTURED before releasing the booking.
  */
 
 const CUSTOMER = new mongoose.Types.ObjectId().toString();
 const BOOKING = new mongoose.Types.ObjectId().toString();
 
 const findOne = jest.fn();
+const findById = jest.fn();
 const findByIdAndUpdate = jest.fn();
-const verifyCityParcelSignature = jest.fn();
-const startBroadcast = jest.fn();
+const verifyBookingReceipt = jest.fn();
+const activatePorterBookingAfterPayment = jest.fn();
 const recordEvent = jest.fn().mockResolvedValue({});
 
 jest.unstable_mockModule("../app/models/cityParcel.js", () => ({
-  default: { findOne, findByIdAndUpdate },
+  default: { findOne, findById, findByIdAndUpdate },
   RIDER_SAFE_FIELDS: "",
 }));
-jest.unstable_mockModule("../app/services/cityParcelRazorpayService.js", () => ({
-  verifyCityParcelSignature,
-  createCityParcelOrder: jest.fn(),
-  isRazorpayConfigured: jest.fn().mockReturnValue(true),
+jest.unstable_mockModule("../app/services/porter/porterPaymentService.js", () => ({
+  verifyBookingReceipt,
+  openBookingPayment: jest.fn(),
+  getBookingPaymentHistory: jest.fn(),
+}));
+jest.unstable_mockModule("../app/services/porter/porterDispatchService.js", () => ({
+  activatePorterBookingAfterPayment,
 }));
 jest.unstable_mockModule("../app/services/cityParcelStateMachine.js", () => ({
   recordEvent,
@@ -40,7 +51,7 @@ jest.unstable_mockModule("../app/services/cityParcelStateMachine.js", () => ({
   TRANSITIONS: {},
 }));
 jest.unstable_mockModule("../app/services/cityParcelWorkflowService.js", () => ({
-  startBroadcast,
+  startBroadcast: jest.fn(),
   advanceExpiredSearch: jest.fn(),
   sweepExpiredSearches: jest.fn(),
   fetchAvailableForRider: jest.fn(),
@@ -77,6 +88,14 @@ const bookingDoc = (overrides = {}) => ({
   ...overrides,
 });
 
+/** What the payment service hands back on a successful capture. */
+const capturedResult = (booking) => ({
+  payment: { isPaid: () => true, status: "CAPTURED" },
+  status: "CAPTURED",
+  changed: true,
+  booking: booking || bookingDoc({ status: "SEARCHING" }),
+});
+
 const verify = (receipt) => {
   const res = mockRes();
   return verifyPayment(
@@ -96,31 +115,40 @@ const verify = (receipt) => {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  verifyCityParcelSignature.mockReturnValue(true);
-  startBroadcast.mockImplementation(async () => ({ parcel: bookingDoc({ status: "SEARCHING" }) }));
+  verifyBookingReceipt.mockResolvedValue(capturedResult());
+  findById.mockResolvedValue(bookingDoc({ status: "SEARCHING" }));
 });
 
 describe("city parcel payment verification", () => {
-  it("marks a booking paid on a valid receipt and starts the rider search", async () => {
-    const booking = bookingDoc();
-    findOne.mockResolvedValue(booking);
+  it("releases the booking to riders once the gateway confirms capture", async () => {
+    findOne.mockResolvedValue(bookingDoc());
 
     const res = await verify();
 
     expect(res.statusCode).toBe(200);
-    expect(booking.paymentStatus).toBe("PAID");
-    expect(booking.save).toHaveBeenCalled();
-    expect(startBroadcast).toHaveBeenCalled();
+    expect(verifyBookingReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingId: BOOKING,
+        customerId: CUSTOMER,
+        gatewayOrderId: "order_live1",
+        gatewayPaymentId: "pay_1",
+        signature: "sig",
+        // Dispatch is handed in rather than called by the payment layer, so
+        // the same hook runs whether the client or the webhook got here first.
+        onPaid: activatePorterBookingAfterPayment,
+      }),
+    );
   });
 
   it("leaves an untrusted receipt's booking PENDING so checkout can be retried", async () => {
     const booking = bookingDoc();
     findOne.mockResolvedValue(booking);
-    verifyCityParcelSignature.mockImplementation(() => {
-      const err = new Error("Payment signature verification failed");
-      err.statusCode = 400;
-      throw err;
-    });
+    verifyBookingReceipt.mockRejectedValue(
+      Object.assign(new Error("This payment could not be verified"), {
+        statusCode: 400,
+        code: "INVALID_SIGNATURE",
+      }),
+    );
 
     const res = await verify({ razorpay_signature: "forged" });
 
@@ -129,7 +157,24 @@ describe("city parcel payment verification", () => {
     expect(findByIdAndUpdate).not.toHaveBeenCalled();
     expect(booking.paymentStatus).toBe("PENDING");
     expect(booking.save).not.toHaveBeenCalled();
-    expect(startBroadcast).not.toHaveBeenCalled();
+    expect(activatePorterBookingAfterPayment).not.toHaveBeenCalled();
+  });
+
+  it("holds a genuine receipt whose payment has not captured yet", async () => {
+    findOne.mockResolvedValue(bookingDoc());
+    verifyBookingReceipt.mockResolvedValue({
+      payment: { isPaid: () => false, status: "AUTHORIZED" },
+      status: "AUTHORIZED",
+      changed: true,
+      booking: null,
+    });
+
+    const res = await verify();
+
+    // 202, not 200: the receipt was real, the money is not confirmed, and the
+    // webhook will finish the job — so there is nothing for the customer to
+    // redo and nothing to tell them has failed.
+    expect(res.statusCode).toBe(202);
   });
 
   it("refuses a receipt opened against a different booking", async () => {
@@ -138,7 +183,7 @@ describe("city parcel payment verification", () => {
     const res = await verify({ razorpay_order_id: "order_someone_else" });
 
     expect(res.statusCode).toBe(400);
-    expect(verifyCityParcelSignature).not.toHaveBeenCalled();
+    expect(verifyBookingReceipt).not.toHaveBeenCalled();
   });
 
   it("treats replaying a receipt on an already-paid booking as a no-op", async () => {
@@ -148,7 +193,7 @@ describe("city parcel payment verification", () => {
     const res = await verify();
 
     expect(res.statusCode).toBe(200);
-    expect(startBroadcast).not.toHaveBeenCalled();
+    expect(verifyBookingReceipt).not.toHaveBeenCalled();
     expect(booking.save).not.toHaveBeenCalled();
   });
 

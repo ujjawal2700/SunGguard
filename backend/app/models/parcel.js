@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { gstBreakdownFields } from "./shared/gstSchemas.js";
 
 const addressDetailsSchema = new mongoose.Schema({
   fullAddress: {
@@ -116,6 +117,16 @@ const parcelSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    /**
+     * The GRAND TOTAL the customer pays, tax included.
+     *
+     * Everything downstream that quotes money to a human — the Razorpay
+     * order, the COD amount the rider collects, the invoice total — reads
+     * this one field, so keeping the tax inside it is what stops the three
+     * from ever disagreeing. The pre-tax value is
+     * `fareBreakdown.taxableAmount`; rider payout is computed from the
+     * pre-tax line items, so no rider is paid a share of somebody's GST.
+     */
     fare: {
       type: Number,
       required: true,
@@ -133,6 +144,7 @@ const parcelSchema = new mongoose.Schema(
       dailyFare: { type: Number, default: 0 },
       /** Number of days charged (today=1, 7/15/30, or till-date span). */
       billableDays: { type: Number, default: 1 },
+      ...gstBreakdownFields,
     },
     courierCompanyId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -141,7 +153,12 @@ const parcelSchema = new mongoose.Schema(
     },
     paymentStatus: {
       type: String,
-      enum: ["PENDING", "PAID", "FAILED"],
+      // REFUNDED joined the set when porter payments gained a real gateway
+      // lifecycle: a refund webhook has to land somewhere, and without this
+      // value it would either be dropped or written as FAILED, which reads
+      // to a customer as "your payment did not go through" when in fact it
+      // went through and came back.
+      enum: ["PENDING", "PAID", "FAILED", "REFUNDED"],
       default: "PENDING",
       index: true,
     },

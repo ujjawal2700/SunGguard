@@ -30,6 +30,16 @@ const deliverySchema = new mongoose.Schema(
             trim: true,
         },
 
+        dob: {
+            type: Date,
+        },
+
+        bloodGroup: {
+            type: String,
+            enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", ""],
+            default: "",
+        },
+
         accountHolder: {
             type: String,
             trim: true,
@@ -123,12 +133,78 @@ const deliverySchema = new mongoose.Schema(
             default: false,
         },
 
+        /**
+         * The onboarding application's own lifecycle, kept alongside
+         * `isVerified` (which many other queries already gate on) rather than
+         * replacing it. `isVerified` only ever answers "can this rider work
+         * right now" — it has no way to say *why not yet*, so a rejected
+         * applicant and a brand-new one both read as identically unverified.
+         * This field is what the admin queue actually shows and filters on.
+         */
+        applicationStatus: {
+            type: String,
+            enum: ["pending", "approved", "rejected"],
+            default: "pending",
+        },
 
+        /**
+         * Admin on/off switch for an already-approved rider — separate from
+         * `applicationStatus`, which is about the onboarding decision, not
+         * about suspending someone who already passed it. `requireActiveDelivery`
+         * (see middleware/authMiddleware.js) is what actually enforces this on
+         * every authenticated request; the JWT itself stays valid until it
+         * expires, same as `requireActiveCustomer` does for customers.
+         */
+        isActive: {
+            type: Boolean,
+            default: true,
+        },
 
         isOnline: {
             type: Boolean,
             default: false,
         },
+
+        /**
+         * How much COD cash this rider may hold before they stop being
+         * offered work.
+         *
+         * Null means "use the fleet-wide limit" (Setting.porterCash.
+         * globalCashLimit). That is deliberately distinct from 0, which is a
+         * real limit meaning this rider may carry no cash at all — a sensible
+         * thing to want for someone on probation. Collapsing the two would
+         * make that impossible to express.
+         *
+         * Enforcement lives in services/porter/riderCashLimitService.js and
+         * is read by both job feeds and both accept paths. Nothing reads this
+         * field directly: the resolved limit always comes from that service,
+         * so the global fallback cannot be forgotten at one call site.
+         */
+        cashLimit: {
+            type: Number,
+            default: null,
+            min: 0,
+        },
+
+        /**
+         * Delivery zones this rider is assigned to work.
+         *
+         * Empty means "wherever they physically are" — the local job feed
+         * then falls back to resolving zones from the rider's live GPS fix,
+         * which is how zone gating worked before assignment existed and
+         * remains the right default for a fleet that roams.
+         *
+         * A non-empty list is a HARD restriction: the rider sees local jobs
+         * only from these zones, even if they are standing inside a different
+         * one. That is the point — it is how an operation staffs a specific
+         * area rather than letting whoever drifts past pick the work up.
+         */
+        zoneIds: [
+            {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: "DeliveryZone",
+            },
+        ],
 
         /** True while rider has an in-progress delivery / return / parcel job. */
         isBusy: {
@@ -185,6 +261,8 @@ const deliverySchema = new mongoose.Schema(
 
 deliverySchema.index({ location: "2dsphere" });
 deliverySchema.index({ isOnline: 1, isVerified: 1 });
+/** The admin's "which riders cover this area" lookup. */
+deliverySchema.index({ zoneIds: 1 });
 
 deliverySchema.virtual('id').get(function () {
     return this._id.toHexString();

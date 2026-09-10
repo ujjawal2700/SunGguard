@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useParams, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import {
   Loader2, ShieldAlert, UserPlus, RefreshCw, Save, MapPin, X, Check,
   AlertTriangle, IndianRupee, Search, ChevronLeft, ChevronRight, Package,
@@ -8,6 +8,8 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { cityParcelAdminApi } from "../services/cityParcelAdminApi";
+import { adminPorterApi } from "../services/api/porterApi";
+import InvoiceDownloadButton from "@shared/components/InvoiceDownloadButton";
 import ParcelDetailDrawer from "./cityparcel/ParcelDetailDrawer";
 import { unwrap, unwrapList } from "@core/api/unwrap";
 
@@ -202,6 +204,20 @@ const CityParcelAdmin = () => {
   const [assignTarget, setAssignTarget] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [detailId, setDetailId] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Open a specific booking's drawer when navigated here with `?cityParcelId=`
+  // (e.g. from a Porter Customer's booking history) — the drawer fetches its
+  // own data by id, so this does not wait on the list being loaded first.
+  useEffect(() => {
+    const linkedId = searchParams.get("cityParcelId");
+    if (!linkedId) return;
+    setDetailId(linkedId);
+    const next = new URLSearchParams(searchParams);
+    next.delete("cityParcelId");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Filters for the booking history. Kept in one object so a change to any of
   // them can reset the page in a single place — changing a filter while on
@@ -767,6 +783,20 @@ const CityParcelAdmin = () => {
                       <Chip status={p.status} />
                     </td>
                     <td className="px-4 py-3 text-right">
+                      <div className="inline-flex items-center gap-2">
+                      {/* Anything sold can be invoiced: paid online, or COD that the
+                          customer owes regardless. An unpaid online booking was never
+                          sold, so it gets no invoice. */}
+                      {(p.paymentStatus === "PAID" ||
+                        String(p.paymentMethod).toUpperCase() === "COD") && (
+                        <InvoiceDownloadButton
+                          fetchInvoice={() =>
+                            adminPorterApi.getBookingInvoice("city_parcel", p._id)
+                          }
+                          label="Invoice"
+                          size="sm"
+                        />
+                      )}
                       {["DELIVERED", "RETURNED", "CANCELLED"].includes(p.status) ? null : (
                         <button
                           type="button"
@@ -781,6 +811,7 @@ const CityParcelAdmin = () => {
                           Cancel
                         </button>
                       )}
+                      </div>
                     </td>
                   </tr>
                 ))

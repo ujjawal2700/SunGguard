@@ -328,10 +328,10 @@ const CityParcelTaskPage = () => {
             </p>
             <input
               inputMode="numeric"
-              maxLength={6}
+              maxLength={4}
               value={pickupOtp}
-              onChange={(e) => setPickupOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              placeholder="——————"
+              onChange={(e) => setPickupOtp(e.target.value.replace(/\D/g, "").slice(0, 4))}
+              placeholder="————"
               className="w-full rounded-lg border border-slate-200 px-3 py-3 text-center text-[22px] font-mono tracking-[0.4em] outline-none focus:border-slate-400"
             />
           </section>

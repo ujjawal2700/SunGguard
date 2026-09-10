@@ -27,6 +27,7 @@ import Card from "@/shared/components/ui/Card";
 
 import { useAuth } from "@core/context/AuthContext";
 import { deliveryApi } from "../services/deliveryApi";
+import CashLimitBanner from "../components/CashLimitBanner";
 import { parcelApi } from "../../customer/services/parcelApi";
 import { cityParcelApi } from "../services/cityParcelApi";
 import { unwrap, unwrapList } from "@core/api/unwrap";
@@ -590,6 +591,13 @@ const Dashboard = () => {
           </Card>
         )}
 
+        {/* A cash-limit block would otherwise look identical to a quiet
+            afternoon: the feed comes back empty either way. Re-checked
+            whenever the job list changes, so it clears as soon as an
+            approved deposit lets jobs through again. */}
+        {isOnline && (
+          <CashLimitBanner refreshKey={openCityJobs.length} className="mb-3" />
+        )}
         {!assignedCityParcel && openCityJobs.length === 0 && isOnline && (
           <button
             type="button"

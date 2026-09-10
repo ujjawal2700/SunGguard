@@ -1,4 +1,5 @@
 import { multiplyMoney, roundCurrency } from "./money.js";
+import { applyGst, gstBreakdownFields } from "./gst.js";
 
 export function resolveParcelExpressCharge(config, deliverySpeed) {
   const speed = String(deliverySpeed || "normal").trim().toLowerCase();
@@ -102,10 +103,21 @@ export function applyBillableDaysToFare(
     fare = 0,
   },
   billableDays = 1,
+  gstConfig = null,
 ) {
   const days = Math.max(1, Number(billableDays) || 1);
   const dailyFare = roundCurrency(fare);
-  const totalFare = multiplyMoney(dailyFare, days);
+  const preTaxTotal = multiplyMoney(dailyFare, days);
+
+  /**
+   * GST is applied to the multi-day TOTAL, not to the daily rate.
+   *
+   * Taxing each day and summing would round the tax up to thirty-one separate
+   * times on a month-long booking, so the invoice would not reconcile against
+   * a single line of `total × rate`. One rounding, at the end, is both
+   * correct and what an auditor expects to be able to reproduce.
+   */
+  const gst = applyGst(preTaxTotal, gstConfig || {});
 
   return {
     billableDays: days,
@@ -118,6 +130,7 @@ export function applyBillableDaysToFare(
     companyCharge: roundCurrency(companyCharge),
     courierCharge: roundCurrency(courierCharge),
     expressCharge: roundCurrency(expressCharge),
-    fare: totalFare,
+    ...gstBreakdownFields(gst),
+    fare: gst.totalAmount,
   };
 }

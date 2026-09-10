@@ -18,6 +18,18 @@ import {
   closeCodQr,
   isCodQrAvailable,
 } from "../services/codQrService.js";
+import {
+  getRiderCashStatus,
+  getPorterCashSettings,
+  updatePorterCashSettings,
+  setRiderCashLimit,
+  getFleetCashOverview,
+} from "../services/porter/riderCashLimitService.js";
+import {
+  getRiderDepositQuote,
+  openRiderDepositPayment,
+  verifyRiderDepositReceipt,
+} from "../services/porter/riderDepositService.js";
 
 /* ==========================================================================
    Rider — COD cash they are holding, and depositing it back
@@ -279,6 +291,156 @@ export const adminGetFleetCashHoldings = async (req, res) => {
   try {
     const data = await getFleetCashHoldings();
     return handleResponse(res, 200, "Cash held by riders", data);
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/* ==========================================================================
+   Rider — the cash limit, and depositing online
+   ========================================================================== */
+
+/**
+ * What the rider is holding, what their limit is, and whether they are
+ * blocked.
+ *
+ * The rider app polls this alongside the job feed so the meter is always
+ * live. Being surprised by the block — jobs silently stopping with no
+ * explanation — is the failure this exists to prevent.
+ */
+export const riderGetCashStatus = async (req, res) => {
+  try {
+    const [status, quote] = await Promise.all([
+      getRiderCashStatus(req.user.id),
+      getRiderDepositQuote(req.user.id),
+    ]);
+    return handleResponse(res, 200, "Cash status", { ...status, deposit: quote });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/**
+ * Open a gateway order for the rider's FULL held balance.
+ *
+ * The amount is never taken from the request — it is summed from the bookings
+ * the rider actually holds. A client-supplied amount would let a rider clear
+ * ₹5,000 of jobs by paying ₹1.
+ */
+export const riderStartOnlineDeposit = async (req, res) => {
+  try {
+    const result = await openRiderDepositPayment({
+      riderId: req.user.id,
+      correlationId: req.correlationId || null,
+    });
+
+    return handleResponse(res, 201, "Complete the payment to deposit", {
+      // The shape the rider app's checkout launcher already reads.
+      razorpay: {
+        keyId: result.checkout.keyId,
+        orderId: result.checkout.orderId,
+        amount: result.checkout.amount,
+        currency: result.checkout.currency,
+      },
+      amount: result.amount,
+      items: result.items,
+      paymentId: String(result.payment._id),
+    });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/**
+ * Confirm the deposit and raise it for admin approval.
+ *
+ * Approval is still required — that step is what moves the covered bookings
+ * to REMITTED_TO_ADMIN and un-blocks the rider — but the admin is now
+ * approving against a captured gateway payment rather than a screenshot.
+ */
+export const riderVerifyOnlineDeposit = async (req, res) => {
+  try {
+    const {
+      razorpay_order_id: gatewayOrderId,
+      razorpay_payment_id: gatewayPaymentId,
+      razorpay_signature: signature,
+    } = req.body || {};
+
+    const { deposit, duplicate } = await verifyRiderDepositReceipt({
+      riderId: req.user.id,
+      gatewayOrderId,
+      gatewayPaymentId,
+      signature,
+      correlationId: req.correlationId || null,
+    });
+
+    return handleResponse(
+      res,
+      duplicate ? 200 : 201,
+      "Deposit received — waiting for admin approval",
+      { deposit },
+    );
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/* ==========================================================================
+   Admin — cash limits
+   ========================================================================== */
+
+/**
+ * The fleet, with each rider's limit, what they hold, and what is left.
+ *
+ * Replaces the old aggregation that summed the legacy Transaction ledger and
+ * read `{ $ifNull: ["$limit", 5000] }` off a field that does not exist on the
+ * Delivery model — so every rider showed a ₹5,000 limit that nothing could
+ * change and nothing enforced.
+ */
+export const adminGetPorterCashOverview = async (req, res) => {
+  try {
+    const { page, limit } = getPagination(req, { defaultLimit: 25, maxLimit: 100 });
+    const data = await getFleetCashOverview({
+      search: req.query.search || "",
+      page,
+      limit,
+    });
+    return handleResponse(res, 200, "Rider cash overview", data);
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+export const adminGetPorterCashSettings = async (req, res) => {
+  try {
+    const settings = await getPorterCashSettings();
+    return handleResponse(res, 200, "Cash settings", settings);
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+export const adminUpdatePorterCashSettings = async (req, res) => {
+  try {
+    const settings = await updatePorterCashSettings(req.body || {});
+    return handleResponse(res, 200, "Cash settings updated", settings);
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/**
+ * Set or clear one rider's own limit.
+ *
+ * A null / empty `cashLimit` clears the override and puts them back on the
+ * global limit — deliberately distinct from 0, which means this rider may
+ * carry no cash at all.
+ */
+export const adminSetRiderCashLimit = async (req, res) => {
+  try {
+    const rider = await setRiderCashLimit(req.params.id, req.body?.cashLimit);
+    const status = await getRiderCashStatus(req.params.id);
+    return handleResponse(res, 200, "Cash limit updated", { rider, status });
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);
   }

@@ -874,10 +874,10 @@ const ParcelTaskPage = () => {
                 type="text"
                 inputMode="numeric"
                 value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                maxLength={6}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                maxLength={4}
                 className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm bg-white tracking-[0.2em] font-black"
-                placeholder="6-digit OTP"
+                placeholder="4-digit OTP"
               />
               <button
                 type="button"

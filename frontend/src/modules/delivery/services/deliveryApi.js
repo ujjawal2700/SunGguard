@@ -81,7 +81,33 @@ export const deliveryApi = {
   submitCashDeposit: (data) => axiosInstance.post("/delivery/cash/deposit", data),
   getCashDeposits: (params) =>
     axiosInstance.get("/delivery/cash/deposits", { params }),
-  /** Read-only: where admin wants this deposit sent. */
+  /**
+   * The cash-limit meter: what the rider holds, what they may hold, what is
+   * left, and whether jobs have stopped.
+   *
+   * Polled alongside the job feed so the number is always live — a rider
+   * whose jobs simply stop appearing with no explanation has been failed by
+   * the product.
+   */
+  getCashStatus: () => axiosInstance.get("/delivery/cash/status"),
+
+  /**
+   * Depositing online.
+   *
+   * The amount is decided server-side from the bookings the rider actually
+   * holds — never sent from here, or a rider could clear ₹5,000 of jobs by
+   * paying ₹1. `startOnlineDeposit` returns a gateway order to launch
+   * checkout against; `verifyOnlineDeposit` confirms it and raises the
+   * deposit for admin approval.
+   */
+  startOnlineDeposit: () => axiosInstance.post("/delivery/cash/deposit/online"),
+  verifyOnlineDeposit: (receipt) =>
+    axiosInstance.post("/delivery/cash/deposit/online/verify", receipt),
+
+  /**
+   * @deprecated Superseded by the online deposit above. Kept so an operation
+   * whose gateway is unavailable can still fall back to a manual transfer.
+   */
   getCashPayoutDestination: () =>
     axiosInstance.get("/delivery/cash/payout-destination"),
 

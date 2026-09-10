@@ -542,7 +542,7 @@ export async function generateOrderPaymentBreakdown({
     //   - `grossTotal`: pre-wallet customer-payable amount. New field —
     //     legacy callers ignore it.
     //   - `grandTotal`: post-wallet amount when the flag is on (the actual
-    //     amount PhonePe charges / rider collects); equals `grossTotal`
+    //     amount the gateway charges / rider collects); equals `grossTotal`
     //     when the flag is off (legacy behaviour preserved).
     //   - `walletAmount`: per-seller proportionate wallet redemption.
     //   - `payableAmount`: alias of `grandTotal` for the post-C-1 world,

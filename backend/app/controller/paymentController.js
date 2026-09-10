@@ -1,12 +1,13 @@
 import handleResponse from "../utils/helper.js";
 import {
   createPaymentOrderForOrderRef,
-  verifyPhonePePaymentStatus,
-  processPhonePeWebhook,
+  verifyGatewayPaymentStatus,
+  verifyCheckoutReceipt,
+  processGatewayWebhook,
 } from "../services/paymentService.js";
 import {
   createPaymentOrderSchema,
-  verifyPaymentClientSchema,
+  verifyCheckoutReceiptSchema,
   validateSchema,
 } from "../validation/paymentValidation.js";
 import logger from "../services/logger.js";
@@ -16,14 +17,21 @@ function resolvePaymentErrorMessage(error) {
   if (directMessage) return directMessage;
 
   const responseStatusText = String(error?.response?.statusText || "").trim();
-  if (responseStatusText) return `PhonePe gateway error: ${responseStatusText}`;
+  if (responseStatusText) return `Payment gateway error: ${responseStatusText}`;
 
   const causeCode = String(error?.cause?.code || error?.code || "").trim();
-  if (causeCode) return `PhonePe gateway request failed (${causeCode})`;
+  if (causeCode) return `Payment gateway request failed (${causeCode})`;
 
-  return "Unable to initiate payment with PhonePe right now";
+  return "Unable to start the payment right now";
 }
 
+/**
+ * Opens a gateway order for a cart or an unpaid order.
+ *
+ * Returns what the client needs to launch checkout. Nothing is confirmed
+ * here — the payment is only real once its receipt is verified or the
+ * gateway's webhook arrives.
+ */
 export const createPaymentOrder = async (req, res) => {
   try {
     const payload = validateSchema(createPaymentOrderSchema, req.body || {});
@@ -40,7 +48,7 @@ export const createPaymentOrder = async (req, res) => {
       result.duplicate ? "Re-using existing payment" : "Payment initiated",
       {
         payment: result.payment,
-        redirectUrl: result.redirectUrl,
+        checkout: result.checkout,
         merchantOrderId: result.payment.gatewayOrderId,
       },
     );
@@ -64,16 +72,45 @@ export const createPaymentOrder = async (req, res) => {
   }
 };
 
+/**
+ * The signed receipt checkout hands back to the browser.
+ *
+ * This is the fast path that lets the customer see "paid" immediately. It is
+ * not the only path: the webhook below confirms the same payment server to
+ * server, so an abandoned browser still gets the order through.
+ */
+export const verifyCheckoutPayment = async (req, res) => {
+  try {
+    const payload = validateSchema(verifyCheckoutReceiptSchema, req.body || {});
+
+    const verification = await verifyCheckoutReceipt({
+      gatewayOrderId: payload.razorpay_order_id,
+      gatewayPaymentId: payload.razorpay_payment_id,
+      signature: payload.razorpay_signature,
+      userId: req.user?.id,
+      correlationId: req.correlationId || null,
+    });
+
+    return handleResponse(res, 200, "Payment verified", {
+      status: verification.status,
+      payment: verification.payment,
+    });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/** Polls the gateway for a payment's real status. */
 export const verifyPaymentStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const merchantOrderId = id || req.query.merchantOrderId;
-    
+
     if (!merchantOrderId) {
-        return handleResponse(res, 400, "merchantOrderId is required");
+      return handleResponse(res, 400, "merchantOrderId is required");
     }
 
-    const verification = await verifyPhonePePaymentStatus({
+    const verification = await verifyGatewayPaymentStatus({
       merchantOrderId,
       userId: req.user?.id,
       correlationId: req.correlationId || null,
@@ -88,60 +125,70 @@ export const verifyPaymentStatus = async (req, res) => {
   }
 };
 
-export const handlePhonePeWebhook = async (req, res) => {
+/**
+ * Razorpay server-to-server webhook.
+ *
+ * Unauthenticated by design — the gateway cannot hold a user session. Trust
+ * comes entirely from the HMAC over the raw request body, which is why this
+ * route mounts a raw body parser and why an unsigned request is refused
+ * before the payload is read.
+ */
+export const handleGatewayWebhook = async (req, res) => {
   try {
-    const authorization = req.headers["x-verify"] || req.headers["authorization"];
+    const signature = req.headers["x-razorpay-signature"];
     const rawBody = req.body;
 
-    if (!authorization) {
-        logger.warn("PhonePe webhook missing verification header", {
-          scope: "PaymentController.handlePhonePeWebhook",
-          correlationId: req.correlationId || null,
-          ip: req.ip,
-        });
-        return res.status(401).send("Unauthorized");
+    if (!signature) {
+      logger.warn("Gateway webhook missing signature header", {
+        scope: "PaymentController.handleGatewayWebhook",
+        correlationId: req.correlationId || null,
+        ip: req.ip,
+      });
+      return res.status(401).send("Unauthorized");
     }
 
-    const result = await processPhonePeWebhook({
+    const result = await processGatewayWebhook({
       rawBody,
-      authorization,
+      signature,
       correlationId: req.correlationId || null,
     });
 
     if (result.accepted) {
       return res.status(200).send("OK");
     }
-    
+
     return res.status(400).send("Bad Request");
   } catch (error) {
-    logger.error("PhonePe webhook processing failed", {
-      scope: "PaymentController.handlePhonePeWebhook",
+    // A 5xx tells the gateway to retry, which is what we want for a transient
+    // fault. A rejected signature is a 401 and is not worth retrying.
+    const status = error?.statusCode === 401 ? 401 : 500;
+    logger.error("Gateway webhook processing failed", {
+      scope: "PaymentController.handleGatewayWebhook",
       correlationId: req.correlationId || null,
       message: error?.message,
       error,
     });
-    return res.status(500).send("Internal Server Error");
+    return res.status(status).send(status === 401 ? "Unauthorized" : "Internal Server Error");
   }
 };
 
 export const getPaymentStatus = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const merchantOrderId = id;
-    
-        const verification = await verifyPhonePePaymentStatus({
-          merchantOrderId,
-          userId: req.user?.id,
-          correlationId: req.correlationId || null,
-        });
-    
-        return handleResponse(res, 200, "Payment status retrieved", {
-          status: verification.status,
-          merchantOrderId: verification.payment.gatewayOrderId,
-          amount: verification.payment.amount,
-          currency: verification.payment.currency,
-        });
-      } catch (error) {
-        return handleResponse(res, error.statusCode || 500, error.message);
-      }
+  try {
+    const { id } = req.params;
+
+    const verification = await verifyGatewayPaymentStatus({
+      merchantOrderId: id,
+      userId: req.user?.id,
+      correlationId: req.correlationId || null,
+    });
+
+    return handleResponse(res, 200, "Payment status retrieved", {
+      status: verification.status,
+      merchantOrderId: verification.payment.gatewayOrderId,
+      amount: verification.payment.amount,
+      currency: verification.payment.currency,
+    });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
 };

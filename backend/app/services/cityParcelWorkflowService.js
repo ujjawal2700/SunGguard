@@ -17,6 +17,10 @@ import {
   syncDeliveryPartnerBusyFlag,
 } from "./deliveryBusyService.js";
 import { transition, recordEvent } from "./cityParcelStateMachine.js";
+import {
+  assertRiderCanTakeJobs,
+  filterRidersWithCashHeadroom,
+} from "./porter/riderCashLimitService.js";
 import { computeRiderEarning } from "./cityParcelFareService.js";
 import { getRedisClient } from "../config/redis.js";
 import {
@@ -97,7 +101,15 @@ async function fanOutToNearbyRiders(parcel, radiusKm, extra = {}) {
   // rules (parcel-enabled, online, verified). Read-only, nothing shared.
   const rawIds = await getParcelRiderIdsNearPickup(lat, lng, radiusKm, { zone });
   const skipped = new Set((parcel.skippedBy || []).map(String));
-  const ids = [...new Set(rawIds.map(String))].filter((id) => !skipped.has(id));
+  const eligible = [...new Set(rawIds.map(String))].filter((id) => !skipped.has(id));
+
+  /**
+   * Riders at their COD cash limit are dropped from the push too, not just
+   * from the pull feed. Buzzing someone's phone with a job they will be
+   * refused on tap is worse than not reaching them — it teaches them to
+   * ignore the notification.
+   */
+  const ids = await filterRidersWithCashHeadroom(eligible);
 
   if (!ids.length) return { ids: [] };
 
@@ -256,7 +268,7 @@ export async function fetchAvailableForRider(deliveryId) {
   if (!oid) return { parcels: [], reason: "INVALID_RIDER" };
 
   const rider = await Delivery.findById(oid)
-    .select("location isParcelService isVerified isOnline")
+    .select("location isParcelService isVerified isOnline zoneIds cashLimit")
     .lean();
 
   /**
@@ -288,17 +300,49 @@ export async function fetchAvailableForRider(deliveryId) {
   const activeJobInfo = await getDeliveryPartnerActiveJobInfo(oid);
   const busy = activeJobInfo.hasActiveJob;
 
+  /**
+   * A rider at their COD cash limit sees no work at all until they deposit.
+   *
+   * Returned as an empty list with a reason rather than a filtered one: the
+   * block is not about any particular job, and showing jobs the rider cannot
+   * accept — with the refusal only arriving on tap — is how a rider ends up
+   * riding to a pickup they were never allowed to take. `cashStatus` travels
+   * back so the app can render the exact number they are holding and what
+   * they have to do about it.
+   */
+  const cashGate = await assertRiderCanTakeJobs(oid);
+  if (!cashGate.allowed) {
+    return {
+      parcels: [],
+      reason: "CASH_LIMIT_REACHED",
+      canAccept: false,
+      message: cashGate.message,
+      cashStatus: cashGate.status,
+    };
+  }
+
   const config = await CityParcelConfig.getConfig();
   const baseRadiusM = config.baseSearchRadiusKm * 1000;
 
   /**
-   * Which zones this rider is standing in, resolved once for the whole list.
-   * A job is only shown if its zone is one of them, so the pull feed enforces
-   * the same boundary the push broadcast does — otherwise a rider outside the
-   * zone could simply poll for what was never broadcast to them.
+   * Which zones this rider may take work from.
+   *
+   * Two sources, and the assignment wins. A rider with zones assigned by an
+   * admin sees ONLY those, wherever they happen to be standing — that is what
+   * makes staffing an area mean something rather than being a suggestion. A
+   * rider with none assigned falls back to the zones their live GPS fix puts
+   * them inside, which is how zone gating behaved before assignment existed
+   * and remains right for a fleet that roams.
+   *
+   * Either way the pull feed enforces the same boundary the push broadcast
+   * does, so a rider outside the zone cannot simply poll for what was never
+   * broadcast to them.
    */
+  const assignedZoneIds = (rider.zoneIds || []).map(String).filter(Boolean);
   const riderZoneIds = new Set(
-    (await zonesForPoint(lat, lng)).map((zone) => String(zone._id)),
+    assignedZoneIds.length
+      ? assignedZoneIds
+      : (await zonesForPoint(lat, lng)).map((zone) => String(zone._id)),
   );
 
   /**
@@ -365,6 +409,14 @@ export async function fetchAvailableForRider(deliveryId) {
     reason: busy ? "ON_A_JOB" : matched.length ? "OK" : "NONE_NEARBY",
     canAccept: !busy,
     activeJobType: activeJobInfo.type,
+    /**
+     * Sent even when the rider is nowhere near the limit, so the app can show
+     * a live "₹X of ₹Y collected" meter rather than only appearing once the
+     * rider is already blocked. Being surprised by the block is the failure
+     * mode this avoids.
+     */
+    cashStatus: cashGate.status,
+    zoneScope: assignedZoneIds.length ? "ASSIGNED" : "LIVE_LOCATION",
   };
 }
 
@@ -384,7 +436,7 @@ export async function acceptAtomic({ deliveryId, cityParcelId, idempotencyKey = 
   }
 
   const rider = await Delivery.findById(oid)
-    .select("isVerified isParcelService name phone location lastLocationAt")
+    .select("isVerified isParcelService name phone location lastLocationAt zoneIds cashLimit")
     .lean();
 
   if (!rider?.isVerified) {
@@ -435,6 +487,30 @@ export async function acceptAtomic({ deliveryId, cityParcelId, idempotencyKey = 
     throw err;
   }
 
+  /**
+   * The cash limit is checked on the claim as well as on the feed.
+   *
+   * The feed is a view; this is the decision. A rider holding an id from an
+   * earlier poll, or one who crossed the limit on another job between loading
+   * the list and tapping, would otherwise walk straight past a gate the list
+   * had already applied.
+   *
+   * Placed here, after both the "already mine" retry check and the busy gate,
+   * for the reason spelled out above them: a rider retrying an accept they
+   * already won must get their own job back, not a refusal — and a rider
+   * mid-job needs to hear "finish your current job", which is the thing they
+   * can act on, rather than being sent to make a deposit that would not have
+   * unblocked them anyway.
+   */
+  const cashGate = await assertRiderCanTakeJobs(oid);
+  if (!cashGate.allowed) {
+    const err = new Error(cashGate.message);
+    err.statusCode = 403;
+    err.code = "CASH_LIMIT_REACHED";
+    err.cashStatus = cashGate.status;
+    throw err;
+  }
+
   const config = await CityParcelConfig.getConfig();
 
   // Riders must be near the pickup to claim it — otherwise the nearest-rider
@@ -468,10 +544,22 @@ export async function acceptAtomic({ deliveryId, cityParcelId, idempotencyKey = 
      * The claim is gated as well as the offer. Broadcast and feed both filter
      * by zone, but a rider holding an id from an earlier round — or one who
      * has since ridden out of the zone — could otherwise still take the job.
+     *
+     * An assigned rider is judged against their assignment, not their GPS.
+     * Otherwise the two halves would disagree: the feed would show them the
+     * zone they are staffed for, and the claim would refuse it the moment
+     * they stepped over the boundary to get lunch.
      */
-    if (parcelPeek.zoneId && !(await isPointInZoneId(parcelPeek.zoneId, rLat, rLng))) {
+    const assignedZoneIds = (rider.zoneIds || []).map(String).filter(Boolean);
+    const inZone = assignedZoneIds.length
+      ? assignedZoneIds.includes(String(parcelPeek.zoneId))
+      : await isPointInZoneId(parcelPeek.zoneId, rLat, rLng);
+
+    if (parcelPeek.zoneId && !inZone) {
       const err = new Error(
-        "This delivery is reserved for riders inside its delivery zone.",
+        assignedZoneIds.length
+          ? "This delivery is outside the zones you are assigned to."
+          : "This delivery is reserved for riders inside its delivery zone.",
       );
       err.statusCode = 403;
       throw err;

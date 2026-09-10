@@ -1,3 +1,7 @@
+/**
+ * PHONEPE is retained only so historical Payment rows written before the
+ * move to Razorpay still satisfy the enum. Nothing writes it any more.
+ */
 export const PAYMENT_GATEWAY = {
   RAZORPAY: "RAZORPAY",
   PHONEPE: "PHONEPE",

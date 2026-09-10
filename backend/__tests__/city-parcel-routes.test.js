@@ -37,9 +37,10 @@ jest.unstable_mockModule("../app/middleware/authMiddleware.js", () => ({
         ? next()
         : res.status(403).json({ message: "forbidden" }),
   requireApprovedSeller: (_req, _res, next) => next(),
-  // The booking routes gate on an active customer account; these tests
-  // assert routing, not account state, so it always passes here.
+  // The booking routes gate on an active customer/delivery account; these
+  // tests assert routing, not account state, so both always pass here.
   requireActiveCustomer: (_req, _res, next) => next(),
+  requireActiveDelivery: (_req, _res, next) => next(),
 }));
 
 const setupRoutes = (await import("../app/routes/index.js")).default;

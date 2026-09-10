@@ -51,6 +51,11 @@ import {
   getCityParcelSweeperJobInterval,
   isCityParcelSweeperEnabled,
 } from "./app/jobs/cityParcelSweeperJob.js";
+import {
+  getAbandonedCheckoutJobHandler,
+  getAbandonedCheckoutJobInterval,
+  isAbandonedCheckoutJobEnabled,
+} from "./app/jobs/abandonedCheckoutJob.js";
 import logger from "./app/services/logger.js";
 import { stopScheduledJobs } from "./app/services/distributedScheduler.js";
 
@@ -176,9 +181,11 @@ function createApp() {
   app.use(cors(corsOptions));
   app.use(globalApiRateLimiter);
 
-  // PhonePe webhook needs raw body for signature verification
+  // The gateway webhook signature is computed over the exact bytes sent, so
+  // this path must never see a re-serialised body. Mounted before the JSON
+  // parser for that reason.
   app.use(
-    "/api/payments/webhook/phonepe",
+    "/api/payments/webhook/razorpay",
     express.raw({
       type: "application/json",
       limit: process.env.PAYMENT_WEBHOOK_MAX_PAYLOAD || "1mb",
@@ -406,6 +413,16 @@ async function startScheduler() {
     );
   }
 
+  // Bookings whose payment sheet was never completed. Listings already hide
+  // them; this stops them accumulating in the collection forever.
+  if (isAbandonedCheckoutJobEnabled()) {
+    registerScheduledJob(
+      'abandonedCheckoutJob',
+      getAbandonedCheckoutJobInterval(),
+      getAbandonedCheckoutJobHandler()
+    );
+  }
+
   // Start all registered jobs
   await startScheduledJobs();
   registerSchedulerStopper(stopScheduledJobs);
@@ -415,6 +432,7 @@ async function startScheduler() {
   if (isWalletLedgerVerifierEnabled()) scheduledJobs.push('walletLedgerVerifierJob');
   if (isFirebaseTrackingCleanupJobEnabled()) scheduledJobs.push('firebaseTrackingCleanupJob');
   if (isCityParcelSweeperEnabled()) scheduledJobs.push('cityParcelSweeperJob');
+  if (isAbandonedCheckoutJobEnabled()) scheduledJobs.push('abandonedCheckoutJob');
   logger.info('Scheduler started', {
     jobs: scheduledJobs,
     role: getProcessRole()

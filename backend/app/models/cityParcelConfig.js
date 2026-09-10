@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { gstConfigSchema } from "./shared/gstSchemas.js";
 
 /**
  * Rate card and operating thresholds for the City Parcel module.
@@ -27,6 +28,15 @@ const cityParcelConfigSchema = new mongoose.Schema(
     platformCharge: { type: Number, default: 0, min: 0 },
     /** Added when the customer picks the faster option. */
     expressCharge: { type: Number, default: 0, min: 0 },
+
+    /* ---------------- Tax ---------------- */
+
+    /**
+     * GST on the local fare. Deliberately independent of the outstation rate
+     * card in models/parcelConfig.js — the two products are commonly brought
+     * under tax at different times, and at different rates.
+     */
+    gst: { type: gstConfigSchema, default: () => ({}) },
 
     /* ---------------- Waiting ---------------- */
 

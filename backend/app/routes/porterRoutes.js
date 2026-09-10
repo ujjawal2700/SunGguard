@@ -37,7 +37,24 @@ import {
   adminGetFleetCashHoldings,
   adminGetCashPayoutDestination,
   adminUpdateCashPayoutDestination,
+  adminGetPorterCashOverview,
+  adminGetPorterCashSettings,
+  adminUpdatePorterCashSettings,
+  adminSetRiderCashLimit,
 } from "../controller/riderCashController.js";
+
+import {
+  adminGetGstSettings,
+  adminUpdateGstSettings,
+  adminGetGstReport,
+  adminGetGstLedger,
+  adminSetRiderZones,
+  adminListRiderZones,
+  getBookingInvoice,
+  getBookingPayments,
+  getMyTransactions,
+} from "../controller/porterFinanceController.js";
+import { verifyToken as requireAuth } from "../middleware/authMiddleware.js";
 
 /**
  * The porter desk: the parcel-side dashboard and the delivery zones drawn to
@@ -81,6 +98,52 @@ router.put(
   ...adminOnly,
   adminUpdateCashPayoutDestination,
 );
+
+/* --------------------------------------------------------------------------
+   Rider COD cash limits
+   --------------------------------------------------------------------------
+   How much cash each rider may hold, what they are holding, and what is left.
+   Replaces the old Cash Collection aggregation, which read a `limit` field
+   that has never existed on the Delivery model — so every rider showed a
+   ₹5,000 limit that nothing could change and nothing enforced.
+   ------------------------------------------------------------------------ */
+router.get("/admin/cash-overview", ...adminOnly, adminGetPorterCashOverview);
+router.get("/admin/cash-settings", ...adminOnly, adminGetPorterCashSettings);
+router.put("/admin/cash-settings", ...adminOnly, adminUpdatePorterCashSettings);
+// Null / empty clears the override and returns the rider to the global limit;
+// 0 is a real limit meaning this rider may carry no cash at all.
+router.patch("/admin/riders/:id/cash-limit", ...adminOnly, adminSetRiderCashLimit);
+
+/* --------------------------------------------------------------------------
+   GST
+   ------------------------------------------------------------------------ */
+router.get("/admin/gst-settings", ...adminOnly, adminGetGstSettings);
+router.put("/admin/gst-settings", ...adminOnly, adminUpdateGstSettings);
+router.get("/admin/gst-report", ...adminOnly, adminGetGstReport);
+// Line-by-line, for export to an accountant.
+router.get("/admin/gst-ledger", ...adminOnly, adminGetGstLedger);
+
+/* --------------------------------------------------------------------------
+   Rider zone assignment
+   --------------------------------------------------------------------------
+   A rider with zones assigned is offered local jobs from those zones only,
+   wherever they are standing. A rider with none falls back to the zones their
+   live GPS fix puts them inside.
+   ------------------------------------------------------------------------ */
+router.get("/admin/rider-zones", ...adminOnly, adminListRiderZones);
+router.patch("/admin/riders/:id/zones", ...adminOnly, adminSetRiderZones);
+
+/* --------------------------------------------------------------------------
+   Invoices and payment history
+   --------------------------------------------------------------------------
+   Deliberately NOT under /admin: a customer downloads their own invoice from
+   the same endpoint an admin uses, and the service scopes the read by role.
+   One code path means the money on the invoice cannot differ depending on who
+   printed it.
+   ------------------------------------------------------------------------ */
+router.get("/invoice/:kind/:id", requireAuth, getBookingInvoice);
+router.get("/payments/:kind/:id", requireAuth, getBookingPayments);
+router.get("/my-transactions", requireAuth, getMyTransactions);
 
 // Admin Porter Delivery Zones
 router.get("/admin/zones", ...adminOnly, adminListZones);

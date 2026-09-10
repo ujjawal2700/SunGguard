@@ -9,6 +9,21 @@ let foregroundUnsubscribe = null;
 const GESTURE_EVENTS = ["pointerdown", "touchstart", "click", "keydown"];
 const gestureHandlers = new Map();
 
+/**
+ * Memoized service worker registration.
+ *
+ * `ensureServiceWorkerRegistration` used to run its full body — a manual
+ * `fetch()` reachability check, `serviceWorker.register()`, and an explicit
+ * `registration.update()` — on every call, with no sharing between calls.
+ * The login flow calls it from two places back to back (once from
+ * `startForegroundPushListener`, once from `ensureFcmTokenRegistered` when
+ * permission is already granted), so `firebase-messaging-sw.js` showed up
+ * twice in the Network tab for one login — real duplicate work, not just a
+ * cosmetic entry. Caching the in-flight/resolved promise means the second
+ * caller reuses the first call's registration instead of redoing it.
+ */
+let swRegistrationPromise = null;
+
 function registeredKey(role = "customer") {
   return `${KEY_PREFIXES.PUSH_REGISTERED}${String(role || "customer").toLowerCase()}`;
 }
@@ -65,7 +80,7 @@ export function describePushSupport() {
   return { supported: true, reason: "ok" };
 }
 
-async function ensureServiceWorkerRegistration() {
+async function registerServiceWorkerOnce() {
   if (!("serviceWorker" in navigator)) {
     throw new Error("Service workers are not supported in this browser");
   }
@@ -94,6 +109,21 @@ async function ensureServiceWorkerRegistration() {
   await registration.update();
   await navigator.serviceWorker.ready;
   return registration;
+}
+
+/**
+ * Only ever runs `registerServiceWorkerOnce` once per page load. A failed
+ * attempt is not cached, so a transient network blip does not permanently
+ * disable push for the rest of the session — the next caller gets to retry.
+ */
+async function ensureServiceWorkerRegistration() {
+  if (!swRegistrationPromise) {
+    swRegistrationPromise = registerServiceWorkerOnce().catch((error) => {
+      swRegistrationPromise = null;
+      throw error;
+    });
+  }
+  return swRegistrationPromise;
 }
 
 async function showSystemNotification({ title, body, data } = {}) {

@@ -42,10 +42,16 @@ import {
 import Delivery from "../models/delivery.js";
 import { isZoneGatingActive, resolveZoneForPoint } from "../services/deliveryZoneService.js";
 import {
-  createCityParcelOrder,
-  verifyCityParcelSignature,
-  isRazorpayConfigured,
-} from "../services/cityParcelRazorpayService.js";
+  openBookingPayment,
+  verifyBookingReceipt,
+  getBookingPaymentHistory,
+} from "../services/porter/porterPaymentService.js";
+import { activatePorterBookingAfterPayment } from "../services/porter/porterDispatchService.js";
+import { PORTER_BOOKING_KIND } from "../constants/porterPayment.js";
+import {
+  visibleCityParcels,
+  CITY_PARCEL_AWAITING_PAYMENT,
+} from "../services/bookingCheckoutService.js";
 import {
   notifyRiderAssigned,
   notifyCustomerOfStatus,
@@ -56,8 +62,10 @@ import {
   CITY_PARCEL_RETURN_STATUS as R,
   CITY_PARCEL_OTP_TYPE,
   CITY_PARCEL_EVENT_ACTOR,
+  CITY_PARCEL_RESUMABLE_BOOKING_WINDOW_MS,
 } from "../constants/cityParcelWorkflow.js";
 import { recordCodCollection } from "../services/riderCashService.js";
+import { recordPorterCodCollected } from "../services/porter/customerLedgerService.js";
 import logger from "../services/logger.js";
 
 /** Turn a thrown service error into the status code it asked for. */
@@ -166,6 +174,16 @@ export const calculateFare = async (req, res) => {
       distanceSource: quote.distanceSource,
       fare: quote.fare,
       fareBreakdown: quote.fareBreakdown,
+      // Lifted out of the breakdown so the booking screen does not have to
+      // know which line items are taxable to show a "GST (18%)" row.
+      tax: {
+        percent: quote.fareBreakdown.gstPercent,
+        amount: quote.fareBreakdown.gstAmount,
+        cgst: quote.fareBreakdown.cgst,
+        sgst: quote.fareBreakdown.sgst,
+        taxableAmount: quote.fareBreakdown.taxableAmount,
+        inclusive: quote.fareBreakdown.gstInclusive,
+      },
       etaMinutes: quote.etaMinutes,
       deliveryEta: quote.deliveryEta,
     });
@@ -198,13 +216,16 @@ export const createCityParcel = async (req, res) => {
     }
 
     const isCod = String(paymentMethod).toUpperCase() === "COD";
+    const method = String(paymentMethod).toUpperCase();
     const sla = computeDeliverySla({
       distanceKm: quote.distanceKm,
       config: quote.config,
     });
 
-    const parcel = await CityParcel.createWithReference({
-      customerId: req.user.id,
+    // Everything about the booking except its identity, payment state and
+    // routing status — shared by both the fresh-create path below and the
+    // resume-in-place path.
+    const bookingFields = {
       // Who is physically at pickup. The booking form has always asked for
       // this and then dropped it, so the rider arrived knowing only the
       // account name and the admin could not say who handed the parcel over.
@@ -228,23 +249,77 @@ export const createCityParcel = async (req, res) => {
       deliverySpeed,
       fare: quote.fare,
       fareBreakdown: quote.fareBreakdown,
-      paymentMethod: String(paymentMethod).toUpperCase(),
-      paymentStatus: "PENDING",
-      codCollection: isCod
-        ? { amount: quote.fare, status: "COLLECT_PENDING" }
-        : { amount: 0, status: "NOT_APPLICABLE" },
       deliveryEta: sla.deliveryEta,
       deliveryDeadline: sla.deliveryDeadline,
-      trackToDoor: true,
-      status: S.REQUESTED,
-    });
+    };
+
+    let parcel = null;
+    let resumed = false;
+
+    /**
+     * A cancelled or abandoned Razorpay sheet leaves the row it already
+     * created sitting unpaid in the database. Tapping "Pay" again used to
+     * insert a brand new CityParcel every single time — one hesitant
+     * customer could leave a dozen duplicate REQUESTED rows behind, each
+     * with its own Razorpay order.
+     *
+     * COD never hits this: it has no gateway sheet to cancel and moves
+     * straight to broadcast below, so only a non-COD retry looks for an
+     * existing unpaid attempt to resume. A match has to agree on customer,
+     * route, package and payment method — anything looser risks resuming
+     * the wrong booking. Fields that could have changed since the first
+     * attempt (contact details, landmark, price if admin edited the rate
+     * card) are refreshed onto the SAME row rather than left stale.
+     */
+    if (!isCod) {
+      const resumable = await CityParcel.findOne({
+        customerId: req.user.id,
+        status: S.REQUESTED,
+        paymentStatus: "PENDING",
+        paymentMethod: method,
+        "pickupAddress.lat": pickupAddress.lat,
+        "pickupAddress.lng": pickupAddress.lng,
+        "dropAddress.lat": dropAddress.lat,
+        "dropAddress.lng": dropAddress.lng,
+        "package.weightKg": Number(pkg.weightKg),
+        "package.packageType": pkg.packageType,
+        createdAt: { $gte: new Date(Date.now() - CITY_PARCEL_RESUMABLE_BOOKING_WINDOW_MS()) },
+      }).sort({ createdAt: -1 });
+
+      if (resumable) {
+        resumable.set(bookingFields);
+        // Always not-applicable here — the match above excludes COD.
+        resumable.codCollection = { amount: 0, status: "NOT_APPLICABLE" };
+        // The old order cannot be reopened once its sheet was dismissed;
+        // a fresh one is requested further down regardless.
+        resumable.razorpayOrderId = null;
+        resumable.razorpayPaymentId = null;
+        await resumable.save();
+        parcel = resumable;
+        resumed = true;
+      }
+    }
+
+    if (!parcel) {
+      parcel = await CityParcel.createWithReference({
+        customerId: req.user.id,
+        ...bookingFields,
+        paymentMethod: method,
+        paymentStatus: "PENDING",
+        codCollection: isCod
+          ? { amount: quote.fare, status: "COLLECT_PENDING" }
+          : { amount: 0, status: "NOT_APPLICABLE" },
+        trackToDoor: true,
+        status: S.REQUESTED,
+      });
+    }
 
     await recordEvent({
       cityParcelId: parcel._id,
       status: S.REQUESTED,
       actor: CITY_PARCEL_EVENT_ACTOR.CUSTOMER,
       actorId: req.user.id,
-      note: "Booking created",
+      note: resumed ? "Payment retried on the same booking" : "Booking created",
     });
 
     // COD needs no gateway step — start looking for a rider immediately.
@@ -256,42 +331,67 @@ export const createCityParcel = async (req, res) => {
       });
     }
 
-    // Online payment: open a Razorpay order now and hand the client what it
-    // needs to launch checkout. The parcel stays REQUESTED and unbroadcast
-    // until a verified signature comes back — no rider is dispatched against
-    // money that has not actually moved.
-    if (!isRazorpayConfigured()) {
-      await CityParcel.findByIdAndUpdate(parcel._id, {
-        $set: {
-          status: S.CANCELLED,
-          cancelledAt: new Date(),
-          cancelReason: "Online payment unavailable",
-        },
-      });
-      return handleResponse(
-        res,
-        503,
-        "Online payment is unavailable right now. Choose cash on pickup.",
-      );
-    }
-
+    /**
+     * Online payment: open a gateway order and hand the client what it needs
+     * to launch checkout. The parcel stays REQUESTED and unbroadcast until
+     * the money is confirmed CAPTURED — no rider is dispatched against money
+     * that has not actually moved.
+     *
+     * This now goes through `porterPaymentService`, which writes a real
+     * PorterPayment row per attempt. The previous version wrote a bare order
+     * id onto the booking and nothing else, so a payment had no status
+     * history, no instrument, no fee, no refund trail and — most importantly
+     * — no webhook. A customer whose app died between paying and returning
+     * had, as far as this database was concerned, simply not paid.
+     */
     try {
-      const razorpay = await createCityParcelOrder(parcel);
-      parcel.razorpayOrderId = razorpay.orderId;
+      const { payment, checkout } = await openBookingPayment({
+        kind: PORTER_BOOKING_KIND.CITY_PARCEL,
+        booking: parcel,
+        idempotencyKey: req.headers?.["idempotency-key"] || null,
+        correlationId: req.correlationId || null,
+      });
+
+      parcel.razorpayOrderId = checkout.orderId;
       await parcel.save();
 
       return handleResponse(res, 201, "Complete payment to confirm", {
         parcel,
         requiresPayment: true,
-        razorpay,
+        // `razorpay` is the shape the existing clients already read. Kept
+        // verbatim so the booking screens need no coordinated change to
+        // benefit from the ledger behind it.
+        razorpay: {
+          keyId: checkout.keyId,
+          orderId: checkout.orderId,
+          amount: checkout.amount,
+          currency: checkout.currency,
+        },
+        paymentId: String(payment._id),
       });
     } catch (payErr) {
+      /**
+       * A booking that could not open a gateway order is cancelled rather
+       * than left REQUESTED. Left alive it would show the customer a live
+       * waybill they can neither pay for nor track, and the resume path
+       * above would keep finding it.
+       */
       await CityParcel.findByIdAndUpdate(parcel._id, {
         $set: {
           status: S.CANCELLED,
           cancelledAt: new Date(),
-          cancelReason: "Could not start payment",
+          cancelReason:
+            payErr?.code === "GATEWAY_NOT_CONFIGURED"
+              ? "Online payment unavailable"
+              : "Could not start payment",
         },
+      });
+      await recordEvent({
+        cityParcelId: parcel._id,
+        status: S.CANCELLED,
+        previousStatus: S.REQUESTED,
+        actor: CITY_PARCEL_EVENT_ACTOR.SYSTEM,
+        note: payErr?.message || "Could not start payment with the gateway",
       });
       return fail(res, payErr);
     }
@@ -342,35 +442,53 @@ export const verifyPayment = async (req, res) => {
       return handleResponse(res, 400, "This payment belongs to another booking");
     }
 
+    /**
+     * Two checks, and both are load-bearing.
+     *
+     * The signature proves the receipt came from the gateway and belongs to
+     * this order — without it, anyone who can call this endpoint gets a free
+     * delivery. Reading the status back proves the money was CAPTURED —
+     * without that, an authorised-but-uncaptured payment would dispatch a
+     * rider against money that never actually arrived. The old version did
+     * only the first and treated it as proof of both.
+     *
+     * An untrusted receipt is refused without touching the booking. It used
+     * to write FAILED, which permanently bricked the booking: a mangled or
+     * re-posted receipt from a customer still mid-checkout would kill their
+     * own booking, and the real payment could then never be applied to it.
+     */
+    let result;
     try {
-      verifyCityParcelSignature({
-        razorpayOrderId,
-        razorpayPaymentId,
-        razorpaySignature,
+      result = await verifyBookingReceipt({
+        kind: PORTER_BOOKING_KIND.CITY_PARCEL,
+        bookingId: parcel._id,
+        customerId: req.user.id,
+        gatewayOrderId: razorpayOrderId,
+        gatewayPaymentId: razorpayPaymentId,
+        signature: razorpaySignature,
+        correlationId: req.correlationId || null,
+        onPaid: activatePorterBookingAfterPayment,
       });
-    } catch (sigErr) {
-      /**
-       * Deliberately leaves the booking PENDING.
-       *
-       * A signature that does not verify means "this receipt cannot be
-       * trusted", not "the customer's payment failed" — and this used to
-       * write FAILED, which permanently bricked the booking. A mangled or
-       * re-posted receipt from a customer who was mid-checkout would flip
-       * their own booking to FAILED, and the real payment could then never
-       * be applied to it. FAILED belongs to a gateway that actually reports
-       * a failed payment; an untrusted receipt just gets refused, and the
-       * customer can complete or retry checkout against the same order.
-       */
+    } catch (verifyErr) {
       logger.warn("City parcel payment verification failed", {
         referenceId: parcel.referenceId,
-        reason: sigErr?.code || sigErr?.message,
+        reason: verifyErr?.code || verifyErr?.message,
       });
-      return fail(res, sigErr);
+      return fail(res, verifyErr);
     }
 
-    parcel.paymentStatus = "PAID";
-    parcel.razorpayPaymentId = razorpayPaymentId;
-    await parcel.save();
+    if (!result.payment.isPaid?.() && result.status !== "CAPTURED") {
+      /**
+       * The receipt was genuine but the gateway has not confirmed capture.
+       * The customer is told to wait rather than told it failed — the webhook
+       * will confirm it moments later and release the booking on its own, so
+       * there is nothing for them to redo.
+       */
+      return handleResponse(res, 202, "Waiting for your bank to confirm the payment", {
+        parcel: await CityParcel.findById(parcel._id),
+        paymentStatus: result.status,
+      });
+    }
 
     await recordEvent({
       cityParcelId: parcel._id,
@@ -382,7 +500,7 @@ export const verifyPayment = async (req, res) => {
       meta: { razorpayPaymentId },
     });
 
-    const { parcel: searching } = await startBroadcast(parcel._id);
+    const searching = result.booking || (await CityParcel.findById(parcel._id));
     return handleResponse(res, 200, "Payment confirmed", { parcel: searching });
   } catch (error) {
     return fail(res, error);
@@ -391,7 +509,13 @@ export const verifyPayment = async (req, res) => {
 
 export const getHistory = async (req, res) => {
   try {
-    const parcels = await CityParcel.find({ customerId: req.user.id })
+    /**
+     * An unpaid booking is not a booking. A customer who opened the pay
+     * sheet and closed it was still shown a live "Booked" waybill they had
+     * never paid for and could do nothing with; those rows exist only to
+     * carry a Razorpay order id, so they are filtered out here.
+     */
+    const parcels = await CityParcel.find(visibleCityParcels({ customerId: req.user.id }))
       .sort({ createdAt: -1 })
       .limit(50)
       .populate("deliveryPartnerId", "name phone vehicleType vehicleNumber")
@@ -656,7 +780,7 @@ export const riderAccept = async (req, res) => {
     const result = await acceptAtomic({
       deliveryId: req.user.id,
       cityParcelId: req.params.cityParcelId,
-      idempotencyKey: req.headers["idempotency-key"] || null,
+      idempotencyKey: req.headers?.["idempotency-key"] || null,
     });
 
     // The customer's pickup code is issued the moment a rider is on the way.
@@ -798,12 +922,29 @@ export const riderVerifyPickup = async (req, res) => {
     // see it. Upserted on a deterministic reference, so re-running this
     // cannot count the same pickup twice.
     if (isCod) {
-      await recordCodCollection({
-        riderId: req.user.id,
-        kind: "city_parcel",
-        refId: cityParcelId,
-        amount: updated.codCollection?.amount || updated.fare,
-      });
+      const collected = updated.codCollection?.amount || updated.fare;
+      await Promise.all([
+        recordCodCollection({
+          riderId: req.user.id,
+          kind: "city_parcel",
+          refId: cityParcelId,
+          amount: collected,
+        }),
+        /**
+         * The customer's own history, too. Cash is still a payment: without
+         * this, a COD booking showed nothing at all on the customer's money
+         * trail, so "what have I paid you" could only be answered for people
+         * who happened to pay online.
+         */
+        recordPorterCodCollected({
+          customerId: updated.customerId,
+          bookingKind: PORTER_BOOKING_KIND.CITY_PARCEL,
+          bookingId: updated._id,
+          referenceId: updated.referenceId,
+          amount: collected,
+          gstAmount: updated.fareBreakdown?.gstAmount || 0,
+        }),
+      ]);
     }
 
     // The receiver's code goes out now, so it is waiting on their phone
@@ -1142,7 +1283,20 @@ function buildAdminParcelFilter(query = {}) {
     ];
   }
 
-  return filter;
+  /**
+   * A booking whose payment sheet is still open is scaffolding, not work:
+   * no rider was dispatched and no money moved. These used to sit in the
+   * console as live REQUESTED jobs an admin could try to assign a rider to,
+   * and counted into every headline number on the dashboard.
+   *
+   * `?awaitingPayment=true` asks for exactly those instead, for the rare
+   * support call about a payment that did not go through.
+   */
+  if (String(query.awaitingPayment) === "true") {
+    return { ...filter, ...CITY_PARCEL_AWAITING_PAYMENT };
+  }
+
+  return visibleCityParcels(filter);
 }
 
 export const adminList = async (req, res) => {

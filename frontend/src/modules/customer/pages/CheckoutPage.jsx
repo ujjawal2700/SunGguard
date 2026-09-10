@@ -38,6 +38,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@shared/components/ui/Toast";
 import { useSettings } from "@core/context/SettingsContext";
 import SlideToPay from "../components/shared/SlideToPay";
+import { openOrderCheckout } from "../utils/orderRazorpay";
 import { getCachedGeocode, setCachedGeocode } from "@/core/utils/geocodeCache";
 import { getJSON, setJSON, STORAGE_KEYS } from "@core/utils/storage";
 import { createSocketTokenReader } from "@core/utils/authStorage";
@@ -767,21 +768,42 @@ const CheckoutPage = () => {
               orderRef: paymentRef,
               orderId: mainOrderId,
             });
-            if (paymentRes.data.success && paymentRes.data.result?.redirectUrl) {
-              clearCart();
-              window.location.href = paymentRes.data.result.redirectUrl;
-              return;
-            } else {
+            const checkout = paymentRes.data?.result?.checkout;
+            if (!paymentRes.data?.success || !checkout?.orderId) {
               throw new Error(
-                paymentRes.data.message || "Failed to initiate payment gateway"
+                paymentRes.data?.message || "Failed to initiate payment gateway"
               );
             }
+
+            // Checkout opens over this page rather than redirecting away.
+            // The receipt it returns is verified server-side; the gateway's
+            // webhook confirms the same payment independently, so closing
+            // the tab mid-payment no longer strands the order.
+            const receipt = await openOrderCheckout({
+              checkout,
+              order: { orderId: mainOrderId },
+              customer: {
+                name: user?.name,
+                phone: user?.phone,
+                email: user?.email,
+              },
+              appName: settings?.appName || "Order",
+            });
+
+            await customerApi.verifyCheckoutPayment(receipt);
+            clearCart();
+            navigate(`/orders/${mainOrderId}`);
+            return;
           } catch (payError) {
             setIsPlacingOrder(false);
+            // The order exists either way — the customer can pay again from
+            // its detail page, so this is never a dead end.
             showToast(
-              payError.message ||
-                "Order created but payment gateway failed. Please pay from order details.",
-              "error"
+              payError.message === "Payment cancelled"
+                ? "Payment cancelled. You can pay from your order any time."
+                : payError.message ||
+                    "Order created but payment failed. Please pay from order details.",
+              payError.message === "Payment cancelled" ? "info" : "error"
             );
             navigate(`/orders/${mainOrderId}`);
             return;

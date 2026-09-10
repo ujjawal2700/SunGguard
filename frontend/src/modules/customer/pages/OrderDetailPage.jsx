@@ -8,6 +8,7 @@ import DeliveryOtpDisplay from "../components/DeliveryOtpDisplay";
 import OrderProgressTracker from "../components/order/OrderProgressTracker";
 import ReturnProgressTracker from "../components/order/ReturnProgressTracker";
 import { applyCloudinaryTransform } from "@/core/utils/imageUtils";
+import { openOrderCheckout } from "../utils/orderRazorpay";
 import {
   ChevronLeft,
   Package,
@@ -733,12 +734,34 @@ const OrderDetailPage = () => {
       const response = await customerApi.createPaymentOrder({
         orderRef: paymentRef,
       });
-      if (response.data.success && response.data.result?.redirectUrl) {
-        window.location.href = response.data.result.redirectUrl;
-      } else {
-        toast.error(response.data.message || "Failed to initiate payment");
+      const checkout = response.data?.result?.checkout;
+      if (!response.data?.success || !checkout?.orderId) {
+        toast.error(response.data?.message || "Failed to initiate payment");
+        return;
       }
+
+      // Opens over this page instead of redirecting away, so an abandoned
+      // tab no longer leaves a paid order looking unpaid.
+      const receipt = await openOrderCheckout({
+        checkout,
+        order,
+        customer: {
+          name: order?.customer?.name,
+          phone: order?.customer?.phone,
+          email: order?.customer?.email,
+        },
+      });
+
+      await customerApi.verifyCheckoutPayment(receipt);
+      toast.success("Payment received");
+      // Re-read so the page reflects the payment straight away.
+      const refreshed = await customerApi.getOrderDetails(orderId);
+      setOrder(refreshed.data.result);
     } catch (err) {
+      if (err?.message === "Payment cancelled") {
+        toast.info?.("Payment cancelled") ?? toast.error("Payment cancelled");
+        return;
+      }
       console.error("[OrderDetailPage] Retry payment error:", err);
       toast.error(
         err?.response?.data?.message ||

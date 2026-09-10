@@ -69,6 +69,23 @@ jest.unstable_mockModule("../app/modules/notifications/notification.emitter.js",
   },
 }));
 
+/**
+ * Every status change now appends a row to the parcel's timeline. That write
+ * goes to a real mongoose model, which — with no connection open under a unit
+ * test — buffers instead of failing, so an accept or a status update hung
+ * until the test timed out. The trail itself is covered elsewhere; here it
+ * only has to not block the transition being tested.
+ */
+jest.unstable_mockModule("../app/services/parcelEventService.js", () => ({
+  recordParcelEvent: jest.fn(async () => null),
+  PARCEL_EVENT_ACTOR: {
+    CUSTOMER: "customer",
+    DELIVERY: "delivery",
+    ADMIN: "admin",
+    SYSTEM: "system",
+  },
+}));
+
 jest.unstable_mockModule("../app/config/redis.js", () => ({
   getRedisClient: jest.fn().mockReturnValue(null),
 }));

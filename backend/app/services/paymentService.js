@@ -490,7 +490,7 @@ export async function createPaymentOrderForOrderRef({
     if (existingForKey) {
       return {
         payment: existingForKey,
-        redirectUrl: existingForKey.rawGatewayResponse?.redirectUrl,
+        checkout: existingForKey.rawGatewayResponse?.checkout || null,
         duplicate: true,
       };
     }
@@ -503,10 +503,12 @@ export async function createPaymentOrderForOrderRef({
     },
   }).sort({ createdAt: -1 });
 
-  if (existingOpenPayment && existingOpenPayment.rawGatewayResponse?.redirectUrl) {
+  // Reuse a live gateway order rather than opening a second one: two open
+  // orders against the same cart is how a customer ends up charged twice.
+  if (existingOpenPayment?.rawGatewayResponse?.checkout?.orderId) {
     return {
       payment: existingOpenPayment,
-      redirectUrl: existingOpenPayment.rawGatewayResponse.redirectUrl,
+      checkout: existingOpenPayment.rawGatewayResponse.checkout,
       duplicate: true,
     };
   }
@@ -520,12 +522,15 @@ export async function createPaymentOrderForOrderRef({
   );
 
   const provider = getActivePaymentProvider();
-  const redirectUrl = `${process.env.FRONTEND_URL}/payment-status?merchantOrderId=${merchantOrderId}`;
 
   const initResult = await provider.initiatePayment({
     merchantOrderId,
     amountPaise,
-    redirectUrl,
+    currency,
+    notes: {
+      publicOrderId: String(target.publicOrderRef || ""),
+      checkoutGroupId: String(target.checkoutGroupId || ""),
+    },
   });
 
   const paymentData = {
@@ -535,7 +540,11 @@ export async function createPaymentOrderForOrderRef({
     publicOrderId: target.publicOrderRef,
     customer: primaryOrder.customer,
     gatewayName: provider.providerName,
-    gatewayOrderId: merchantOrderId,
+    // The gateway order id is what its webhooks and status lookups are
+    // keyed on; our own merchantOrderId is kept alongside so a row can be
+    // found from either side.
+    gatewayOrderId: initResult.gatewayOrderId || merchantOrderId,
+    merchantOrderId,
     amount: amountPaise,
     currency,
     status: PAYMENT_STATUS.PENDING,
@@ -543,8 +552,8 @@ export async function createPaymentOrderForOrderRef({
     idempotencyKey: idempotencyKey || undefined,
     correlationId,
     rawGatewayResponse: {
-      redirectUrl: initResult.redirectUrl,
-      merchantOrderId: merchantOrderId,
+      checkout: initResult.checkout,
+      merchantOrderId,
       amount: amountPaise,
     },
     statusHistory: [
@@ -565,19 +574,28 @@ export async function createPaymentOrderForOrderRef({
     paymentId: payment._id.toString(),
     gatewayOrderId: payment.gatewayOrderId,
     amount: payment.amount,
-    redirectUrl: initResult.redirectUrl,
     provider: provider.providerName,
   });
 
-  return { payment, redirectUrl: initResult.redirectUrl, duplicate: false };
+  return { payment, checkout: initResult.checkout, duplicate: false };
 }
 
-export async function verifyPhonePePaymentStatus({
+/**
+ * Reads the authoritative status back from the gateway.
+ *
+ * The client is never trusted to say a payment succeeded — it only tells us
+ * which order to go and look at. Accepts either the gateway's order id or
+ * our own merchant order id, because the client sees the first and the
+ * status page URL carries the second.
+ */
+export async function verifyGatewayPaymentStatus({
   merchantOrderId,
   userId,
   correlationId = null,
 }) {
-  const payment = await Payment.findOne({ gatewayOrderId: merchantOrderId });
+  const payment = await Payment.findOne({
+    $or: [{ gatewayOrderId: merchantOrderId }, { merchantOrderId }],
+  });
   if (!payment) {
     const err = new Error("Payment attempt not found");
     err.statusCode = 404;
@@ -592,7 +610,10 @@ export async function verifyPhonePePaymentStatus({
   }
 
   const provider = getActivePaymentProvider();
-  const statusResp = await provider.getPaymentStatus({ merchantOrderId });
+  const statusResp = await provider.getPaymentStatus({
+    gatewayOrderId: payment.gatewayOrderId,
+    merchantOrderId: payment.merchantOrderId,
+  });
   const nextStatus = provider.mapStatusToInternal(statusResp.state);
 
   await transitionPaymentState(payment, {
@@ -625,14 +646,22 @@ export async function verifyPhonePePaymentStatus({
   };
 }
 
-export async function processPhonePeWebhook({
+/**
+ * Applies a gateway webhook.
+ *
+ * This is the leg that makes a payment reliable: the customer can close the
+ * browser the instant they pay and the order still gets confirmed, because
+ * the gateway tells the server directly. Signature is checked over the raw
+ * bytes before anything is read out of the body.
+ */
+export async function processGatewayWebhook({
   rawBody,
-  authorization,
+  signature,
   correlationId = null,
 }) {
   const provider = getActivePaymentProvider();
 
-  const isValid = await provider.validateWebhook({ rawBody, authorization });
+  const isValid = await provider.validateWebhook({ rawBody, signature });
   if (!isValid) {
     const err = new Error("Invalid webhook signature");
     err.statusCode = 401;
@@ -646,7 +675,7 @@ export async function processPhonePeWebhook({
     .createHash("sha256")
     .update(JSON.stringify(decoded.raw))
     .digest("hex");
-  const eventType = decoded.state || "unknown";
+  const eventType = decoded.eventType || decoded.state || "unknown";
 
   try {
     await PaymentWebhookEvent.create({
@@ -662,9 +691,51 @@ export async function processPhonePeWebhook({
     throw error;
   }
 
-  const merchantOrderId = decoded.merchantOrderId;
-  const payment = await Payment.findOne({ gatewayOrderId: merchantOrderId });
+  // Either identifier finds the row: the gateway keys its events on its own
+  // order id, while `notes`/`receipt` carry ours back.
+  const lookup = [];
+  if (decoded.gatewayOrderId) lookup.push({ gatewayOrderId: decoded.gatewayOrderId });
+  if (decoded.merchantOrderId) {
+    lookup.push({ merchantOrderId: decoded.merchantOrderId });
+    lookup.push({ gatewayOrderId: decoded.merchantOrderId });
+  }
+  const payment = lookup.length ? await Payment.findOne({ $or: lookup }) : null;
+
+  /**
+   * Not a marketplace order payment — try the porter ledger before giving up.
+   *
+   * The gateway has one webhook endpoint and one signing secret per account,
+   * so every porter booking payment and every rider cash deposit arrives
+   * here too. Before this branch existed they were all silently ignored,
+   * which is exactly why porter had no webhook leg at all: a customer whose
+   * app died mid-payment had, as far as the database was concerned, not paid.
+   *
+   * Dedupe has already happened above, against the same unique event id, so
+   * a redelivery is collapsed for both ledgers by one insert.
+   */
   if (!payment) {
+    const { applyPorterWebhook } = await import("./porter/porterPaymentService.js");
+    const { activatePorterBookingAfterPayment } = await import(
+      "./porter/porterDispatchService.js"
+    );
+
+    const porterResult = await applyPorterWebhook(decoded, {
+      onPaid: activatePorterBookingAfterPayment,
+    });
+
+    if (porterResult.matched) {
+      await PaymentWebhookEvent.updateOne(
+        { eventId },
+        { $set: { porterPayment: porterResult.payment._id } },
+      );
+      return {
+        accepted: true,
+        duplicate: Boolean(porterResult.duplicate),
+        ledger: "porter",
+        paymentStatus: porterResult.status,
+      };
+    }
+
     return { accepted: true, ignored: true, reason: "Payment attempt not found" };
   }
 
@@ -704,11 +775,67 @@ export async function processPhonePeWebhook({
   };
 }
 
-// Placeholder for Razorpay compatibility if needed by other services
-export async function verifyClientPaymentCallback(data) {
-    return verifyPhonePePaymentStatus({
-        merchantOrderId: data.gatewayOrderId || data.merchantOrderId,
-        userId: data.userId,
-        correlationId: data.correlationId
+/**
+ * Verifies the signed receipt checkout hands back to the browser.
+ *
+ * The signature proves the receipt came from the gateway and that the
+ * payment belongs to this order — but it does not prove the money was
+ * captured, so the status is still read back from the gateway afterwards.
+ * A forged or mismatched receipt is refused without touching the payment,
+ * so a bad request can never mark an order failed.
+ */
+export async function verifyCheckoutReceipt({
+  gatewayOrderId,
+  gatewayPaymentId,
+  signature,
+  userId,
+  correlationId = null,
+}) {
+  const payment = await Payment.findOne({
+    $or: [{ gatewayOrderId }, { merchantOrderId: gatewayOrderId }],
+  });
+  if (!payment) {
+    const err = new Error("Payment attempt not found");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (userId && String(payment.customer) !== String(userId)) {
+    const err = new Error("Not authorized to verify this payment");
+    err.statusCode = 403;
+    throw err;
+  }
+
+  const provider = getActivePaymentProvider();
+  const ok = provider.verifyCheckoutSignature({
+    gatewayOrderId: payment.gatewayOrderId,
+    gatewayPaymentId,
+    signature,
+  });
+
+  if (!ok) {
+    logger.warn("payment_receipt_signature_invalid", {
+      correlationId,
+      publicOrderId: payment.publicOrderId,
+      gatewayOrderId: payment.gatewayOrderId,
     });
+    const err = new Error("Payment could not be verified");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Signature is good; the gateway still decides whether it was captured.
+  return verifyGatewayPaymentStatus({
+    merchantOrderId: payment.gatewayOrderId,
+    userId,
+    correlationId,
+  });
+}
+
+/** @deprecated Use {@link verifyCheckoutReceipt}. */
+export async function verifyClientPaymentCallback(data) {
+  return verifyGatewayPaymentStatus({
+    merchantOrderId: data.gatewayOrderId || data.merchantOrderId,
+    userId: data.userId,
+    correlationId: data.correlationId,
+  });
 }

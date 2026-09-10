@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import handleResponse from "../utils/helper.js";
 import Seller from "../models/seller.js";
 import Customer from "../models/customer.js";
+import Delivery from "../models/delivery.js";
 
 function extractJwtFromHeaders(req) {
   const authHeader = String(req.headers.authorization || "").trim();
@@ -149,6 +150,39 @@ export const requireActiveCustomer = async (req, res, next) => {
         res,
         403,
         "Your account has been deactivated. Please contact support for help.",
+        { code: "ACCOUNT_DEACTIVATED" },
+      );
+    }
+
+    next();
+  } catch (error) {
+    return handleResponse(res, 500, "Unable to validate account status");
+  }
+};
+
+/* ===============================
+   Ensure a delivery partner's JWT can't outlive an admin deactivating them.
+   Same idea and same contract as requireActiveCustomer above — the token
+   stays valid until it expires, this is what actually blocks every
+   authenticated action once an admin flips isActive off.
+================================ */
+export const requireActiveDelivery = async (req, res, next) => {
+  try {
+    if (req.user?.role !== "delivery") {
+      return next();
+    }
+
+    const delivery = await Delivery.findById(req.user.id).select("isActive").lean();
+
+    if (!delivery) {
+      return handleResponse(res, 401, "Account not found");
+    }
+
+    if (delivery.isActive === false) {
+      return handleResponse(
+        res,
+        403,
+        "Your account has been deactivated by admin. Please contact support for help.",
         { code: "ACCOUNT_DEACTIVATED" },
       );
     }

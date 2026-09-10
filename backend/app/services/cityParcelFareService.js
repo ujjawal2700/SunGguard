@@ -3,6 +3,7 @@ import { distanceMeters } from "../utils/geoUtils.js";
 import { getCachedRoute } from "./mapsRouteService.js";
 import { roundCurrency, multiplyMoney } from "../utils/money.js";
 import { resolveTripZone } from "./deliveryZoneService.js";
+import { applyGst, gstBreakdownFields } from "../utils/gst.js";
 
 /**
  * Turns a zone refusal into something the customer can act on.
@@ -213,7 +214,16 @@ export function computeCityParcelFare({
 
   const minFare = roundCurrency(Math.max(0, Number(config.minFare) || 0));
   const minFareApplied = surged < minFare;
-  const fare = minFareApplied ? minFare : surged;
+  const preTaxFare = minFareApplied ? minFare : surged;
+
+  /**
+   * Tax goes on top of the minimum-fare floor, not inside it.
+   *
+   * A minimum fare is a commercial floor on the SERVICE — the least the
+   * platform will run a trip for. Netting tax out of it would quietly cut the
+   * operation's revenue on exactly the trips that were already marginal.
+   */
+  const gst = applyGst(preTaxFare, config.gst);
 
   return {
     baseFare,
@@ -225,7 +235,11 @@ export function computeCityParcelFare({
     returnCharge: 0,
     surgeMultiplier: surge,
     minFareApplied,
-    fare: roundCurrency(fare),
+    ...gstBreakdownFields(gst),
+    // The grand total. Rider share is computed from `baseFare` and
+    // `distanceFare` above, which are pre-tax, so adding GST here cannot
+    // leak into anybody's payout.
+    fare: roundCurrency(gst.totalAmount),
   };
 }
 
@@ -257,7 +271,17 @@ export function computeRiderEarning(fareBreakdown, config) {
  */
 export function computeReturnLegAmounts(fareBreakdown, config) {
   const distanceFare = Number(fareBreakdown?.distanceFare) || 0;
-  const originalFare = Number(fareBreakdown?.fare) || 0;
+  /**
+   * The percentage is applied to the PRE-TAX fare.
+   *
+   * `fare` is now tax-inclusive, so charging a percentage of it would bill
+   * the customer a slice of their own GST as a return fee — and then, if GST
+   * is ever applied to the return charge itself, tax that slice again.
+   * `taxableAmount` is absent on bookings made before GST existed, where the
+   * fare was pre-tax by definition, so falling back to it is exact.
+   */
+  const originalFare =
+    Number(fareBreakdown?.taxableAmount) || Number(fareBreakdown?.fare) || 0;
 
   return {
     riderPayout: roundCurrency(

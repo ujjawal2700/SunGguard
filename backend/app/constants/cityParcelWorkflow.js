@@ -217,3 +217,14 @@ export const CITY_PARCEL_CUSTOMER_RESPONSE_WINDOW_MS = () =>
 /** How long a delivery OTP stays valid. */
 export const CITY_PARCEL_OTP_TTL_MS = () =>
   parseInt(process.env.CITY_PARCEL_OTP_TTL_MS || "3600000", 10);
+
+/**
+ * How long an unpaid online booking stays eligible to be resumed rather than
+ * duplicated. A customer who cancels the Razorpay sheet and taps Pay again
+ * within this window gets the SAME booking row re-priced and a fresh gateway
+ * order opened on it; past this window a fresh booking is created instead,
+ * since enough time has passed that resuming it invisibly could surprise
+ * the customer with a stale route or price.
+ */
+export const CITY_PARCEL_RESUMABLE_BOOKING_WINDOW_MS = () =>
+  parseInt(process.env.CITY_PARCEL_RESUMABLE_BOOKING_WINDOW_MS || "3600000", 10);

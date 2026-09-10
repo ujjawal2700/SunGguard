@@ -143,6 +143,15 @@ export const AuthProvider = ({ children }) => {
                     const endpoint = `/${profileRole}/profile`;
                     const response = await getWithDedupe(endpoint, {}, { ttl: 5000 });
                     setUser(response.data.result);
+                    // A deactivated rider's own profile still loads (see
+                    // deliveryAuth.js — GET /profile is deliberately left off
+                    // requireActiveDelivery) so this is where it's caught and
+                    // the session is ended, instead of every other endpoint
+                    // failing with an unexplained 403 one at a time.
+                    if (profileRole === 'delivery' && response.data.result?.isActive === false) {
+                        logout();
+                        return;
+                    }
                 } catch (error) {
                     console.error('Failed to fetch profile:', error);
                     // Preserve stored tokens and the last known profile on transient failures
@@ -232,6 +241,10 @@ export const AuthProvider = ({ children }) => {
                 const endpoint = `/${profileRole}/profile`;
                 const response = await axiosInstance.get(endpoint);
                 setUser(response.data.result);
+                if (profileRole === 'delivery' && response.data.result?.isActive === false) {
+                    logout();
+                    return response.data.result;
+                }
                 return response.data.result;
             } catch (error) {
                 console.error('Failed to refresh profile:', error);

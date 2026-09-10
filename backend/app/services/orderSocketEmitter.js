@@ -405,6 +405,23 @@ export async function emitParcelBroadcast(lat, lng, radiusKm, payload) {
   // De-dupe in case of any overlap.
   ids = [...new Set(ids.map((id) => String(id)))];
 
+  /**
+   * Riders at their COD cash limit are dropped before the fan-out, so the
+   * push agrees with the pull feed and the accept gate. Reaching someone with
+   * a job they will be refused on tap teaches them to ignore the alert.
+   *
+   * Imported lazily: this module is the socket layer and is loaded by almost
+   * everything, while the cash service reads the booking models — a static
+   * import would build a cycle through them.
+   */
+  const { filterRidersWithCashHeadroom } = await import(
+    "./porter/riderCashLimitService.js"
+  );
+  ids = await filterRidersWithCashHeadroom(ids);
+  if (!ids.length) {
+    return { ids: [] };
+  }
+
   const body = {
     ...payload,
     at: new Date().toISOString(),

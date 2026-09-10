@@ -1,40 +1,60 @@
 /**
  * PaymentProviderPort
  *
- * Abstract contract that every payment provider adapter (PhonePe, Razorpay,
- * Stripe, etc.) must implement. Domain code in paymentService.js only ever
- * sees a provider through this interface — it never imports a vendor SDK
- * directly.
+ * Abstract contract every payment provider adapter must implement. Domain
+ * code in paymentService.js only ever sees a provider through this interface
+ * — it never imports a vendor SDK directly.
  *
  * Implementations live under `../providers/<name>.adapter.js` and are wired
- * in `../providerRegistry.js`. The active provider is selected at runtime
- * via `process.env.PAYMENT_PROVIDER` (default: "phonepe").
+ * in `../providerRegistry.js`. The active provider is selected at runtime via
+ * `process.env.PAYMENT_PROVIDER` (default: "razorpay").
  *
  * Methods must satisfy these contracts:
  *
- *  initiatePayment({ merchantOrderId, amountPaise, redirectUrl })
- *    → { redirectUrl: string, gatewayResponse?: any }
+ *  initiatePayment({ merchantOrderId, amountPaise, currency, notes })
+ *    → { checkout: { orderId, keyId, amount, currency },
+ *        gatewayOrderId: string, gatewayResponse?: any }
  *
- *  getPaymentStatus({ merchantOrderId })
- *    → { state: string, transactionId?: string, responseCode?: string,
- *        gatewayResponse?: any }
+ *    `checkout` is everything the client needs to launch the gateway. It is
+ *    deliberately not a redirect URL: an order-and-checkout gateway opens
+ *    over our own page and hands back a signed receipt, which is both a
+ *    better experience and a stronger verification story than a redirect
+ *    the customer can abandon.
  *
- *  validateWebhook({ rawBody, authorization })
- *    → boolean    (true ⇔ signature OK, false ⇔ reject the webhook)
+ *  getPaymentStatus({ gatewayOrderId, merchantOrderId })
+ *    → { state, transactionId?, responseCode?, gatewayResponse? }
+ *
+ *  verifyCheckoutSignature({ gatewayOrderId, gatewayPaymentId, signature })
+ *    → boolean — the receipt the client returned really came from the gateway
+ *
+ *  validateWebhook({ rawBody, signature })
+ *    → boolean — computed over the exact bytes received, never a re-serialised
+ *      body, and false (not true) when no secret is configured
  *
  *  decodeWebhookPayload({ rawBody })
- *    → { merchantOrderId, state, transactionId?, responseCode?, raw }
+ *    → { eventId, eventType, merchantOrderId, gatewayOrderId, state,
+ *        transactionId?, responseCode?, amountPaise?, raw }
+ *
+ *    `eventId` must be stable across redeliveries of the same event; the
+ *    webhook de-duplication index depends on it.
  *
  *  mapStatusToInternal(gatewayState)
- *    → one of the PAYMENT_STATUS constants (CAPTURED | FAILED | PENDING)
+ *    → one of the PAYMENT_STATUS constants
+ *
+ *  isConfigured()
+ *    → boolean — credentials present, so callers can fall back to cash
  *
  *  providerName
- *    → string (e.g. "phonepe"). Used for logging and DB labelling.
+ *    → string, used for logging and DB labelling
  */
 
 export class PaymentProviderPort {
   get providerName() {
     throw new Error("providerName must be implemented");
+  }
+
+  isConfigured() {
+    return true;
   }
 
   async initiatePayment(_args) {
@@ -43,6 +63,10 @@ export class PaymentProviderPort {
 
   async getPaymentStatus(_args) {
     throw new Error("getPaymentStatus must be implemented");
+  }
+
+  verifyCheckoutSignature(_args) {
+    throw new Error("verifyCheckoutSignature must be implemented");
   }
 
   async validateWebhook(_args) {

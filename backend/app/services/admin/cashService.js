@@ -4,6 +4,9 @@ import Notification from "../../models/notification.js";
 
 export async function getDeliveryCashBalancesData({ page, limit, skip }) {
   const ridersPipeline = [
+    // Only approved riders actually carry COD cash for the desk to collect —
+    // an application still pending review has never been handed an order.
+    { $match: { isVerified: true } },
     {
       $lookup: {
         from: "transactions",
@@ -24,7 +27,7 @@ export async function getDeliveryCashBalancesData({ page, limit, skip }) {
       $project: {
         name: 1,
         phone: 1,
-        avatar: 1,
+        profileImage: 1,
         limit: { $ifNull: ["$limit", 5000] },
         documents: 1,
         currentCash: {
@@ -109,8 +112,8 @@ export async function getDeliveryCashBalancesData({ page, limit, skip }) {
         phone: 1,
         avatar: {
           $cond: [
-            { $ifNull: ["$documents.profileImage", false] },
-            "$documents.profileImage",
+            { $ifNull: ["$profileImage", false] },
+            "$profileImage",
             {
               $concat: [
                 "https://api.dicebear.com/7.x/avataaars/svg?seed=",

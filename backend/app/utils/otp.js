@@ -27,9 +27,10 @@ function randomOtp(length) {
 export const generateOTP = () => (useRealSMS() ? randomOtp(OTP_LENGTH) : MOCK_OTP);
 
 /**
- * 6-digit parcel pickup OTP shown on the customer app.
- * Always random — verified in-app with the rider (not SMS-dependent).
+ * 4-digit parcel pickup OTP shown on the customer app.
+ * When USE_REAL_SMS is off, returns the fixed mock value so the rider can
+ * always advance the booking with 1234 (Porter pre-launch flow).
  */
-export const generateParcelOtp = () => randomOtp(6);
+export const generateParcelOtp = () => (useRealSMS() ? randomOtp(4) : MOCK_OTP);
 
 export { MOCK_OTP };

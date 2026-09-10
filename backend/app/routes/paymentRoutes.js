@@ -1,8 +1,9 @@
 import express from "express";
 import {
   createPaymentOrder,
+  verifyCheckoutPayment,
   verifyPaymentStatus,
-  handlePhonePeWebhook,
+  handleGatewayWebhook,
 } from "../controller/paymentController.js";
 import { verifyToken } from "../middleware/authMiddleware.js";
 import { paymentRouteRateLimiter } from "../middleware/securityMiddlewares.js";
@@ -10,8 +11,8 @@ import { paymentRouteRateLimiter } from "../middleware/securityMiddlewares.js";
 const paymentRoute = express.Router();
 
 /**
- * Initiate a PhonePe payment order for a specific CheckoutGroupId or OrderId.
- * Auth: Required (Customer paying for their own order)
+ * Open a gateway order for a CheckoutGroupId or OrderId.
+ * Auth: Required (customer paying for their own order)
  */
 paymentRoute.post(
   "/create-order",
@@ -21,7 +22,18 @@ paymentRoute.post(
 );
 
 /**
- * Verify payment status from client side (after redirect back from PhonePe).
+ * Verify the signed receipt checkout returned to the browser.
+ * Auth: Required — the receipt is checked against the caller's own payment.
+ */
+paymentRoute.post(
+  "/verify",
+  verifyToken,
+  paymentRouteRateLimiter,
+  verifyCheckoutPayment,
+);
+
+/**
+ * Poll the gateway for a payment's real status.
  * Auth: Required
  */
 paymentRoute.get(
@@ -32,13 +44,20 @@ paymentRoute.get(
 );
 
 /**
- * PhonePe Server-to-Server Webhook.
- * Auth: None (Internal verification via x-verify / authorization header)
+ * Razorpay server-to-server webhook.
+ *
+ * No session auth — a gateway cannot carry one. Trust comes from the HMAC
+ * over the raw body, so this path parses the body as a Buffer: re-serialising
+ * parsed JSON would change byte order or spacing and the signature would
+ * never match.
+ *
+ * Deliberately not rate-limited. Dropping a webhook loses a payment
+ * confirmation, and the gateway's own retry policy is the backstop.
  */
 paymentRoute.post(
-  "/webhook/phonepe",
-  express.raw({ type: "application/json" }), // SDK needs raw body for verification
-  handlePhonePeWebhook,
+  "/webhook/razorpay",
+  express.raw({ type: "application/json" }),
+  handleGatewayWebhook,
 );
 
 export default paymentRoute;

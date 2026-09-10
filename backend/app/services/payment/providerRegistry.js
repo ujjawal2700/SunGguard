@@ -1,35 +1,32 @@
 /**
  * Payment provider registry.
  *
- * Selects the active payment provider adapter at runtime based on the
- * `PAYMENT_PROVIDER` environment variable. Defaults to PhonePe to match
- * the prior hardcoded behaviour exactly (rollback = no-op).
+ * Selects the active payment provider adapter at runtime from the
+ * `PAYMENT_PROVIDER` environment variable. Razorpay is the only provider and
+ * the default — the platform already takes Razorpay for parcel bookings, and
+ * running two gateways meant two sets of credentials, two webhook shapes and
+ * two ways for a payment to go wrong.
  *
- * Adding a new provider:
+ * Adding a provider:
  *   1. Implement a class extending `PaymentProviderPort` in
  *      `./providers/<name>.adapter.js`.
  *   2. Register it in the switch below.
- *   3. Deploy with `PAYMENT_PROVIDER=<name>` to opt-in (default stays
- *      PhonePe so existing traffic continues unchanged).
- *
- * Rollback is a single env-var flip — no code change.
+ *   3. Deploy with `PAYMENT_PROVIDER=<name>`.
  */
 
-import { PhonePeAdapter } from "./providers/phonepe.adapter.js";
+import { RazorpayAdapter } from "./providers/razorpay.adapter.js";
 
 let _provider = null;
 let _providerName = null;
 
 function resolveProviderName() {
-  return String(process.env.PAYMENT_PROVIDER || "phonepe").toLowerCase().trim();
+  return String(process.env.PAYMENT_PROVIDER || "razorpay").toLowerCase().trim();
 }
 
 function buildProvider(name) {
   switch (name) {
-    case "phonepe":
-      return new PhonePeAdapter();
-    // future: case "razorpay": return new RazorpayAdapter();
-    // future: case "stripe":   return new StripeAdapter();
+    case "razorpay":
+      return new RazorpayAdapter();
     default:
       throw new Error(`Unknown payment provider: ${name}`);
   }

@@ -22,7 +22,7 @@ import { unwrap } from "@core/api/unwrap";
  * An OTP alone only shows that somebody read a number down a phone line.
  */
 
-const OTP_LENGTH = 6;
+const OTP_LENGTH = 4;
 
 const DeliveryVerifySheet = ({ parcel, riderLocation, onDone, onFailedAttempt }) => {
   const [otp, setOtp] = useState("");
@@ -274,7 +274,7 @@ const DeliveryVerifySheet = ({ parcel, riderLocation, onDone, onFailedAttempt })
           maxLength={OTP_LENGTH}
           value={otp}
           onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, OTP_LENGTH))}
-          placeholder="——————"
+          placeholder="————"
           className="w-full rounded-lg border border-slate-200 px-3 py-3 text-center text-[22px] font-mono tracking-[0.4em] outline-none focus:border-slate-400"
         />
 

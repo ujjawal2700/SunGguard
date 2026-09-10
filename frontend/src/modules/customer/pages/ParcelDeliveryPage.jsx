@@ -45,6 +45,8 @@ import { useAuth } from "@core/context/AuthContext";
 import { useSettings } from "@core/context/SettingsContext";
 import { openParcelRazorpayCheckout } from "../utils/parcelRazorpay";
 import ParcelReviewsSection from "../components/parcel/ParcelReviewsSection";
+import { getJSON, setJSON, remove as removeStored } from "@core/utils/storage";
+import { STORAGE_KEYS } from "@core/utils/storageKeys";
 import {
   MONO,
   Caption,
@@ -548,8 +550,34 @@ const HandoffDiagram = ({ counter, destination, compact = false }) => {
   );
 };
 
+/**
+ * How long a saved draft stays worth restoring. Matches the backend's
+ * resumable-booking window (PARCEL_RESUMABLE_BOOKING_WINDOW_MS) so a
+ * restored form and a resumed unpaid gateway order agree on the same
+ * "recent enough" cutoff.
+ */
+const OUTSTATION_DRAFT_TTL_MS = 60 * 60 * 1000;
+
+/**
+ * Everything the customer typed, restored after an accidental refresh.
+ *
+ * This is the longest booking form in the app — sender details, courier,
+ * destination, package, pickup window — and a refresh used to wipe all of
+ * it and drop the customer back at step 0. Config-derived fields (max
+ * weight, express charge, the courier list, the nearest warehouse) are
+ * deliberately NOT restored from here; those are re-fetched fresh on
+ * mount, since a stale copy could silently disagree with a rate-card
+ * change an admin made in the meantime.
+ */
+function loadOutstationBookingDraft() {
+  return (
+    getJSON(STORAGE_KEYS.PORTER_OUTSTATION_BOOKING_DRAFT, null, { storage: "session" }) || {}
+  );
+}
+
 const ParcelDeliveryPage = () => {
   const { user } = useAuth();
+  const outstationDraft = loadOutstationBookingDraft();
   const { settings } = useSettings();
   const appName = settings?.appName || "App";
   const navigate = useNavigate();
@@ -557,7 +585,7 @@ const ParcelDeliveryPage = () => {
   const [loading, setLoading] = useState(false);
 
   // Form State
-  const [pickupDetails, setPickupDetails] = useState({
+  const [pickupDetails, setPickupDetails] = useState(() => ({
     name: user?.name || "",
     phone: user?.phone || "",
     address: "",
@@ -568,7 +596,8 @@ const ParcelDeliveryPage = () => {
     fullAddress: "",
     lat: null,
     lng: null,
-  });
+    ...outstationDraft.pickupDetails,
+  }));
 
   const composePickupFullAddress = (details) =>
     [
@@ -594,36 +623,87 @@ const ParcelDeliveryPage = () => {
   const [packageDescriptionPlaceholder, setPackageDescriptionPlaceholder] =
     useState("E.g. keys, critical document papers...");
   const [packageCategories, setPackageCategories] = useState([]);
-  const [packageSegment, setPackageSegment] = useState(""); // 'personal' | 'business'
-  const [packageCategory, setPackageCategory] = useState("");
+  const [packageSegment, setPackageSegment] = useState(outstationDraft.packageSegment || ""); // 'personal' | 'business'
+  const [packageCategory, setPackageCategory] = useState(outstationDraft.packageCategory || "");
   /** Display value only — do not clamp while typing so whole numbers work. */
-  const [weightInput, setWeightInput] = useState("0.2");
-  const [weightUnit, setWeightUnit] = useState("kg"); // 'kg' | 'gm'
-  const [description, setDescription] = useState("");
-  const [deliverySpeed, setDeliverySpeed] = useState("normal");
+  const [weightInput, setWeightInput] = useState(outstationDraft.weightInput || "0.2");
+  const [weightUnit, setWeightUnit] = useState(outstationDraft.weightUnit || "kg"); // 'kg' | 'gm'
+  const [description, setDescription] = useState(outstationDraft.description || "");
+  const [deliverySpeed, setDeliverySpeed] = useState(outstationDraft.deliverySpeed || "normal");
   // No default — Cash silently pre-selected meant the "Request pickup" button
   // could be tapped without the customer ever consciously choosing how to
   // pay. Left blank until they pick one on the Pay step.
-  const [paymentMethod, setPaymentMethod] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState(outstationDraft.paymentMethod || "");
   const [courierCompanies, setCourierCompanies] = useState(
     FALLBACK_COURIER_COMPANIES,
   );
-  const [courierCompanyId, setCourierCompanyId] = useState("");
-  const [customCourierName, setCustomCourierName] = useState("");
-  const [customCourierNameSaved, setCustomCourierNameSaved] = useState(false);
-  const [destinationCity, setDestinationCity] = useState("");
+  const [courierCompanyId, setCourierCompanyId] = useState(outstationDraft.courierCompanyId || "");
+  const [customCourierName, setCustomCourierName] = useState(outstationDraft.customCourierName || "");
+  const [customCourierNameSaved, setCustomCourierNameSaved] = useState(
+    Boolean(outstationDraft.customCourierNameSaved),
+  );
+  const [destinationCity, setDestinationCity] = useState(outstationDraft.destinationCity || "");
   const [nearestWarehouse, setNearestWarehouse] = useState(null);
   const [warehouseLoading, setWarehouseLoading] = useState(false);
-  const [bookingDurationMode, setBookingDurationMode] = useState("one_day");
-  const [customDaysInput, setCustomDaysInput] = useState("7");
+  const [bookingDurationMode, setBookingDurationMode] = useState(
+    outstationDraft.bookingDurationMode || "one_day",
+  );
+  const [customDaysInput, setCustomDaysInput] = useState(outstationDraft.customDaysInput || "7");
   const [preferredPickupDate, setPreferredPickupDate] = useState(
-    todayDateInputValue(),
+    outstationDraft.preferredPickupDate || todayDateInputValue(),
   );
 
   // Waybill step state. Steps are navigable, not gated — tapping a node always
   // works; validation still runs on Continue and again on submit.
-  const [step, setStep] = useState(0);
-  const [furthest, setFurthest] = useState(0);
+  const [step, setStep] = useState(outstationDraft.step || 0);
+  const [furthest, setFurthest] = useState(outstationDraft.furthest || 0);
+
+  // Autosave the draft on every change, so a refresh at any step restores
+  // exactly where the customer left off instead of dropping them back to
+  // step 0 with everything cleared.
+  useEffect(() => {
+    setJSON(
+      STORAGE_KEYS.PORTER_OUTSTATION_BOOKING_DRAFT,
+      {
+        pickupDetails,
+        packageSegment,
+        packageCategory,
+        weightInput,
+        weightUnit,
+        description,
+        deliverySpeed,
+        paymentMethod,
+        courierCompanyId,
+        customCourierName,
+        customCourierNameSaved,
+        destinationCity,
+        bookingDurationMode,
+        customDaysInput,
+        preferredPickupDate,
+        step,
+        furthest,
+      },
+      { storage: "session", ttlMs: OUTSTATION_DRAFT_TTL_MS },
+    );
+  }, [
+    pickupDetails,
+    packageSegment,
+    packageCategory,
+    weightInput,
+    weightUnit,
+    description,
+    deliverySpeed,
+    paymentMethod,
+    courierCompanyId,
+    customCourierName,
+    customCourierNameSaved,
+    destinationCity,
+    bookingDurationMode,
+    customDaysInput,
+    preferredPickupDate,
+    step,
+    furthest,
+  ]);
   const [direction, setDirection] = useState(1);
   const topRef = useRef(null);
 
@@ -1233,6 +1313,7 @@ const ParcelDeliveryPage = () => {
         setFareEstimation(null);
         setStep(0);
         setFurthest(0);
+        removeStored(STORAGE_KEYS.PORTER_OUTSTATION_BOOKING_DRAFT, { storage: "session" });
       } else {
         toast.error(response.data.message || "Failed to create request");
       }
@@ -2146,6 +2227,18 @@ const ParcelDeliveryPage = () => {
                                     value={`₹${Number(fareEstimation.expressCharge || 0).toFixed(2)}`}
                                   />
                                 )}
+                                {/* GST on its own line, before the customer commits.
+                                    Hidden on a tax-inclusive rate card, where the total
+                                    already contains it and an extra line would read as a
+                                    surcharge. Taxed on the multi-day total, so it sits
+                                    alongside the day multiplier rather than inside it. */}
+                                {Number(fareEstimation.gstAmount) > 0 &&
+                                  !fareEstimation.gstInclusive && (
+                                    <LeaderRow
+                                      label={`GST (${Number(fareEstimation.gstPercent) || 0}%)`}
+                                      value={`₹${Number(fareEstimation.gstAmount).toFixed(2)}`}
+                                    />
+                                  )}
                                 {Number(fareEstimation.billableDays) > 1 && (
                                   <>
                                     <LeaderRow

@@ -17,6 +17,8 @@ import {
   PrimaryButton, GhostButton,
 } from "../components/sunguard/kit";
 import { unwrap } from "@core/api/unwrap";
+import { getJSON, setJSON, remove as removeStored } from "@core/utils/storage";
+import { STORAGE_KEYS } from "@core/utils/storageKeys";
 import {
   checkPersonName,
   checkPhone,
@@ -184,31 +186,75 @@ function useZonePin(address, setZone) {
   }, [lat, lng, setZone]);
 }
 
+/**
+ * How long a saved draft stays worth restoring. Matches the backend's
+ * resumable-booking window (CITY_PARCEL_RESUMABLE_BOOKING_WINDOW_MS) so a
+ * restored form and a resumed unpaid gateway order agree on the same
+ * "recent enough" cutoff — restoring a form older than that would let the
+ * customer resubmit against a booking the server has stopped treating as
+ * resumable anyway.
+ */
+const DRAFT_TTL_MS = 60 * 60 * 1000;
+
+/**
+ * Everything the customer typed, restored after an accidental refresh.
+ *
+ * Refreshing this page used to wipe the whole form and drop the customer
+ * back at step 0 — after re-picking both addresses and retyping every
+ * field, a customer who had already dismissed a Razorpay sheet would submit
+ * a booking that, on a slow GPS re-detect, no longer matched the original
+ * pin closely enough for the backend's resume-match to reuse the same row,
+ * so a second booking got created. Persisting the draft keeps the exact
+ * values (including the map pin) stable across a refresh, which fixes both
+ * problems at once.
+ */
+function loadCityBookingDraft() {
+  return (
+    getJSON(STORAGE_KEYS.PORTER_CITY_BOOKING_DRAFT, null, { storage: "session" }) || {}
+  );
+}
+
 const CityParcelBooking = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { settings } = useSettings();
   const appName = settings?.appName || "App";
 
-  const [step, setStep] = useState(0);
+  const draft = loadCityBookingDraft();
+
+  const [step, setStep] = useState(() => draft.step || 0);
   const [config, setConfig] = useState(null);
   const { detect, locating, error: detectError } = useCurrentLocation();
   const autoDetectedRef = useRef(false);
-  const [pickup, setPickup] = useState(emptyAddress);
-  const [drop, setDrop] = useState(emptyAddress);
-  const [sender, setSender] = useState({ name: "", phone: "" });
-  const [receiver, setReceiver] = useState({ name: "", phone: "", allowAlternate: false });
-  const [pkg, setPkg] = useState({ packageType: "", weightKg: "", description: "" });
+  const [pickup, setPickup] = useState(() => draft.pickup || emptyAddress);
+  const [drop, setDrop] = useState(() => draft.drop || emptyAddress);
+  const [sender, setSender] = useState(() => draft.sender || { name: "", phone: "" });
+  const [receiver, setReceiver] = useState(
+    () => draft.receiver || { name: "", phone: "", allowAlternate: false },
+  );
+  const [pkg, setPkg] = useState(
+    () => draft.package || { packageType: "", weightKg: "", description: "" },
+  );
   // No default — UPI silently pre-selected meant "Pay ₹X" could be tapped
   // without the customer ever consciously choosing how to pay. Left blank
   // until they pick one on the Pay step.
-  const [payment, setPayment] = useState("");
+  const [payment, setPayment] = useState(() => draft.payment || "");
   const [quote, setQuote] = useState(null);
   const [quoting, setQuoting] = useState(false);
   const [quoteError, setQuoteError] = useState(null);
   const [placing, setPlacing] = useState(false);
   const [pickupZone, setPickupZone] = useState(null);
   const [dropZone, setDropZone] = useState(null);
+
+  // Autosave the draft on every change, so a refresh at any step restores
+  // exactly where the customer left off — same pin, same text, same step.
+  useEffect(() => {
+    setJSON(
+      STORAGE_KEYS.PORTER_CITY_BOOKING_DRAFT,
+      { step, pickup, drop, sender, receiver, package: pkg, payment },
+      { storage: "session", ttlMs: DRAFT_TTL_MS },
+    );
+  }, [step, pickup, drop, sender, receiver, pkg, payment]);
 
   const loadConfig = useCallback(async () => {
     try {
@@ -269,10 +315,18 @@ const CityParcelBooking = () => {
   // Offer the customer's own location for pickup, once, without being asked.
   // Silent because a refused permission prompt should not surface an error
   // the customer never triggered.
+  //
+  // Skipped entirely when a restored draft already carries a pin: a refresh
+  // would otherwise re-detect and drag the pickup back to wherever the phone
+  // thinks it is, quietly undoing an address the customer had chosen by
+  // hand — the exact loss the draft exists to prevent.
   useEffect(() => {
     if (autoDetectedRef.current) return;
     autoDetectedRef.current = true;
+    if (pickup.lat && pickup.lng) return;
     detectInto(setPickup, { silent: true });
+    // Runs once on mount; the pin is read only to decide whether to offer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detectInto]);
 
   // A pin plus either a typed line or a resolved address is enough to send
@@ -430,6 +484,7 @@ const CityParcelBooking = () => {
         await cityParcelApi.verifyPayment(parcel._id, receipt);
       }
       toast.success("Booked — finding you a rider");
+      removeStored(STORAGE_KEYS.PORTER_CITY_BOOKING_DRAFT, { storage: "session" });
       navigate(`/parcel/local/track/${parcel._id}`, { replace: true });
     } catch (err) {
       toast.error(err?.response?.data?.message || "Couldn't place the booking");
@@ -647,8 +702,22 @@ const CityParcelBooking = () => {
                       ["Base fare", quote.fareBreakdown?.baseFare],
                       [`Distance · ${quote.distanceKm} km`, quote.fareBreakdown?.distanceFare],
                       ["Weight", quote.fareBreakdown?.weightFare],
+                      // Admin-configured platform fee — present in fareBreakdown
+                      // and already counted into the total, but was silently
+                      // absent from this itemised list.
+                      ["Platform fee", quote.fareBreakdown?.platformCharge],
                       ["Express", quote.fareBreakdown?.expressCharge],
+                      // Tax as its own line, so the customer sees what they are
+                      // paying tax on before committing rather than meeting it
+                      // for the first time on the invoice. Skipped when the
+                      // rate card is tax-inclusive — the total already contains
+                      // it, and listing it as an extra would read as a surcharge.
+                      !quote.fareBreakdown?.gstInclusive && [
+                        `GST (${Number(quote.fareBreakdown?.gstPercent) || 0}%)`,
+                        quote.fareBreakdown?.gstAmount,
+                      ],
                     ]
+                      .filter(Boolean)
                       .filter(([, v]) => Number(v) > 0)
                       .map(([label, value]) => (
                         <div key={label} className="flex justify-between text-[13px]">

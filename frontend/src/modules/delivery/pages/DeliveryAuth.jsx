@@ -36,10 +36,15 @@ const VEHICLE_TYPES = [
   { value: "cycle", label: "Cycle" },
 ];
 
+/**
+ * Quick Orders and Both are hidden for now — onboarding is parcel-only
+ * until quick commerce fleet signup reopens. Kept in the value set (not
+ * deleted) so re-enabling later is a one-line revert.
+ */
 const SERVICE_TYPES = [
   { value: "parcel", label: "Parcel", description: "Courier pick-ups & drops", icon: Package },
-  { value: "quick-orders", label: "Quick Orders", description: "Store & marketplace orders", icon: Store },
-  { value: "both", label: "Both", description: "Parcel and quick orders", icon: Truck },
+  // { value: "quick-orders", label: "Quick Orders", description: "Store & marketplace orders", icon: Store },
+  // { value: "both", label: "Both", description: "Parcel and quick orders", icon: Truck },
 ];
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;

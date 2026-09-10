@@ -6,6 +6,7 @@ import Delivery from "../models/delivery.js";
 import Notification from "../models/notification.js";
 import Transaction from "../models/transaction.js";
 import Setting from "../models/setting.js";
+import { emitToDelivery } from "./orderSocketEmitter.js";
 
 /**
  * Porter COD cash: what a rider is holding, and how it gets back to admin.
@@ -279,12 +280,26 @@ export async function reviewCashDeposit({ depositId, adminId, approve, adminNote
   deposit.adminNote = String(adminNote || "").trim();
   await deposit.save();
 
+  /**
+   * The rider's cash status after the decision.
+   *
+   * Approving is what actually lowers what they are holding, so it is also
+   * what lifts the cash-limit block — and a rider whose jobs stopped needs to
+   * be TOLD they have started again, not left refreshing an empty feed. The
+   * status is read after the remit above so it reflects the new balance.
+   */
+  const { getRiderCashStatus } = await import("./porter/riderCashLimitService.js");
+  const cashStatus = await getRiderCashStatus(deposit.riderId).catch(() => null);
+  const unblocked = approve && cashStatus && !cashStatus.blocked;
+
   await Notification.create({
     recipient: deposit.riderId,
     recipientModel: "Delivery",
     title: approve ? "Cash deposit approved" : "Cash deposit rejected",
     message: approve
-      ? `Your ₹${deposit.amount} cash deposit has been verified and cleared.`
+      ? `Your ₹${deposit.amount} cash deposit has been verified and cleared.${
+          unblocked ? " You can take new jobs again." : ""
+        }`
       : `Your ₹${deposit.amount} cash deposit was rejected.${
           deposit.adminNote ? ` Reason: ${deposit.adminNote}` : ""
         }`,
@@ -294,7 +309,15 @@ export async function reviewCashDeposit({ depositId, adminId, approve, adminNote
     /* a notification failure must not undo a settled deposit */
   });
 
-  return { deposit: deposit.toObject(), ...remitted };
+  // Live update for an app that is already open, so the meter and the job
+  // feed both refresh without waiting for the next poll.
+  emitToDelivery(String(deposit.riderId), "porter:cash:status", {
+    depositId: String(deposit._id),
+    status: deposit.status,
+    cashStatus,
+  });
+
+  return { deposit: deposit.toObject(), cashStatus, ...remitted };
 }
 
 /** Deposit list for both the admin queue and the rider's own history. */

@@ -14,12 +14,11 @@ import {
     MapPin,
     Truck,
     User,
-    Star,
-    DollarSign,
     ShieldCheck,
     XCircle,
     Pencil,
-    Trash2,
+    Power,
+    PowerOff,
     Eye,
     X
 } from 'lucide-react';
@@ -28,6 +27,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import Pagination from '@shared/components/ui/Pagination';
 import { adminApi } from '../services/adminApi';
+
+/** Mongo's 24-char hex id isn't something anyone reads at a glance — show
+ *  the last 6 characters, which is plenty to tell riders apart on screen. */
+const shortRiderId = (id) => `RD-${String(id || '').slice(-6).toUpperCase()}`;
 
 const ActiveDeliveryBoys = () => {
     const [riders, setRiders] = useState([]);
@@ -47,13 +50,16 @@ const ActiveDeliveryBoys = () => {
         name: '', phone: '', email: '', vehicle: '', vehicleNum: '', location: ''
     });
 
-    // Fetch Riders
+    // Fetch Riders — only approved/verified partners belong on the active fleet screen.
     const fetchRiders = async (requestedPage = 1) => {
         setIsLoading(true);
         try {
-            const params = { page: requestedPage, limit: pageSize };
+            const params = { page: requestedPage, limit: pageSize, verified: 'true' };
             if (searchTerm.trim()) params.search = searchTerm.trim();
-            if (statusFilter !== 'all') params.status = statusFilter;
+            // Backend only understands online/offline; "available" and "busy" are
+            // both online, so narrow to online there and split the two client-side.
+            if (statusFilter === 'offline') params.status = 'offline';
+            else if (statusFilter === 'available' || statusFilter === 'busy') params.status = 'online';
 
             const response = await adminApi.getDeliveryPartners(params);
             const payload = response.data.result || {};
@@ -64,14 +70,15 @@ const ActiveDeliveryBoys = () => {
                 name: r.name,
                 phone: r.phone,
                 email: r.email,
-                status: r.isOnline ? 'available' : 'offline',
+                avatar: r.profileImage || '',
+                isActive: r.isActive !== false,
+                status: r.isBusy ? 'busy' : (r.isOnline ? 'available' : 'offline'),
                 vehicle: r.vehicleType,
                 vehicleNum: r.vehicleNumber || 'N/A',
-                rating: 4.5, // Mock rating for now
-                totalOrders: 0, // Mock total orders
-                todayEarnings: 0, // Mock earnings
-                location: r.currentArea || 'Unknown',
-                lastSync: 'Now',
+                totalOrders: r.totalDeliveries || 0,
+                // Onboarding address is what the rider actually typed in; currentArea
+                // only fills in once they've sent a live GPS ping, so it's a fallback.
+                location: r.address || r.currentArea || 'Unknown',
                 joinDate: new Date(r.createdAt).toLocaleDateString()
             }));
 
@@ -111,23 +118,36 @@ const handleAction = async (type, rider) => {
         setFormState(rider);
         setSelectedRider(rider);
         setIsEditModalOpen(true);
-    } else if (type === 'delete') {
-        if (!window.confirm(`Delete ${rider.name} permanently? This cannot be undone.`)) {
+    } else if (type === 'toggle-active') {
+        const nextActive = !rider.isActive;
+        const confirmMsg = nextActive
+            ? `Reactivate ${rider.name}? They will be able to log back in immediately.`
+            : `Deactivate ${rider.name}? They will be logged out and can't log in again until reactivated.`;
+        if (!window.confirm(confirmMsg)) {
             return;
         }
         try {
-            const response = await adminApi.rejectDeliveryPartner(rider.id);
+            const response = await adminApi.setDeliveryPartnerActive(rider.id, nextActive);
             if (response.data?.success) {
-                setRiders((prev) => prev.filter((r) => r.id !== rider.id));
-                setTotal((prev) => Math.max(0, prev - 1));
-                if (viewingRider?.id === rider.id) setViewingRider(null);
-                toast.success('Delivery partner deleted');
+                setRiders((prev) =>
+                    prev.map((r) =>
+                        r.id === rider.id
+                            ? { ...r, isActive: nextActive, status: nextActive ? r.status : 'offline' }
+                            : r,
+                    ),
+                );
+                setViewingRider((prev) =>
+                    prev?.id === rider.id
+                        ? { ...prev, isActive: nextActive, status: nextActive ? prev.status : 'offline' }
+                        : prev,
+                );
+                toast.success(nextActive ? 'Rider reactivated' : 'Rider deactivated');
             } else {
-                toast.error(response.data?.message || 'Failed to delete delivery partner');
+                toast.error(response.data?.message || 'Failed to update rider status');
             }
         } catch (error) {
-            console.error('Delete rider error:', error);
-            toast.error(error.response?.data?.message || 'Failed to delete delivery partner');
+            console.error('Toggle active error:', error);
+            toast.error(error.response?.data?.message || 'Failed to update rider status');
         }
     }
 };
@@ -138,10 +158,7 @@ const handleOnboardSubmit = (e) => {
         ...formState,
         id: 'r' + (riders.length + 1),
         status: 'offline',
-        rating: 5.0,
         totalOrders: 0,
-        todayEarnings: 0,
-        lastSync: 'Just now',
         joinDate: new Date().toLocaleDateString()
     };
     setRiders([newRider, ...riders]);
@@ -160,7 +177,7 @@ const stats = [
     { label: 'Total Riders', value: riders.length, color: 'indigo', icon: Users, description: 'Total fleet size' },
     { label: 'Available', value: riders.filter(r => r.status === 'available').length, color: 'emerald', icon: UserCheck, description: 'Ready for orders' },
     { label: 'Busy (On Task)', value: riders.filter(r => r.status === 'busy').length, color: 'amber', icon: Activity, description: 'Currently delivering' },
-    { label: 'Top Earners', value: riders.filter(r => r.rating >= 4.5).length, color: 'rose', icon: Trophy, description: 'High performance' },
+    { label: 'Deliveries Done', value: riders.reduce((sum, r) => sum + (r.totalOrders || 0), 0), color: 'rose', icon: Trophy, description: 'Completed on this page' },
 ];
 
 return (
@@ -295,27 +312,22 @@ return (
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-1 bg-amber-50 text-amber-600 px-2 py-1 rounded-lg">
-                                            <Star className="h-3 w-3 fill-current" />
-                                            <span className="text-[10px] font-black">{rider.rating}</span>
+                                        <div className={cn(
+                                            "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase",
+                                            !rider.isActive ? 'bg-rose-50 text-rose-600' :
+                                                rider.status === 'available' ? 'bg-brand-50 text-brand-600' :
+                                                rider.status === 'busy' ? 'bg-amber-50 text-amber-600' : 'bg-slate-100 text-slate-500'
+                                        )}>
+                                            {rider.isActive ? rider.status : 'deactivated'}
                                         </div>
                                     </div>
 
                                     {/* Metrics Row */}
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="bg-slate-50 p-3 rounded-2xl">
-                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5">Today Earnings</p>
-                                            <div className="flex items-center gap-1.5">
-                                                <DollarSign className="h-3.5 w-3.5 text-brand-500" />
-                                                <span className="text-xs font-black text-slate-900">₹{rider.todayEarnings}</span>
-                                            </div>
-                                        </div>
-                                        <div className="bg-slate-50 p-3 rounded-2xl">
-                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5">Total Success</p>
-                                            <div className="flex items-center gap-1.5">
-                                                <ShieldCheck className="h-3.5 w-3.5 text-brand-500" />
-                                                <span className="text-xs font-black text-slate-900">{rider.totalOrders} Deliv.</span>
-                                            </div>
+                                    <div className="bg-slate-50 p-3 rounded-2xl">
+                                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5">Deliveries Completed</p>
+                                        <div className="flex items-center gap-1.5">
+                                            <ShieldCheck className="h-3.5 w-3.5 text-brand-500" />
+                                            <span className="text-xs font-black text-slate-900">{rider.totalOrders} Deliv.</span>
                                         </div>
                                     </div>
 
@@ -347,10 +359,16 @@ return (
                                             <Pencil className="h-4 w-4" />
                                         </button>
                                         <button
-                                            onClick={() => handleAction('delete', rider)}
-                                            className="p-2.5 bg-slate-100 text-slate-600 hover:bg-rose-50 hover:text-rose-600 transition-all"
+                                            onClick={() => handleAction('toggle-active', rider)}
+                                            title={rider.isActive ? 'Deactivate rider' : 'Reactivate rider'}
+                                            className={cn(
+                                                "p-2.5 rounded-xl transition-all",
+                                                rider.isActive
+                                                    ? "bg-slate-100 text-slate-600 hover:bg-rose-50 hover:text-rose-600"
+                                                    : "bg-brand-50 text-brand-600 hover:bg-brand-100"
+                                            )}
                                         >
-                                            <Trash2 className="h-4 w-4" />
+                                            {rider.isActive ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
                                         </button>
                                     </div>
                                 </div>
@@ -403,10 +421,13 @@ return (
                                     <div>
                                         <h2 className="ds-h1">{viewingRider.name}</h2>
                                         <div className="flex items-center gap-3 mt-2">
-                                            <Badge variant={viewingRider.status === 'available' ? 'success' : viewingRider.status === 'busy' ? 'warning' : 'neutral'} className="uppercase font-black text-[9px] px-3">
-                                                {viewingRider.status}
+                                            <Badge
+                                                variant={!viewingRider.isActive ? 'error' : viewingRider.status === 'available' ? 'success' : viewingRider.status === 'busy' ? 'warning' : 'gray'}
+                                                className="uppercase font-black text-[9px] px-3"
+                                            >
+                                                {viewingRider.isActive ? viewingRider.status : 'deactivated'}
                                             </Badge>
-                                            <span className="text-xs font-bold text-slate-400">Rider ID: RD-00{viewingRider.id.slice(1)}</span>
+                                            <span className="text-xs font-bold text-slate-400">Rider ID: {shortRiderId(viewingRider.id)}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -442,39 +463,29 @@ return (
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 p-6 bg-slate-50 rounded-xl">
+                            <div className="grid grid-cols-2 gap-4 p-6 bg-slate-50 rounded-xl">
                                 <div className="text-center">
-                                    <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Lifetime Rating</p>
-                                    <div className="flex justify-center items-center gap-1">
-                                        <Star className="h-4 w-4 text-amber-500 fill-current" />
-                                        <span className="text-lg font-black text-slate-900">{viewingRider.rating}</span>
-                                    </div>
-                                </div>
-                                <div className="text-center border-l border-slate-200">
-                                    <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Fleet Rank</p>
-                                    <span className="text-lg font-black text-slate-900">#42</span>
-                                </div>
-                                <div className="text-center border-l border-slate-200">
                                     <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Total Deliveries</p>
                                     <span className="text-lg font-black text-slate-900 text-brand-600">{viewingRider.totalOrders}</span>
                                 </div>
                                 <div className="text-center border-l border-slate-200">
-                                    <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Wallet Creds</p>
-                                    <span className="text-lg font-black text-slate-900 text-brand-600">₹4,250</span>
+                                    <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Fleet Status</p>
+                                    <span className="text-lg font-black text-slate-900 capitalize">{viewingRider.isActive ? viewingRider.status : 'Deactivated'}</span>
                                 </div>
                             </div>
 
-                            <div className="mt-8 flex gap-4">
-                                <button className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 transition-all">
-                                    Send Message
-                                </button>
-                                        <button
-                                            onClick={() => handleAction('delete', viewingRider)}
-                                            className="px-6 py-4 bg-rose-50 text-rose-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-rose-100 transition-all active:scale-95"
-                                        >
-                                            DELETE
-                                        </button>
-                            </div>
+                            <button
+                                onClick={() => handleAction('toggle-active', viewingRider)}
+                                className={cn(
+                                    "mt-6 w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2",
+                                    viewingRider.isActive
+                                        ? "bg-rose-50 text-rose-600 hover:bg-rose-100"
+                                        : "bg-slate-900 text-white hover:bg-slate-800"
+                                )}
+                            >
+                                {viewingRider.isActive ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+                                {viewingRider.isActive ? 'Deactivate Rider' : 'Reactivate Rider'}
+                            </button>
                         </div>
                     </motion.div>
                 </div>

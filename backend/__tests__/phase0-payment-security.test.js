@@ -1,4 +1,14 @@
 import { jest } from "@jest/globals";
+import crypto from "crypto";
+
+/**
+ * The payment path's security invariants, on the Razorpay gateway.
+ *
+ * The amount is taken from the server's own order snapshot rather than
+ * anything the client sends, a payment can only be started by the customer
+ * who owns the order, and a webhook is applied at most once no matter how
+ * many times the gateway redelivers it.
+ */
 
 const mockOrderFindOne = jest.fn();
 const mockOrderFindById = jest.fn();
@@ -16,9 +26,11 @@ const mockHandleOnlineOrderFinance = jest.fn();
 const mockAfterPlaceOrderV2 = jest.fn();
 const mockReleaseReservedStockForOrder = jest.fn();
 
-const mockPhonePePay = jest.fn();
-const mockPhonePeGetOrderStatus = jest.fn();
-const mockPhonePeValidateCallback = jest.fn();
+const mockOrdersCreate = jest.fn();
+const mockOrdersFetchPayments = jest.fn();
+
+const WEBHOOK_SECRET = "rzp_wh_secret";
+const KEY_SECRET = "rzp_test_secret";
 
 jest.unstable_mockModule("../app/models/order.js", () => ({
   default: {
@@ -56,56 +68,30 @@ jest.unstable_mockModule("../app/services/stockService.js", () => ({
   releaseReservedStockForOrder: mockReleaseReservedStockForOrder,
 }));
 
-jest.unstable_mockModule("@phonepe-pg/pg-sdk-node", () => ({
-  Env: {
-    PRODUCTION: "PRODUCTION",
-    SANDBOX: "SANDBOX",
-  },
-  StandardCheckoutClient: {
-    getInstance: jest.fn(() => ({
-      pay: mockPhonePePay,
-      getOrderStatus: mockPhonePeGetOrderStatus,
-      validateCallback: mockPhonePeValidateCallback,
-    })),
-  },
-  StandardCheckoutPayRequest: {
-    builder: jest.fn(() => {
-      const request = {};
-      return {
-        merchantOrderId(value) {
-          request.merchantOrderId = value;
-          return this;
-        },
-        amount(value) {
-          request.amount = value;
-          return this;
-        },
-        redirectUrl(value) {
-          request.redirectUrl = value;
-          return this;
-        },
-        build() {
-          return request;
-        },
-      };
-    }),
+// The SDK is stubbed at the module boundary; the adapter above it is real, so
+// the signature maths under test is the code that actually ships.
+jest.unstable_mockModule("razorpay", () => ({
+  default: class FakeRazorpay {
+    constructor() {
+      this.orders = { create: mockOrdersCreate, fetchPayments: mockOrdersFetchPayments };
+    }
   },
 }));
 
-const {
-  createPaymentOrderForOrderRef,
-  processPhonePeWebhook,
-} = await import("../app/services/paymentService.js");
+const { createPaymentOrderForOrderRef, processGatewayWebhook } = await import(
+  "../app/services/paymentService.js"
+);
+
+/** Signs a webhook body the way Razorpay does. */
+const signWebhook = (body) =>
+  crypto.createHmac("sha256", WEBHOOK_SECRET).update(body).digest("hex");
 
 describe("Phase 0 payment hardening", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     process.env.RAZORPAY_KEY_ID = "rzp_test_key";
-    process.env.RAZORPAY_KEY_SECRET = "rzp_test_secret";
-    process.env.RAZORPAY_WEBHOOK_SECRET = "rzp_wh_secret";
-    process.env.PHONEPE_CLIENT_ID = "phonepe-client";
-    process.env.PHONEPE_CLIENT_SECRET = "phonepe-secret";
-    process.env.PHONEPE_CLIENT_VERSION = "1";
+    process.env.RAZORPAY_KEY_SECRET = KEY_SECRET;
+    process.env.RAZORPAY_WEBHOOK_SECRET = WEBHOOK_SECRET;
     process.env.FRONTEND_URL = "https://frontend.test";
 
     mockPaymentFindOne.mockImplementation((query) => {
@@ -130,8 +116,10 @@ describe("Phase 0 payment hardening", () => {
       paymentBreakdown: { grandTotal: 499 },
     });
     mockPaymentCountDocuments.mockResolvedValue(0);
-    mockPhonePePay.mockResolvedValue({
-      redirectUrl: "https://pay.test/checkout",
+    mockOrdersCreate.mockResolvedValue({
+      id: "order_gateway_1",
+      amount: 49900,
+      currency: "INR",
     });
     mockPaymentCreate.mockResolvedValue({
       _id: "payment-1",
@@ -142,9 +130,6 @@ describe("Phase 0 payment hardening", () => {
       currency: "INR",
       status: "PENDING",
       attemptCount: 1,
-      rawGatewayResponse: {
-        redirectUrl: "https://pay.test/checkout",
-      },
     });
 
     const result = await createPaymentOrderForOrderRef({
@@ -154,12 +139,37 @@ describe("Phase 0 payment hardening", () => {
       correlationId: "corr-1",
     });
 
-    expect(mockPhonePePay).toHaveBeenCalledWith(
-      expect.objectContaining({
-        amount: 49900,
-      }),
+    // ₹499 becomes 49900 paise, taken from the order, not the request body.
+    expect(mockOrdersCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ amount: 49900, currency: "INR" }),
     );
     expect(result.payment.amount).toBe(49900);
+    expect(result.checkout).toEqual(
+      expect.objectContaining({ orderId: "order_gateway_1", keyId: "rzp_test_key" }),
+    );
+  });
+
+  it("never sends the secret key to the client", async () => {
+    mockOrderFindOne.mockResolvedValue({
+      _id: "order-mongo-id",
+      orderId: "ORD-1",
+      customer: "user-1",
+      paymentMode: "ONLINE",
+      paymentStatus: "CREATED",
+      status: "pending",
+      workflowStatus: "CREATED",
+      paymentBreakdown: { grandTotal: 100 },
+    });
+    mockPaymentCountDocuments.mockResolvedValue(0);
+    mockOrdersCreate.mockResolvedValue({ id: "order_g", amount: 10000, currency: "INR" });
+    mockPaymentCreate.mockResolvedValue({ _id: "p", gatewayOrderId: "order_g", amount: 10000 });
+
+    const result = await createPaymentOrderForOrderRef({
+      orderRef: "ORD-1",
+      userId: "user-1",
+    });
+
+    expect(JSON.stringify(result.checkout)).not.toContain(KEY_SECRET);
   });
 
   it("blocks payment initiation for wrong user or invalid order state", async () => {
@@ -200,33 +210,68 @@ describe("Phase 0 payment hardening", () => {
     ).rejects.toMatchObject({ statusCode: 409 });
   });
 
-  it("treats duplicate webhook event id as idempotent", async () => {
+  it("treats a redelivered webhook event as idempotent", async () => {
     mockWebhookEventCreate.mockRejectedValueOnce({ code: 11000 });
 
-    const callbackPayload = Buffer.from(
+    const body = Buffer.from(
       JSON.stringify({
-        state: "COMPLETED",
-        merchantOrderId: "gateway-order-1",
-        transactionId: "pay_1",
+        id: "evt_dup_1",
+        event: "payment.captured",
+        payload: {
+          payment: {
+            entity: {
+              id: "pay_1",
+              order_id: "order_gateway_1",
+              status: "captured",
+              amount: 49900,
+              notes: { merchantOrderId: "ORD-1-1" },
+            },
+          },
+        },
       }),
-    ).toString("base64");
+    );
 
-    const payload = Buffer.from(JSON.stringify({ response: callbackPayload }));
-    mockPhonePeValidateCallback.mockResolvedValue(true);
-
-    const result = await processPhonePeWebhook({
-      rawBody: payload,
-      authorization: "phonepe-auth",
-      eventId: "event-duplicate-1",
+    const result = await processGatewayWebhook({
+      rawBody: body,
+      signature: signWebhook(body),
       correlationId: "corr-webhook",
     });
 
-    expect(result).toEqual(
-      expect.objectContaining({
-        duplicate: true,
-        accepted: true,
-      }),
-    );
+    expect(result).toEqual(expect.objectContaining({ duplicate: true, accepted: true }));
     expect(mockOrderUpdateOne).not.toHaveBeenCalled();
+  });
+
+  it("refuses a webhook whose signature does not match the body", async () => {
+    const body = Buffer.from(JSON.stringify({ id: "evt_1", event: "payment.captured" }));
+
+    await expect(
+      processGatewayWebhook({ rawBody: body, signature: "deadbeef" }),
+    ).rejects.toMatchObject({ statusCode: 401 });
+
+    expect(mockWebhookEventCreate).not.toHaveBeenCalled();
+  });
+
+  it("refuses a webhook when no webhook secret is configured", async () => {
+    delete process.env.RAZORPAY_WEBHOOK_SECRET;
+    const body = Buffer.from(JSON.stringify({ id: "evt_1", event: "payment.captured" }));
+
+    // A missing secret must fail closed, not wave the request through.
+    await expect(
+      processGatewayWebhook({ rawBody: body, signature: signWebhook(body) }),
+    ).rejects.toMatchObject({ statusCode: 401 });
+  });
+
+  it("refuses a webhook body that was tampered with after signing", async () => {
+    const original = Buffer.from(
+      JSON.stringify({ id: "evt_1", event: "payment.captured", amount: 100 }),
+    );
+    const signature = signWebhook(original);
+    const tampered = Buffer.from(
+      JSON.stringify({ id: "evt_1", event: "payment.captured", amount: 999999 }),
+    );
+
+    await expect(
+      processGatewayWebhook({ rawBody: tampered, signature }),
+    ).rejects.toMatchObject({ statusCode: 401 });
   });
 });

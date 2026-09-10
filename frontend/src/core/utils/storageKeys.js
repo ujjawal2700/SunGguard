@@ -38,6 +38,10 @@ export const STORAGE_KEYS = Object.freeze({
     // ── Delivery operational state ───────────────────────────────────────────
     DELIVERY_LAST_LOCATION: 'delivery_partner_last_location',
     DELIVERY_HANDLED_INCOMING: 'deliveryHandledIncomingOrderIds',
+
+    // ── Porter booking drafts (survive an accidental refresh mid-flow) ───────
+    PORTER_CITY_BOOKING_DRAFT: 'porter_city_booking_draft_v1',
+    PORTER_OUTSTATION_BOOKING_DRAFT: 'porter_outstation_booking_draft_v1',
 });
 
 /**

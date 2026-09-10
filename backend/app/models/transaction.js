@@ -54,6 +54,14 @@ const transactionSchema = new mongoose.Schema(
                 "Cash Settlement",
                 "Wallet Payment",
                 "Wallet Refund",
+                // Porter desk (local City Parcel + outstation Parcel). These
+                // flows had no ledger row at all — a porter booking paid
+                // online left money in the Razorpay account and nothing in
+                // any ledger the admin could read, so porter revenue was
+                // invisible next to marketplace revenue. Written by
+                // services/porter/customerLedgerService.js.
+                "Parcel Payment",
+                "Parcel Refund",
             ],
             required: true,
         },

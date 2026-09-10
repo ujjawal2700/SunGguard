@@ -247,7 +247,18 @@ const PorterCustomerDetail = () => {
                   </tr>
                 ) : (
                   customer.recentBookings.map((b) => (
-                    <tr key={`${b.source}-${b.id}`} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                    <tr
+                      key={`${b.source}-${b.id}`}
+                      onClick={() =>
+                        navigate(
+                          b.source === "city"
+                            ? `/admin/city-parcels?cityParcelId=${b.id}`
+                            : `/admin/parcels?parcelId=${b.id}`,
+                        )
+                      }
+                      title="View full booking detail and status history"
+                      className="cursor-pointer hover:bg-slate-50/70 dark:hover:bg-slate-800/40"
+                    >
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-2.5">
                           <div className="rounded-lg bg-slate-100 p-1.5 text-slate-500 dark:bg-slate-800">

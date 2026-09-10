@@ -6,6 +6,10 @@ import ParcelReview from "../models/parcelReview.js";
 import CashDeposit from "../models/cashDeposit.js";
 import handleResponse from "../utils/helper.js";
 import { CITY_PARCEL_STATUS as S } from "../constants/cityParcelWorkflow.js";
+import {
+  visibleCityParcels,
+  visibleParcels,
+} from "../services/bookingCheckoutService.js";
 
 /**
  * One console for the porter side of the desk.
@@ -82,6 +86,16 @@ export const adminGetPorterDashboard = async (req, res) => {
     from.setUTCDate(from.getUTCDate() - (days - 1));
     const window = { createdAt: { $gte: from } };
 
+    /**
+     * Both products write a booking row before the customer pays, so the
+     * gateway has something to attach an order id to. Counting those made
+     * the console report bookings nobody made and revenue nobody owed. Each
+     * product needs its own predicate — they open a payment sheet for
+     * different methods — so the shared window is narrowed twice.
+     */
+    const pickupWindow = visibleParcels(window);
+    const cityWindow = visibleCityParcels(window);
+
     const dailyGroup = {
       _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
       count: { $sum: 1 },
@@ -111,11 +125,11 @@ export const adminGetPorterDashboard = async (req, res) => {
       recentCity,
     ] = await Promise.all([
       Parcel.aggregate([
-        { $match: window },
+        { $match: pickupWindow },
         { $group: { _id: "$status", count: { $sum: 1 } } },
       ]),
       Parcel.aggregate([
-        { $match: { ...window, status: "DELIVERED" } },
+        { $match: { ...pickupWindow, status: "DELIVERED" } },
         {
           $group: {
             _id: null,
@@ -125,14 +139,14 @@ export const adminGetPorterDashboard = async (req, res) => {
           },
         },
       ]),
-      Parcel.aggregate([{ $match: window }, { $group: dailyGroup }]),
+      Parcel.aggregate([{ $match: pickupWindow }, { $group: dailyGroup }]),
 
       CityParcel.aggregate([
-        { $match: window },
+        { $match: cityWindow },
         { $group: { _id: "$status", count: { $sum: 1 } } },
       ]),
       CityParcel.aggregate([
-        { $match: { ...window, status: S.DELIVERED } },
+        { $match: { ...cityWindow, status: S.DELIVERED } },
         {
           $group: {
             _id: null,
@@ -143,24 +157,27 @@ export const adminGetPorterDashboard = async (req, res) => {
           },
         },
       ]),
-      CityParcel.aggregate([{ $match: window }, { $group: dailyGroup }]),
+      CityParcel.aggregate([{ $match: cityWindow }, { $group: dailyGroup }]),
 
       DeliveryZone.countDocuments({}),
       DeliveryZone.countDocuments({ isActive: true }),
 
       Parcel.countDocuments({
-        ...window,
+        ...pickupWindow,
         deliveryPartnerId: null,
         status: { $in: ["REQUESTED", "SEARCHING"] },
       }),
-      Parcel.countDocuments({ ...window, "lateRefundRequest.status": "requested" }),
+      Parcel.countDocuments({
+        ...pickupWindow,
+        "lateRefundRequest.status": "requested",
+      }),
       CityParcel.countDocuments({
-        ...window,
+        ...cityWindow,
         deliveryPartnerId: null,
         status: { $in: [S.REQUESTED, S.SEARCHING] },
       }),
-      CityParcel.countDocuments({ ...window, status: S.DELIVERY_FAILED }),
-      CityParcel.countDocuments({ ...window, payoutWithheld: true }),
+      CityParcel.countDocuments({ ...cityWindow, status: S.DELIVERY_FAILED }),
+      CityParcel.countDocuments({ ...cityWindow, payoutWithheld: true }),
 
       // Fleet snapshot is a point-in-time headcount, not windowed to `days` —
       // "how many porters do we have right now", not "how many were created".
@@ -173,14 +190,14 @@ export const adminGetPorterDashboard = async (req, res) => {
       ]),
       CashDeposit.countDocuments({ status: "PENDING" }),
 
-      Parcel.find(window)
+      Parcel.find(pickupWindow)
         .sort({ createdAt: -1 })
         .limit(6)
         .populate("customerId", "name")
         .populate("deliveryPartnerId", "name")
         .select("status fare customerId deliveryPartnerId createdAt")
         .lean(),
-      CityParcel.find(window)
+      CityParcel.find(cityWindow)
         .sort({ createdAt: -1 })
         .limit(6)
         .populate("customerId", "name")

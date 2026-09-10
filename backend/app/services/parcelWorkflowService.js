@@ -21,6 +21,8 @@ import {
   deliveryPartnerHasActiveJob,
   markDeliveryPartnerBusy,
 } from "./deliveryBusyService.js";
+import { recordParcelEvent, PARCEL_EVENT_ACTOR } from "./parcelEventService.js";
+import { assertRiderCanTakeJobs } from "./porter/riderCashLimitService.js";
 
 async function assertRiderWithinPickupRadius(deliveryOid, parcelId) {
   const [rider, parcel, settings] = await Promise.all([
@@ -385,6 +387,14 @@ export async function startParcelBroadcast(parcelDoc) {
 
   if (!updated) return null;
 
+  await recordParcelEvent({
+    parcelId: updated._id,
+    status: "SEARCHING",
+    previousStatus: "REQUESTED",
+    actor: PARCEL_EVENT_ACTOR.SYSTEM,
+    note: "Looking for a delivery partner",
+  });
+
   await emitParcelBroadcastForPickup(updated);
   scheduleParcelSearchTimeout(parcelId, 1);
 
@@ -459,6 +469,14 @@ export async function processParcelSearchTimeout(parcelId, attempt) {
   );
   clearParcelSearchTimeout(parcelId);
 
+  await recordParcelEvent({
+    parcelId,
+    status: "REQUESTED",
+    previousStatus: "SEARCHING",
+    actor: PARCEL_EVENT_ACTOR.SYSTEM,
+    note: "No delivery partner accepted — needs manual assignment",
+  });
+
   emitToAdmins("parcel:status:update", {
     _id: String(parcelId),
     status: "REQUESTED",
@@ -493,6 +511,17 @@ export async function fetchAvailableParcelsForRider(deliveryId) {
   if (await deliveryPartnerHasActiveJob(deliveryOid)) {
     return [];
   }
+
+  /**
+   * A rider at their COD cash limit is offered nothing — outstation included.
+   *
+   * The limit is a property of the rider, not of the product: the whole point
+   * is to cap how much of the platform's money one person is carrying, and a
+   * cap that only applied to local jobs would be trivially worked around by
+   * taking outstation ones instead.
+   */
+  const cashGate = await assertRiderCanTakeJobs(deliveryOid);
+  if (!cashGate.allowed) return [];
 
   const coords = rider.location?.coordinates;
   if (!Array.isArray(coords) || coords.length < 2) return [];
@@ -550,6 +579,27 @@ export async function parcelAcceptAtomic(deliveryId, parcelId, idempotencyKey) {
   if (await deliveryPartnerHasActiveJob(deliveryOid)) {
     const err = new Error("Finish your current job before taking another.");
     err.statusCode = 409;
+    throw err;
+  }
+
+  /**
+   * Checked on the claim as well as on the feed. The feed is a view; this is
+   * the decision, and a rider holding an id from an earlier poll — or one who
+   * crossed the limit on another job in between — would otherwise walk
+   * straight past a gate the list had already applied.
+   *
+   * Ordered AFTER the busy check on purpose. A rider who is both mid-job and
+   * over their limit needs to hear "finish your current job" — that is the
+   * thing they can act on right now, and it is true regardless of their cash
+   * balance. Leading with the cash message would send them off to make a
+   * deposit that would not have unblocked them anyway.
+   */
+  const cashGate = await assertRiderCanTakeJobs(deliveryOid);
+  if (!cashGate.allowed) {
+    const err = new Error(cashGate.message);
+    err.statusCode = 403;
+    err.code = "CASH_LIMIT_REACHED";
+    err.cashStatus = cashGate.status;
     throw err;
   }
 
@@ -628,6 +678,15 @@ export async function parcelAcceptAtomic(deliveryId, parcelId, idempotencyKey) {
   clearParcelSearchTimeout(parcelId);
   await retractParcelBroadcast(String(parcelId), deliveryOid);
   await markDeliveryPartnerBusy(deliveryOid);
+
+  await recordParcelEvent({
+    parcelId: updated._id,
+    status: "ACCEPTED",
+    previousStatus: "SEARCHING",
+    actor: PARCEL_EVENT_ACTOR.DELIVERY,
+    actorId: deliveryOid,
+    note: "Rider accepted the delivery",
+  });
 
   emitToAdmins("parcel:status:update", updated);
 
