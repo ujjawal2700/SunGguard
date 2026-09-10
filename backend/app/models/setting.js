@@ -216,6 +216,25 @@ const settingSchema = new mongoose.Schema(
             bankIfsc: { type: String, trim: true, default: "" },
             bankName: { type: String, trim: true, default: "" },
         },
+
+        /**
+         * Admin-managed legal / informational content.
+         * Stored as HTML strings (set via the admin settings panel).
+         * Each field has a separate version for customer-facing and
+         * delivery-boy-facing apps so content can be tailored per audience.
+         *
+         * Empty string means "use the static fallback built into the frontend".
+         */
+        legalContent: {
+            // Customer app
+            customerPrivacyPolicy: { type: String, default: "" },
+            customerTerms:         { type: String, default: "" },
+            customerAboutUs:       { type: String, default: "" },
+            // Delivery-boy app
+            deliveryPrivacyPolicy: { type: String, default: "" },
+            deliveryTerms:         { type: String, default: "" },
+            deliveryAboutUs:       { type: String, default: "" },
+        },
     },
     {
         timestamps: true,

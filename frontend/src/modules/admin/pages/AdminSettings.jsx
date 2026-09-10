@@ -4,27 +4,358 @@ import {
     Save,
     Settings,
     Globe,
-    Building2,
-    Share2,
-    Smartphone,
-    Search,
     Upload,
     Mail,
     Phone,
-    MapPin,
-    CreditCard,
-    Facebook,
-    Twitter,
-    Instagram,
-    Linkedin,
-    Youtube,
     Loader2,
-    X
+    X,
+    FileText,
+    Shield,
+    Info,
+    Users,
+    Truck,
+    Eye,
+    AlignLeft,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@shared/components/ui/Toast';
 import { adminApi } from '../services/adminApi';
 import { useSettings } from '@core/context/SettingsContext';
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Helpers: convert structured data ↔ HTML string
+   ───────────────────────────────────────────────────────────────────────── */
+
+/** Parse stored HTML → { intro, sections[] } so the form can show existing content */
+const parseHtmlToStructured = (html) => {
+    if (!html || !html.trim()) return { intro: '', sections: [] };
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const nodes = Array.from(doc.body.children);
+        let intro = '';
+        const sections = [];
+        let current = null;
+        for (const el of nodes) {
+            const tag = el.tagName.toUpperCase();
+            if (tag === 'H2' || tag === 'H3') {
+                if (current) sections.push(current);
+                current = { title: el.textContent.trim(), body: '' };
+            } else if (tag === 'P' || tag === 'DIV') {
+                const text = el.textContent.trim();
+                if (!text) continue;
+                if (current) {
+                    current.body = current.body ? `${current.body}\n\n${text}` : text;
+                } else {
+                    intro = intro ? `${intro}\n\n${text}` : text;
+                }
+            } else if (tag === 'UL' || tag === 'OL') {
+                const items = Array.from(el.querySelectorAll('li')).map(li => `• ${li.textContent.trim()}`).join('\n');
+                if (current) current.body = current.body ? `${current.body}\n${items}` : items;
+                else intro = intro ? `${intro}\n${items}` : items;
+            }
+        }
+        if (current) sections.push(current);
+        return { intro, sections };
+    } catch {
+        return { intro: html, sections: [] };
+    }
+};
+
+/** Convert { intro, sections[] } → clean HTML string for storage / display */
+const structuredToHtml = ({ intro, sections }) => {
+    let html = '';
+    if (intro?.trim()) {
+        intro.trim().split(/\n\n+/).forEach(para => {
+            if (para.trim()) html += `<p>${para.trim().replace(/\n/g, '<br/>')}</p>`;
+        });
+    }
+    sections.forEach(({ title, body }) => {
+        if (title?.trim()) html += `<h3>${title.trim()}</h3>`;
+        if (body?.trim()) {
+            body.trim().split(/\n\n+/).forEach(para => {
+                if (para.trim()) html += `<p>${para.trim().replace(/\n/g, '<br/>')}</p>`;
+            });
+        }
+    });
+    return html;
+};
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Structured Content Editor — replaces the old HTML toolbar editor
+   ───────────────────────────────────────────────────────────────────────── */
+
+const StructuredEditor = ({ value, onChange, docLabel }) => {
+    // Initialize from stored HTML (remounts on key change so useState is safe here)
+    const [data, setData] = useState(() => parseHtmlToStructured(value || ''));
+
+    const push = (newData) => {
+        setData(newData);
+        onChange(structuredToHtml(newData));
+    };
+
+    const setIntro = (text) => push({ ...data, intro: text });
+
+    const updateSection = (idx, field, val) => {
+        const updated = data.sections.map((s, i) => i === idx ? { ...s, [field]: val } : s);
+        push({ ...data, sections: updated });
+    };
+
+    const addSection = () =>
+        push({ ...data, sections: [...data.sections, { title: '', body: '' }] });
+
+    const removeSection = (idx) =>
+        push({ ...data, sections: data.sections.filter((_, i) => i !== idx) });
+
+    const moveSection = (from, to) => {
+        if (to < 0 || to >= data.sections.length) return;
+        const arr = [...data.sections];
+        const [item] = arr.splice(from, 1);
+        arr.splice(to, 0, item);
+        push({ ...data, sections: arr });
+    };
+
+    return (
+        <div className="space-y-4">
+            {/* Intro paragraph */}
+            <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                    <AlignLeft className="h-3.5 w-3.5" />
+                    Introduction / Opening Paragraph
+                </label>
+                <textarea
+                    value={data.intro}
+                    onChange={(e) => setIntro(e.target.value)}
+                    rows={3}
+                    placeholder={`Opening paragraph for ${docLabel}…`}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-700 outline-none focus:ring-2 focus:ring-brand-500/20 resize-none placeholder:text-slate-300 leading-relaxed"
+                />
+            </div>
+
+            {/* Sections */}
+            {data.sections.length > 0 && (
+                <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                        <FileText className="h-3.5 w-3.5" />
+                        Sections
+                    </label>
+                    {data.sections.map((sec, idx) => (
+                        <div
+                            key={idx}
+                            className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm"
+                        >
+                            {/* Section header bar */}
+                            <div className="flex items-center gap-3 px-4 py-2.5 bg-slate-50 border-b border-slate-100">
+                                <span className="h-6 w-6 rounded-lg bg-slate-200 text-slate-700 text-xs font-black flex items-center justify-center flex-shrink-0">
+                                    {idx + 1}
+                                </span>
+                                <input
+                                    type="text"
+                                    value={sec.title}
+                                    onChange={(e) => updateSection(idx, 'title', e.target.value)}
+                                    placeholder={`Section ${idx + 1} heading…`}
+                                    className="flex-1 bg-transparent text-sm font-bold text-slate-800 outline-none placeholder:text-slate-300"
+                                />
+                                {/* Move up / down */}
+                                <div className="flex items-center gap-1 ml-auto">
+                                    <button
+                                        type="button"
+                                        onClick={() => moveSection(idx, idx - 1)}
+                                        disabled={idx === 0}
+                                        className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-all disabled:opacity-30"
+                                        title="Move up"
+                                    >
+                                        <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor"><path d="M8 3l5 5H3z"/></svg>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => moveSection(idx, idx + 1)}
+                                        disabled={idx === data.sections.length - 1}
+                                        className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-all disabled:opacity-30"
+                                        title="Move down"
+                                    >
+                                        <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor"><path d="M8 13L3 8h10z"/></svg>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => removeSection(idx)}
+                                        className="p-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all ml-1"
+                                        title="Remove section"
+                                    >
+                                        <X className="h-3.5 w-3.5" />
+                                    </button>
+                                </div>
+                            </div>
+                            {/* Body textarea */}
+                            <textarea
+                                value={sec.body}
+                                onChange={(e) => updateSection(idx, 'body', e.target.value)}
+                                rows={4}
+                                placeholder="Section content… (press Enter twice for a new paragraph)"
+                                className="w-full px-4 py-3 text-sm text-slate-600 bg-white outline-none resize-none placeholder:text-slate-300 leading-relaxed"
+                            />
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Add Section button */}
+            <button
+                type="button"
+                onClick={addSection}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border-2 border-dashed border-slate-200 text-slate-400 hover:border-brand-400 hover:text-brand-600 hover:bg-brand-50/20 transition-all text-sm font-semibold"
+            >
+                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"/></svg>
+                Add Section
+            </button>
+        </div>
+    );
+};
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Live Preview (reads the generated HTML)
+   ───────────────────────────────────────────────────────────────────────── */
+const ContentPreview = ({ html }) => (
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden h-full">
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-100 bg-slate-50">
+            <Eye className="h-4 w-4 text-slate-400" />
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Preview</span>
+        </div>
+        <div
+            className="p-5 overflow-y-auto max-h-[420px] prose prose-slate prose-sm max-w-none text-slate-600 [&_h3]:text-slate-800 [&_h3]:font-bold [&_h3]:mt-5 [&_h3]:mb-2 [&_p]:leading-relaxed [&_p]:text-slate-500"
+            dangerouslySetInnerHTML={{
+                __html: html || '<p class="text-slate-300 italic text-sm">Start filling in the form to see the preview…</p>'
+            }}
+        />
+    </div>
+);
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Legal Content Tab
+   ───────────────────────────────────────────────────────────────────────── */
+
+const AUDIENCE_TABS = [
+    { id: 'customer',  label: 'Customer (User)',  icon: Users, color: 'indigo' },
+    { id: 'delivery',  label: 'Delivery Boy',     icon: Truck, color: 'amber' },
+];
+
+const DOCUMENT_TABS = [
+    { id: 'privacy', label: 'Privacy Policy',    icon: Shield,   fieldKey: (aud) => `${aud}PrivacyPolicy` },
+    { id: 'terms',   label: 'Terms & Conditions', icon: FileText, fieldKey: (aud) => `${aud}Terms`          },
+    { id: 'about',   label: 'About Us',           icon: Info,     fieldKey: (aud) => `${aud}AboutUs`        },
+];
+
+const audienceLabel = (id) => id === 'customer' ? 'customer' : 'delivery';
+
+const LegalContentTab = ({ legalContent, onChange }) => {
+    const [audience, setAudience]   = useState('customer');
+    const [docTab, setDocTab]       = useState('privacy');
+
+    const currentDoc = DOCUMENT_TABS.find(d => d.id === docTab);
+    const fieldKey = currentDoc?.fieldKey(audienceLabel(audience));
+    const currentValue = legalContent?.[fieldKey] || '';
+
+    const handleChange = (html) => {
+        onChange({ ...legalContent, [fieldKey]: html });
+    };
+
+    const docLabel = `${currentDoc?.label} (${AUDIENCE_TABS.find(a => a.id === audience)?.label})`;
+
+    return (
+        <div className="space-y-5">
+            {/* Audience toggle */}
+            <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl w-fit">
+                {AUDIENCE_TABS.map(({ id, label, icon: Icon, color }) => (
+                    <button
+                        key={id}
+                        onClick={() => setAudience(id)}
+                        className={cn(
+                            'flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all',
+                            audience === id
+                                ? 'bg-white shadow-sm text-slate-900'
+                                : 'text-slate-500 hover:text-slate-700'
+                        )}
+                    >
+                        <Icon className={cn('h-4 w-4', audience === id && (color === 'indigo' ? 'text-indigo-500' : 'text-amber-500'))} />
+                        {label}
+                    </button>
+                ))}
+            </div>
+
+            {/* Document sub-tabs */}
+            <div className="flex gap-1 border-b border-slate-100">
+                {DOCUMENT_TABS.map(({ id, label, icon: Icon }) => (
+                    <button
+                        key={id}
+                        onClick={() => setDocTab(id)}
+                        className={cn(
+                            'flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-all -mb-px',
+                            docTab === id
+                                ? 'border-slate-900 text-slate-900'
+                                : 'border-transparent text-slate-400 hover:text-slate-700'
+                        )}
+                    >
+                        <Icon className="h-4 w-4" />
+                        {label}
+                    </button>
+                ))}
+            </div>
+
+            {/* Context breadcrumb */}
+            <div className="flex items-center gap-2">
+                <span className={cn(
+                    'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold',
+                    audience === 'customer'
+                        ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200'
+                        : 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+                )}>
+                    {audience === 'customer' ? <Users className="h-3 w-3" /> : <Truck className="h-3 w-3" />}
+                    {AUDIENCE_TABS.find(a => a.id === audience)?.label}
+                </span>
+                <span className="text-slate-300">›</span>
+                <span className="text-xs font-bold text-slate-600">
+                    {currentDoc?.label}
+                </span>
+            </div>
+
+            {/* Editor + Preview — side by side */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
+                <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Write Content</label>
+                    <StructuredEditor
+                        key={`${audience}-${docTab}`}
+                        value={currentValue}
+                        onChange={handleChange}
+                        docLabel={docLabel}
+                    />
+                </div>
+                <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Preview</label>
+                    <ContentPreview html={currentValue} />
+                </div>
+            </div>
+
+            <p className="text-xs text-slate-400 flex items-center gap-1.5">
+                <Info className="h-3.5 w-3.5 flex-shrink-0" />
+                Leave all fields empty to use the built-in default content. Changes take effect after clicking <strong>Save All Changes</strong>.
+            </p>
+        </div>
+    );
+};
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Main AdminSettings Component
+   ───────────────────────────────────────────────────────────────────────── */
+
+const DEFAULT_LEGAL_CONTENT = {
+    customerPrivacyPolicy: '',
+    customerTerms:         '',
+    customerAboutUs:       '',
+    deliveryPrivacyPolicy: '',
+    deliveryTerms:         '',
+    deliveryAboutUs:       '',
+};
 
 const AdminSettings = () => {
     const normalizeProductApprovalConfig = (raw) => {
@@ -32,6 +363,18 @@ const AdminSettings = () => {
         return {
             sellerCreateRequiresApproval: Boolean(config.sellerCreateRequiresApproval),
             sellerEditRequiresApproval: Boolean(config.sellerEditRequiresApproval),
+        };
+    };
+
+    const normalizeLegalContent = (raw) => {
+        const lc = raw?.legalContent || {};
+        return {
+            customerPrivacyPolicy: lc.customerPrivacyPolicy || '',
+            customerTerms:         lc.customerTerms         || '',
+            customerAboutUs:       lc.customerAboutUs        || '',
+            deliveryPrivacyPolicy: lc.deliveryPrivacyPolicy || '',
+            deliveryTerms:         lc.deliveryTerms          || '',
+            deliveryAboutUs:       lc.deliveryAboutUs        || '',
         };
     };
 
@@ -76,6 +419,7 @@ const AdminSettings = () => {
             sellerCreateRequiresApproval: false,
             sellerEditRequiresApproval: false,
         },
+        legalContent: { ...DEFAULT_LEGAL_CONTENT },
     });
 
     useEffect(() => {
@@ -88,6 +432,7 @@ const AdminSettings = () => {
                         ...prev,
                         ...data,
                         productApproval: normalizeProductApprovalConfig(data || {}),
+                        legalContent: normalizeLegalContent(data),
                         keywords: Array.isArray(data.keywords) ? data.keywords : (data.metaKeywords ? data.metaKeywords.split(',').map(k => k.trim()).filter(Boolean) : []),
                         returnDeliveryCommission: data.returnDeliveryCommission ?? 0,
                     }));
@@ -111,12 +456,13 @@ const AdminSettings = () => {
             };
             const res = await adminApi.updateSettings(payload);
             const updatedData = res.data?.result ?? res.data;
-            
+
             if (updatedData) {
                 setSettings(prev => ({
                     ...prev,
                     ...updatedData,
                     productApproval: normalizeProductApprovalConfig(updatedData),
+                    legalContent: normalizeLegalContent(updatedData),
                 }));
             }
             await refetch({ forceRefresh: true });
@@ -141,6 +487,10 @@ const AdminSettings = () => {
                 [field]: !Boolean(prev.productApproval?.[field]),
             },
         }));
+    };
+
+    const handleLegalContentChange = (newLegal) => {
+        setSettings(prev => ({ ...prev, legalContent: newLegal }));
     };
 
     const handleLogoUpload = async (e) => {
@@ -196,11 +546,9 @@ const AdminSettings = () => {
     };
 
     const tabs = [
-        { id: 'general', label: 'General', icon: Settings },
-        { id: 'branding', label: 'Branding', icon: Globe },
-        { id: 'legal', label: 'Legal & Contact', icon: Building2 },
-        { id: 'social', label: 'Social & Apps', icon: Share2 },
-        { id: 'seo', label: 'SEO & Meta', icon: Search },
+        { id: 'general',  label: 'General',        icon: Settings  },
+        { id: 'branding', label: 'Branding',        icon: Globe     },
+        { id: 'legal',    label: 'Legal Content',   icon: FileText  },
     ];
 
     return (
@@ -251,6 +599,9 @@ const AdminSettings = () => {
                         >
                             <tab.icon className={cn("h-4 w-4", activeTab === tab.id ? "text-brand-600" : "text-slate-400")} />
                             {tab.label}
+                            {tab.id === 'legal' && (
+                                <span className="ml-auto text-[9px] font-black bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-md uppercase tracking-wide">CMS</span>
+                            )}
                         </button>
                     ))}
                 </div>
@@ -267,7 +618,7 @@ const AdminSettings = () => {
                     )}
 
                     {/* General Settings */}
-                    {activeTab === 'general' && (
+                    {!isLoading && activeTab === 'general' && (
                         <Card className="border-none shadow-xl ring-1 ring-slate-100 bg-white rounded-xl overflow-hidden">
                             <div className="p-6 border-b border-slate-50 bg-slate-50/30">
                                 <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-3">
@@ -317,87 +668,12 @@ const AdminSettings = () => {
                                         className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/10 transition-all"
                                     />
                                 </div>
-                                <div className="md:col-span-2 rounded-2xl bg-slate-50 border border-slate-200 px-5 py-4 flex items-center justify-between gap-4">
-                                    <div>
-                                        <p className="text-sm font-black text-slate-900">Auto Low Stock Alerts</p>
-                                        <p className="text-xs font-bold text-slate-500 mt-1">
-                                            Automatically notify sellers when any product stock drops to its low-stock threshold.
-                                        </p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        role="switch"
-                                        aria-checked={settings.lowStockAlertsEnabled}
-                                        onClick={() => handleInputChange('lowStockAlertsEnabled', !settings.lowStockAlertsEnabled)}
-                                        className={cn(
-                                            "relative inline-flex h-7 w-14 items-center rounded-full transition-colors duration-200",
-                                            settings.lowStockAlertsEnabled ? "bg-emerald-500" : "bg-slate-300"
-                                        )}
-                                    >
-                                        <span
-                                            className={cn(
-                                                "inline-block h-6 w-6 transform rounded-full bg-white shadow transition-transform duration-200",
-                                                settings.lowStockAlertsEnabled ? "translate-x-7" : "translate-x-1"
-                                            )}
-                                        />
-                                    </button>
-                                </div>
-                                <div className="md:col-span-2 rounded-2xl bg-slate-50 border border-slate-200 px-5 py-4 flex items-center justify-between gap-4">
-                                    <div>
-                                        <p className="text-sm font-black text-slate-900">Require approval for new seller products</p>
-                                        <p className="text-xs font-bold text-slate-500 mt-1">
-                                            When enabled, newly added seller products remain hidden until approved by admin.
-                                        </p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        role="switch"
-                                        aria-checked={Boolean(settings.productApproval?.sellerCreateRequiresApproval)}
-                                        onClick={() => handleProductApprovalToggle('sellerCreateRequiresApproval')}
-                                        className={cn(
-                                            "relative inline-flex h-7 w-14 items-center rounded-full transition-colors duration-200",
-                                            settings.productApproval?.sellerCreateRequiresApproval ? "bg-emerald-500" : "bg-slate-300"
-                                        )}
-                                    >
-                                        <span
-                                            className={cn(
-                                                "inline-block h-6 w-6 transform rounded-full bg-white shadow transition-transform duration-200",
-                                                settings.productApproval?.sellerCreateRequiresApproval ? "translate-x-7" : "translate-x-1"
-                                            )}
-                                        />
-                                    </button>
-                                </div>
-                                <div className="md:col-span-2 rounded-2xl bg-slate-50 border border-slate-200 px-5 py-4 flex items-center justify-between gap-4">
-                                    <div>
-                                        <p className="text-sm font-black text-slate-900">Require approval for seller product edits</p>
-                                        <p className="text-xs font-bold text-slate-500 mt-1">
-                                            When enabled, seller changes to existing products remain hidden until approved by admin.
-                                        </p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        role="switch"
-                                        aria-checked={Boolean(settings.productApproval?.sellerEditRequiresApproval)}
-                                        onClick={() => handleProductApprovalToggle('sellerEditRequiresApproval')}
-                                        className={cn(
-                                            "relative inline-flex h-7 w-14 items-center rounded-full transition-colors duration-200",
-                                            settings.productApproval?.sellerEditRequiresApproval ? "bg-emerald-500" : "bg-slate-300"
-                                        )}
-                                    >
-                                        <span
-                                            className={cn(
-                                                "inline-block h-6 w-6 transform rounded-full bg-white shadow transition-transform duration-200",
-                                                settings.productApproval?.sellerEditRequiresApproval ? "translate-x-7" : "translate-x-1"
-                                            )}
-                                        />
-                                    </button>
-                                </div>
                             </div>
                         </Card>
                     )}
 
                     {/* Branding Settings */}
-                    {activeTab === 'branding' && (
+                    {!isLoading && activeTab === 'branding' && (
                         <Card className="border-none shadow-xl ring-1 ring-slate-100 bg-white rounded-xl overflow-hidden">
                             <div className="p-6 border-b border-slate-50 bg-slate-50/30">
                                 <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-3">
@@ -513,184 +789,24 @@ const AdminSettings = () => {
                         </Card>
                     )}
 
-                    {/* Legal Settings */}
-                    {activeTab === 'legal' && (
+                    {/* Legal Content Tab */}
+                    {!isLoading && activeTab === 'legal' && (
                         <Card className="border-none shadow-xl ring-1 ring-slate-100 bg-white rounded-xl overflow-hidden">
                             <div className="p-6 border-b border-slate-50 bg-slate-50/30">
                                 <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-3">
-                                    Legal Entity & Contact
+                                    <FileText className="h-4 w-4 text-indigo-500" />
+                                    Legal &amp; Informational Content
+                                    <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg normal-case tracking-normal">CMS</span>
                                 </h3>
+                                <p className="text-xs text-slate-500 mt-1">
+                                    Manage Privacy Policy, Terms &amp; Conditions, and About Us separately for customers and delivery boys.
+                                </p>
                             </div>
-                            <div className="p-8 grid grid-cols-1 gap-4">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="space-y-3">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Company Legal Name</label>
-                                        <input
-                                            type="text"
-                                            value={settings.companyName}
-                                            onChange={(e) => handleInputChange('companyName', e.target.value)}
-                                            className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/10 transition-all"
-                                        />
-                                    </div>
-                                    <div className="space-y-3">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tax ID / GSTIN / VAT</label>
-                                        <div className="relative group">
-                                            <CreditCard className="absolute left-5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                                            <input
-                                                type="text"
-                                                value={settings.taxId}
-                                                onChange={(e) => handleInputChange('taxId', e.target.value)}
-                                                className="w-full pl-12 pr-5 py-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/10 transition-all"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="space-y-3">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Registered Office Address</label>
-                                    <div className="relative group">
-                                        <MapPin className="absolute left-5 top-6 h-4 w-4 text-slate-400" />
-                                        <textarea
-                                            rows={3}
-                                            value={settings.address}
-                                            onChange={(e) => handleInputChange('address', e.target.value)}
-                                            className="w-full pl-12 pr-5 py-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/10 transition-all resize-none"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Return delivery commission input moved to Fees & Charges → Delivery Fee Settings */}
-                            </div>
-                        </Card>
-                    )}
-
-                    {/* Social & Apps */}
-                    {activeTab === 'social' && (
-                        <Card className="border-none shadow-xl ring-1 ring-slate-100 bg-white rounded-xl overflow-hidden">
-                            <div className="p-6 border-b border-slate-50 bg-slate-50/30">
-                                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-3">
-                                    Social Media & App Links
-                                </h3>
-                            </div>
-                            <div className="p-8 space-y-8">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="space-y-3">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Facebook URL</label>
-                                        <div className="relative group">
-                                            <Facebook className="absolute left-5 top-1/2 -translate-y-1/2 h-4 w-4 text-brand-600" />
-                                            <input
-                                                type="url"
-                                                value={settings.facebook}
-                                                onChange={(e) => handleInputChange('facebook', e.target.value)}
-                                                className="w-full pl-12 pr-5 py-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/10 transition-all"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-3">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Twitter / X URL</label>
-                                        <div className="relative group">
-                                            <Twitter className="absolute left-5 top-1/2 -translate-y-1/2 h-4 w-4 text-brand-500" />
-                                            <input
-                                                type="url"
-                                                value={settings.twitter}
-                                                onChange={(e) => handleInputChange('twitter', e.target.value)}
-                                                className="w-full pl-12 pr-5 py-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/10 transition-all"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-3">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Instagram URL</label>
-                                        <div className="relative group">
-                                            <Instagram className="absolute left-5 top-1/2 -translate-y-1/2 h-4 w-4 text-pink-600" />
-                                            <input
-                                                type="url"
-                                                value={settings.instagram}
-                                                onChange={(e) => handleInputChange('instagram', e.target.value)}
-                                                className="w-full pl-12 pr-5 py-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/10 transition-all"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-3">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">YouTube URL</label>
-                                        <div className="relative group">
-                                            <Youtube className="absolute left-5 top-1/2 -translate-y-1/2 h-4 w-4 text-red-600" />
-                                            <input
-                                                type="url"
-                                                value={settings.youtube}
-                                                onChange={(e) => handleInputChange('youtube', e.target.value)}
-                                                className="w-full pl-12 pr-5 py-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/10 transition-all"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="pt-6 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="space-y-3">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Play Store Link (Android)</label>
-                                        <div className="relative group">
-                                            <Smartphone className="absolute left-5 top-1/2 -translate-y-1/2 h-4 w-4 text-brand-600" />
-                                            <input
-                                                type="url"
-                                                value={settings.playStoreLink}
-                                                onChange={(e) => handleInputChange('playStoreLink', e.target.value)}
-                                                className="w-full pl-12 pr-5 py-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/10 transition-all"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-3">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">App Store Link (iOS)</label>
-                                        <div className="relative group">
-                                            <Smartphone className="absolute left-5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-800" />
-                                            <input
-                                                type="url"
-                                                value={settings.appStoreLink}
-                                                onChange={(e) => handleInputChange('appStoreLink', e.target.value)}
-                                                className="w-full pl-12 pr-5 py-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/10 transition-all"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </Card>
-                    )}
-
-                    {/* SEO Settings */}
-                    {activeTab === 'seo' && (
-                        <Card className="border-none shadow-xl ring-1 ring-slate-100 bg-white rounded-xl overflow-hidden">
-                            <div className="p-6 border-b border-slate-50 bg-slate-50/30">
-                                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-3">
-                                    SEO & Meta Information
-                                </h3>
-                            </div>
-                            <div className="p-8 space-y-6">
-                                <div className="space-y-3">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Default Meta Title</label>
-                                    <input
-                                        type="text"
-                                        value={settings.metaTitle}
-                                        onChange={(e) => handleInputChange('metaTitle', e.target.value)}
-                                        className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/10 transition-all"
-                                    />
-                                </div>
-                                <div className="space-y-3">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Default Meta Description</label>
-                                    <textarea
-                                        rows={3}
-                                        value={settings.metaDescription}
-                                        onChange={(e) => handleInputChange('metaDescription', e.target.value)}
-                                        className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/10 transition-all resize-none"
-                                    />
-                                    <p className="text-[10px] font-bold text-slate-400 italic text-right">Recommended length: 150-160 characters</p>
-                                </div>
-                                <div className="space-y-3">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Meta Keywords</label>
-                                    <input
-                                        type="text"
-                                        value={settings.metaKeywords}
-                                        onChange={(e) => handleInputChange('metaKeywords', e.target.value)}
-                                        className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/10 transition-all"
-                                        placeholder="keyword1, keyword2, keyword3"
-                                    />
-                                    <p className="text-[10px] font-bold text-slate-400 italic text-right">Separate keywords with commas</p>
-                                </div>
+                            <div className="p-6">
+                                <LegalContentTab
+                                    legalContent={settings.legalContent}
+                                    onChange={handleLegalContentChange}
+                                />
                             </div>
                         </Card>
                     )}
@@ -701,4 +817,3 @@ const AdminSettings = () => {
 };
 
 export default AdminSettings;
-

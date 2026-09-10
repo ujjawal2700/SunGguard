@@ -1,13 +1,18 @@
 import React from 'react';
-import { ChevronLeft, Truck, Heart, ShoppingBag, Info } from 'lucide-react';
+import { ChevronLeft, Truck, Heart, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useSettings } from '@core/context/SettingsContext';
 
-const AboutPage = () => {
+/**
+ * About Us page for Delivery Boys.
+ * Content is authored by admin via Settings → Legal Content → Delivery Boy → About Us.
+ * Falls back to a delivery-partner-specific static layout if no CMS content exists.
+ */
+const DeliveryAboutPage = () => {
     const navigate = useNavigate();
     const { settings } = useSettings();
     const appName = settings?.appName || 'App';
-    const cmsContent = settings?.legalContent?.customerAboutUs || '';
+    const cmsContent = settings?.legalContent?.deliveryAboutUs || '';
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans pb-24">
@@ -26,13 +31,13 @@ const AboutPage = () => {
                 {cmsContent ? (
                     /* Admin-authored content from CMS */
                     <>
-                        {/* Hero Section */}
                         <div className="rounded-xl p-5 text-center bg-white border border-slate-200">
                             <div className="flex flex-col items-center">
-                                <div className="bg-slate-100 p-3 rounded-lg mb-3">
-                                    <ShoppingBag size={24} className="text-slate-700" />
+                                <div className="bg-amber-50 p-3 rounded-lg mb-3">
+                                    <Truck size={24} className="text-amber-600" />
                                 </div>
                                 <h2 className="text-xl font-semibold mb-1 tracking-tight text-slate-900">{appName}</h2>
+                                <p className="text-slate-500 text-xs font-medium">Delivery Partner Programme</p>
                             </div>
                         </div>
 
@@ -44,52 +49,49 @@ const AboutPage = () => {
                         </div>
                     </>
                 ) : (
-                    /* Fallback: built-in static content */
+                    /* Fallback: delivery-partner specific static content */
                     <>
-                        {/* Hero Section */}
                         <div className="rounded-xl p-5 text-center bg-white border border-slate-200">
                             <div className="flex flex-col items-center">
-                                <div className="bg-slate-100 p-3 rounded-lg mb-3">
-                                    <ShoppingBag size={24} className="text-slate-700" />
+                                <div className="bg-amber-50 p-3 rounded-lg mb-3">
+                                    <Truck size={24} className="text-amber-600" />
                                 </div>
                                 <h2 className="text-xl font-semibold mb-1 tracking-tight text-slate-900">{appName}</h2>
-                                <p className="text-slate-600 text-sm max-w-sm mx-auto">Delivering happiness to your doorstep in minutes.</p>
+                                <p className="text-slate-600 text-sm max-w-sm mx-auto">Empowering delivery partners with fair pay and flexible hours.</p>
                             </div>
                         </div>
 
-                        {/* Mission Card */}
                         <div className="bg-white rounded-xl p-4 border border-slate-200">
                             <div className="flex items-center gap-3 mb-3">
-                                <div className="h-9 w-9 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700">
-                                    <Truck size={18} />
+                                <div className="h-9 w-9 rounded-lg bg-amber-50 flex items-center justify-center text-amber-600">
+                                    <Star size={18} />
                                 </div>
-                                <h3 className="text-base font-semibold text-slate-800">Our Mission</h3>
+                                <h3 className="text-base font-semibold text-slate-800">Our Promise to You</h3>
                             </div>
                             <p className="text-slate-600 leading-relaxed text-sm">
-                                To revolutionize quick commerce by providing the fastest, most reliable delivery of daily essentials, ensuring quality and convenience for every household.
+                                We believe our delivery partners are the backbone of our service. We are committed to providing a transparent, rewarding, and safe working experience.
                             </p>
                         </div>
 
-                        {/* Values Card */}
                         <div className="bg-white rounded-xl p-4 border border-slate-200">
                             <div className="flex items-center gap-3 mb-3">
-                                <div className="h-9 w-9 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700">
+                                <div className="h-9 w-9 rounded-lg bg-amber-50 flex items-center justify-center text-amber-600">
                                     <Heart size={18} />
                                 </div>
-                                <h3 className="text-base font-semibold text-slate-800">Our Values</h3>
+                                <h3 className="text-base font-semibold text-slate-800">Partner Benefits</h3>
                             </div>
                             <ul className="space-y-3 text-sm text-slate-600">
                                 <li className="flex gap-2">
-                                    <span className="h-1.5 w-1.5 rounded-full bg-slate-300 mt-2 flex-shrink-0" />
-                                    <span><strong>Customer First:</strong> Your satisfaction is our top priority.</span>
+                                    <span className="h-1.5 w-1.5 rounded-full bg-amber-300 mt-2 flex-shrink-0" />
+                                    <span><strong>Flexible Hours:</strong> Work at your own pace and schedule.</span>
                                 </li>
                                 <li className="flex gap-2">
-                                    <span className="h-1.5 w-1.5 rounded-full bg-slate-300 mt-2 flex-shrink-0" />
-                                    <span><strong>Quality Assurance:</strong> We deliver only the freshest and best products.</span>
+                                    <span className="h-1.5 w-1.5 rounded-full bg-amber-300 mt-2 flex-shrink-0" />
+                                    <span><strong>Instant Payouts:</strong> Get your earnings transferred quickly.</span>
                                 </li>
                                 <li className="flex gap-2">
-                                    <span className="h-1.5 w-1.5 rounded-full bg-slate-300 mt-2 flex-shrink-0" />
-                                    <span><strong>Speed with Safety:</strong> Fast delivery without compromising on safety standards.</span>
+                                    <span className="h-1.5 w-1.5 rounded-full bg-amber-300 mt-2 flex-shrink-0" />
+                                    <span><strong>24/7 Support:</strong> Our team is always here when you need help.</span>
                                 </li>
                             </ul>
                         </div>
@@ -105,4 +107,4 @@ const AboutPage = () => {
     );
 };
 
-export default AboutPage;
+export default DeliveryAboutPage;

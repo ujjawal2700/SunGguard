@@ -8,6 +8,8 @@ const PrivacyPage = () => {
     const navigate = useNavigate();
     const { settings } = useSettings();
     const appName = settings?.appName || 'App';
+    const cmsContent = settings?.legalContent?.customerPrivacyPolicy || '';
+
     return (
         <div className="min-h-screen bg-slate-50 font-sans pb-10">
             {/* Header */}
@@ -33,7 +35,16 @@ const PrivacyPage = () => {
                         </div>
                     </div>
 
-                    <PrivacyBody appName={appName} />
+                    {cmsContent ? (
+                        /* Admin-authored content from CMS */
+                        <div
+                            className="prose prose-slate prose-sm max-w-none text-slate-600"
+                            dangerouslySetInnerHTML={{ __html: cmsContent }}
+                        />
+                    ) : (
+                        /* Fallback: built-in static content */
+                        <PrivacyBody appName={appName} />
+                    )}
                 </div>
             </div>
         </div>
@@ -41,4 +52,3 @@ const PrivacyPage = () => {
 };
 
 export default PrivacyPage;
-

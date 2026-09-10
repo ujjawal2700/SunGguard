@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   Bell,
   Star,
@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Clock,
   Store,
+  Phone,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -71,6 +72,24 @@ const Dashboard = () => {
     lastFetchedAt: 0,
   });
   const cityParcelRequestRef = useRef({ inFlight: false, lastFetchedAt: 0 });
+
+  const profileImage = useMemo(() => {
+    if (user?.profileImage) return user.profileImage;
+    const seed = encodeURIComponent(user?.name || user?.phone || "delivery");
+    return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`;
+  }, [user?.profileImage, user?.name, user?.phone]);
+
+  const partnerIdShort = useMemo(
+    () => String(user?._id || user?.id || "").slice(-6).toUpperCase() || "N/A",
+    [user?._id, user?.id],
+  );
+
+  const formatPhone = (phone) => {
+    if (!phone) return "N/A";
+    const digits = String(phone).replace(/\D/g, "");
+    if (digits.length === 10) return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+    return phone;
+  };
 
   // Sync isOnline with user profile from context
   useEffect(() => {
@@ -315,7 +334,7 @@ const Dashboard = () => {
             className="w-12 h-12 rounded-full overflow-hidden border-2 border-primary ring-2 ring-primary/20 shadow-sm cursor-pointer"
             onClick={() => navigate("/delivery/profile")}>
             <img
-              src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix"
+              src={profileImage}
               alt="Profile"
               className="w-full h-full object-cover"
             />
@@ -327,12 +346,16 @@ const Dashboard = () => {
               {user?.name || "Delivery Partner"}
             </h2>
             <div className="flex items-center text-sm font-medium">
-              <span className="flex items-center bg-yellow-50 text-yellow-600 px-1.5 py-0.5 rounded border border-yellow-100">
-                <Star size={12} fill="currentColor" className="mr-1" />
-                4.8
-              </span>
-              <span className="text-gray-300 mx-2">•</span>
-              <span className="ds-caption text-gray-500">ID: 882190</span>
+              {user?.rating ? (
+                <span className="flex items-center bg-yellow-50 text-yellow-600 px-1.5 py-0.5 rounded border border-yellow-100">
+                  <Star size={12} fill="currentColor" className="mr-1" />
+                  {Number(user.rating).toFixed(1)}
+                </span>
+              ) : null}
+              {user?.rating ? (
+                <span className="text-gray-300 mx-2">•</span>
+              ) : null}
+              <span className="ds-caption text-gray-500">ID: {partnerIdShort}</span>
             </div>
           </div>
         </div>

@@ -1,15 +1,19 @@
 import React from 'react';
-import { ChevronLeft, ScrollText } from 'lucide-react';
+import { ChevronLeft, Shield } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useSettings } from '@core/context/SettingsContext';
-import { LEGAL_UPDATED, TermsBody } from '@shared/components/legal/legalContent';
+import { LEGAL_UPDATED, PrivacyBody } from '@shared/components/legal/legalContent';
 
-const TermsPage = () => {
+/**
+ * Privacy Policy page for Delivery Boys.
+ * Content is authored by admin via Settings → Legal Content → Delivery Boy → Privacy Policy.
+ * Falls back to the shared static PrivacyBody if no CMS content exists.
+ */
+const DeliveryPrivacyPage = () => {
     const navigate = useNavigate();
     const { settings } = useSettings();
     const appName = settings?.appName || 'App';
-    const companyName = settings?.companyName || appName;
-    const cmsContent = settings?.legalContent?.customerTerms || '';
+    const cmsContent = settings?.legalContent?.deliveryPrivacyPolicy || '';
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans pb-10">
@@ -21,30 +25,28 @@ const TermsPage = () => {
                 >
                     <ChevronLeft size={24} className="text-slate-600" />
                 </button>
-                <h1 className="text-lg font-black text-slate-800">Terms &amp; Conditions</h1>
+                <h1 className="text-lg font-black text-slate-800">Privacy Policy</h1>
             </div>
 
             <div className="p-5 max-w-3xl mx-auto space-y-6">
                 <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
                     <div className="flex items-center gap-4 mb-6">
-                        <div className="h-12 w-12 rounded-2xl bg-brand-50 flex items-center justify-center text-primary">
-                            <ScrollText size={24} />
+                        <div className="h-12 w-12 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-600">
+                            <Shield size={24} />
                         </div>
                         <div>
-                            <h2 className="text-xl font-bold text-slate-800">Terms of Use</h2>
-                            <p className="text-xs text-slate-500 font-medium">Last updated: {LEGAL_UPDATED}</p>
+                            <h2 className="text-xl font-bold text-slate-800">Privacy Policy</h2>
+                            <p className="text-xs text-slate-500 font-medium">Delivery Partner — Last updated: {LEGAL_UPDATED}</p>
                         </div>
                     </div>
 
                     {cmsContent ? (
-                        /* Admin-authored content from CMS */
                         <div
                             className="prose prose-slate prose-sm max-w-none text-slate-600"
                             dangerouslySetInnerHTML={{ __html: cmsContent }}
                         />
                     ) : (
-                        /* Fallback: built-in static content */
-                        <TermsBody appName={appName} companyName={companyName} />
+                        <PrivacyBody appName={appName} />
                     )}
                 </div>
             </div>
@@ -52,4 +54,4 @@ const TermsPage = () => {
     );
 };
 
-export default TermsPage;
+export default DeliveryPrivacyPage;

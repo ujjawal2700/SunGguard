@@ -29,6 +29,10 @@ import ParcelTaskPage from "../pages/ParcelTaskPage";
 import CityParcelTaskPage from "../pages/CityParcelTaskPage";
 import CityParcelJobs from "../pages/CityParcelJobs";
 import NotFoundPage from "@shared/components/NotFoundPage";
+// Legal / informational pages for delivery partners
+import DeliveryPrivacyPage from "../pages/DeliveryPrivacyPage";
+import DeliveryTermsPage from "../pages/DeliveryTermsPage";
+import DeliveryAboutPage from "../pages/DeliveryAboutPage";
 
 const DeliveryRoutes = () => {
   useEffect(() => {
@@ -62,6 +66,10 @@ const DeliveryRoutes = () => {
         <Route path="profile/help-support" element={<HelpSupport />} />
         <Route path="profile/withdrawals" element={<Withdrawals />} />
         <Route path="profile/wallet" element={<Wallet />} />
+        {/* Legal / Informational pages for delivery partners */}
+        <Route path="profile/privacy" element={<DeliveryPrivacyPage />} />
+        <Route path="profile/terms" element={<DeliveryTermsPage />} />
+        <Route path="profile/about" element={<DeliveryAboutPage />} />
         <Route path="notifications" element={<Notifications />} />
         <Route path="parcel-task/:parcelId" element={<ParcelTaskPage />} />
         {/* City Parcel is a separate module; the pickup-service route above is unchanged. */}
