@@ -369,14 +369,36 @@ export async function buildPorterInvoice({ kind, bookingId, requesterId, isAdmin
       : parcelInvoiceBody(booking);
 
   const charges = fareLines(breakdown, kind);
+  /** What the customer saved in total — the headline figure, tax included. */
   const discountAmount = round2(booking.discountAmount || 0);
+
+  /**
+   * The discount as it applies to the TAXABLE value.
+   *
+   * The coupon comes off the tax-inclusive fare, so part of what the customer
+   * saved is tax they no longer pay. An invoice line of the full saving
+   * printed above a tax line computed after the discount does not add up:
+   * the charges, the discount and the tax have to reconcile to the total on
+   * the face of the document.
+   *
+   * Both halves are recorded, so this is a subtraction rather than a
+   * re-derivation. Falls back to the full amount for bookings written before
+   * the pre-discount value was kept, and for untaxed bookings the two are the
+   * same number anyway.
+   */
+  const preDiscountTaxable = round2(breakdown.preDiscountTaxableAmount || 0);
+  const taxableDiscount =
+    preDiscountTaxable > 0 && Number(breakdown.taxableAmount) > 0
+      ? round2(preDiscountTaxable - Number(breakdown.taxableAmount))
+      : discountAmount;
+
   if (discountAmount > 0) {
     // Bypasses `fareLines`'s zero-value filter on purpose — a negative
     // amount would otherwise be silently dropped by its `> 0` guard.
     charges.push(
       line(
         `Coupon discount${booking.couponSnapshot?.code ? ` (${booking.couponSnapshot.code})` : ""}`,
-        -discountAmount,
+        -taxableDiscount,
       ),
     );
   }
@@ -395,9 +417,18 @@ export async function buildPorterInvoice({ kind, bookingId, requesterId, isAdmin
    * total-minus-tax is the single fastest way to make an invoice look wrong.
    * `taxableAmount` is what the tax was actually computed on, so it is the
    * only number that reconciles.
+   *
+   * `??` is not enough here: outstation bookings written before the tax split
+   * was persisted carry a schema-default `taxableAmount` of 0, which is a real
+   * number and so survives `??` — printing a ₹0 subtotal under a full total.
+   * A zero taxable value on a booking that charged something is missing data,
+   * not a free delivery, so it falls back to the same derivation.
    */
+  const storedTaxable = Number(breakdown.taxableAmount) || 0;
   const subtotal = round2(
-    breakdown.taxableAmount ?? round2(booking.fare - (breakdown.gstAmount || 0)),
+    storedTaxable > 0
+      ? storedTaxable
+      : round2(payableTotal - (Number(breakdown.gstAmount) || 0)),
   );
 
   return {
@@ -416,7 +447,13 @@ export async function buildPorterInvoice({ kind, bookingId, requesterId, isAdmin
     tax,
     discount:
       discountAmount > 0
-        ? { code: booking.couponSnapshot?.code || "", amount: discountAmount }
+        ? {
+            code: booking.couponSnapshot?.code || "",
+            /** Off the taxable value — the figure the charge lines use. */
+            amount: taxableDiscount,
+            /** Total saving including the tax not charged. For "you saved". */
+            totalSaving: discountAmount,
+          }
         : null,
     total: payableTotal,
     amountInWords: rupeesInWords(payableTotal),

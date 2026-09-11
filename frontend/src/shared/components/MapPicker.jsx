@@ -194,8 +194,21 @@ const MapPicker = ({
   const handlePlaceChanged = () => {
     suppressMapClickUntilRef.current = Date.now() + 600;
     if (autocompleteRef.current) {
+      /**
+       * `getPlace()` can hand back `undefined` — Google fires `place_changed`
+       * whenever the field is committed, including before the widget has
+       * resolved a prediction, which is exactly what selecting with the
+       * keyboard hits. Reading `.geometry` off it threw a TypeError that killed
+       * this handler, so the pin silently stayed on the map's default centre
+       * and the form saved those coordinates instead. On the warehouse picker
+       * that meant every hub was filed at the default city no matter what the
+       * admin searched for — and the outstation first-mile distance, and so the
+       * fare, is measured from that hub.
+       *
+       * Guarded the same way `ZoneMapEditor` already guards its own handler.
+       */
       const place = autocompleteRef.current.getPlace();
-      if (place.geometry) {
+      if (place?.geometry?.location) {
         clearCircleOverlay();
         const newPos = {
           lat: place.geometry.location.lat(),

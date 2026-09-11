@@ -132,6 +132,72 @@ export function applyGst(subtotal, gstConfig = {}) {
 }
 
 /**
+ * Re-attribute tax after a coupon has come off the fare.
+ *
+ * The rate card is priced, taxed, and only then discounted — `applyGst` runs
+ * inside the fare calculators, before the coupon engine has seen the booking.
+ * That leaves the stored tax computed on the UNDISCOUNTED fare while the
+ * customer is only ever charged `payableFare`. The booking then claims to have
+ * charged more GST than the customer handed over, and it is that claimed
+ * figure the invoice prints and the GST report totals — so the operation
+ * remits tax on money it never received.
+ *
+ * GST is due on the transaction value actually charged. A discount recorded on
+ * the face of the invoice at the time of supply reduces that value, so the tax
+ * is re-derived from `payableFare` treated as tax-inclusive.
+ *
+ * The customer-facing total is deliberately NOT touched. `payableFare` in and
+ * `taxableAmount + gstAmount` out are the same number, so nobody is charged a
+ * rupee more or less than before — only the split between value and tax moves,
+ * and it moves onto the money that actually changed hands.
+ *
+ * `preDiscountTaxableAmount` keeps what the rate card priced before the coupon,
+ * so the margin the discount came out of stays auditable.
+ */
+export function rebaseGstAfterDiscount(fareBreakdown = {}, payableFare = 0) {
+  const payablePaise = Math.max(0, toPaise(payableFare));
+  const percent = Number(fareBreakdown?.gstPercent) || 0;
+  const chargedGst = Number(fareBreakdown?.gstAmount) || 0;
+  const preDiscountTaxable =
+    Number(fareBreakdown?.taxableAmount) || Number(fareBreakdown?.fare) || 0;
+
+  // No tax on this booking — the whole consideration is taxable value, and
+  // saying so keeps the GST report's taxable column equal to what was billed
+  // rather than to the pre-coupon fare.
+  if (!(chargedGst > 0) || percent <= 0) {
+    return {
+      gstPercent: percent,
+      gstAmount: 0,
+      cgst: 0,
+      sgst: 0,
+      igst: 0,
+      taxableAmount: fromPaise(payablePaise),
+      preDiscountTaxableAmount: roundCurrency(preDiscountTaxable),
+      gstInclusive: Boolean(fareBreakdown?.gstInclusive),
+      gstin: String(fareBreakdown?.gstin || ""),
+    };
+  }
+
+  // The discounted total is tax-inclusive by construction: it is what the
+  // customer pays, tax and all. Backing the tax out of it is the same
+  // arithmetic `applyGst` uses for an inclusive rate card, so the two paths
+  // cannot round differently.
+  const taxablePaise = Math.round(payablePaise / (1 + percent / 100));
+  const gstPaise = payablePaise - taxablePaise;
+
+  return {
+    gstPercent: percent,
+    gstAmount: fromPaise(gstPaise),
+    ...splitHalves(gstPaise),
+    igst: 0,
+    taxableAmount: fromPaise(taxablePaise),
+    preDiscountTaxableAmount: roundCurrency(preDiscountTaxable),
+    gstInclusive: Boolean(fareBreakdown?.gstInclusive),
+    gstin: String(fareBreakdown?.gstin || ""),
+  };
+}
+
+/**
  * The tax that was charged on an already-saved booking.
  *
  * Reads the stored breakdown rather than recomputing from the live config —

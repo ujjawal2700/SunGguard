@@ -80,6 +80,24 @@ function money(n) {
 }
 
 /**
+ * The pre-tax value of a parcel, for the legacy whole-fare payout fallbacks.
+ *
+ * `parcel.fare` became tax-inclusive when GST was added to the rate card, so
+ * taking a rider's percentage straight off it hands them a slice of the
+ * government's tax — the one thing the payout rules say must never happen.
+ * `taxableAmount` is the exact pre-tax value when it is recorded; subtracting
+ * the recorded tax is exact too. A booking that charged no tax is unaffected,
+ * which is every booking made before GST was switched on.
+ */
+function preTaxFare(parcel) {
+  const breakdown = parcel?.fareBreakdown || {};
+  const taxable = Number(breakdown.taxableAmount) || 0;
+  if (taxable > 0) return taxable;
+  const fare = Number(parcel?.fare) || 0;
+  return Math.max(0, money(fare - (Number(breakdown.gstAmount) || 0)));
+}
+
+/**
  * Rider payout = % of base fare + % of distance fare (weight charge excluded).
  * Accepts either a parcel doc or explicit breakdown numbers.
  */
@@ -110,9 +128,9 @@ export function computeRiderParcelEarnings(parcelOrFare, settingsOrPercent = 80)
   let distanceFare = Number(breakdown.distanceFare);
 
   // Older parcels without breakdown: fall back to total fare share (legacy).
+  // Taken on the PRE-TAX value — see `preTaxFare`.
   if (!Number.isFinite(baseFare) && !Number.isFinite(distanceFare)) {
-    const fare = Number(parcelOrFare?.fare) || 0;
-    return money(fare * (legacy / 100));
+    return money(preTaxFare(parcelOrFare) * (legacy / 100));
   }
 
   baseFare = Number.isFinite(baseFare) ? baseFare : 0;

@@ -53,8 +53,13 @@ export const gstBreakdownFields = {
   cgst: { type: Number, default: 0 },
   sgst: { type: Number, default: 0 },
   igst: { type: Number, default: 0 },
-  /** Pre-tax value the rate was applied to. */
+  /** Pre-tax value the rate was applied to. Net of any coupon, because that
+   *  is the value actually charged and therefore the value tax is due on. */
   taxableAmount: { type: Number, default: 0 },
+  /** What the rate card priced before a coupon came off, so the margin the
+   *  discount was funded from stays auditable. Equal to `taxableAmount` when
+   *  no coupon was used. */
+  preDiscountTaxableAmount: { type: Number, default: 0 },
   /** Whether the quoted fare already contained the tax. */
   gstInclusive: { type: Boolean, default: false },
   /** The registration number in force when this was sold. */

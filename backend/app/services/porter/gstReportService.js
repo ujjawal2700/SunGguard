@@ -48,7 +48,24 @@ const SETTLED_MATCH = {
  */
 const TAX_SUMS = {
   bookings: { $sum: 1 },
-  gross: { $sum: { $ifNull: ["$fare", 0] } },
+  /**
+   * What the customer was actually billed, so this reconciles with the
+   * taxable + tax columns beside it and with the revenue on the dashboard.
+   * `fare` is the rate-card price BEFORE any coupon; summing it here made a
+   * discounted booking report more gross than the customer ever paid.
+   * Pre-coupon bookings have `payableFare` equal to `fare`, and rows written
+   * before the field existed fall back to it.
+   */
+  gross: {
+    $sum: {
+      $cond: [
+        { $gt: [{ $ifNull: ["$payableFare", 0] }, 0] },
+        "$payableFare",
+        { $ifNull: ["$fare", 0] },
+      ],
+    },
+  },
+  discount: { $sum: { $ifNull: ["$discountAmount", 0] } },
   taxable: {
     $sum: {
       $ifNull: [
@@ -67,6 +84,7 @@ const TAX_SUMS = {
 const emptyBucket = () => ({
   bookings: 0,
   gross: 0,
+  discount: 0,
   taxable: 0,
   gst: 0,
   cgst: 0,
@@ -78,6 +96,7 @@ function shapeBucket(row) {
   return {
     bookings: row.bookings || 0,
     gross: round2(row.gross),
+    discount: round2(row.discount),
     taxable: round2(row.taxable),
     gst: round2(row.gst),
     cgst: round2(row.cgst),
@@ -89,6 +108,7 @@ function addBuckets(a, b) {
   return {
     bookings: a.bookings + b.bookings,
     gross: round2(a.gross + b.gross),
+    discount: round2(a.discount + b.discount),
     taxable: round2(a.taxable + b.taxable),
     gst: round2(a.gst + b.gst),
     cgst: round2(a.cgst + b.cgst),
@@ -137,6 +157,7 @@ async function summariseCollection(Model, window) {
     outstanding: {
       bookings: charged.bookings - collected.bookings,
       gross: round2(charged.gross - collected.gross),
+      discount: round2(charged.discount - collected.discount),
       taxable: round2(charged.taxable - collected.taxable),
       gst: round2(charged.gst - collected.gst),
       cgst: round2(charged.cgst - collected.cgst),
@@ -262,6 +283,8 @@ export async function getPorterGstLedger({
 
   const project = {
     fare: 1,
+    payableFare: 1,
+    discountAmount: 1,
     createdAt: 1,
     paymentMethod: 1,
     paymentStatus: 1,
@@ -304,7 +327,8 @@ export async function getPorterGstLedger({
       date: row.createdAt,
       paymentMethod: row.paymentMethod,
       paymentStatus: row.paymentStatus,
-      total: round2(row.fare),
+      total: round2(row.payableFare > 0 ? row.payableFare : row.fare),
+      discount: round2(row.discountAmount),
       taxable: round2(row.fareBreakdown?.taxableAmount ?? row.fare),
       gstPercent: Number(row.fareBreakdown?.gstPercent) || 0,
       gst: round2(row.fareBreakdown?.gstAmount),
@@ -320,7 +344,8 @@ export async function getPorterGstLedger({
       paymentMethod: row.paymentMethod,
       paymentStatus: row.paymentStatus,
       destinationCity: row.destinationCity || "",
-      total: round2(row.fare),
+      total: round2(row.payableFare > 0 ? row.payableFare : row.fare),
+      discount: round2(row.discountAmount),
       taxable: round2(row.fareBreakdown?.taxableAmount ?? row.fare),
       gstPercent: Number(row.fareBreakdown?.gstPercent) || 0,
       gst: round2(row.fareBreakdown?.gstAmount),

@@ -66,6 +66,18 @@ const ORDER = [
 /* ------------------------------------------------------- consignment note --*/
 
 const ConsignmentNote = ({ parcel, phone }) => {
+  /**
+   * The note header prints the operator's name. It was reading a bare
+   * `appName`, which is declared in the page component further down this file
+   * and is not in scope here — so rendering this card threw
+   * "appName is not defined" and the error boundary replaced the whole
+   * tracking screen with "Oops!". That is the screen a customer is redirected
+   * to the moment they finish booking, so every local booking ended on a
+   * crashed page. Read it from the same settings context the page uses.
+   */
+  const { settings } = useSettings();
+  const appName = settings?.appName || "App";
+
   const [code, setCode] = useState(null);
   const [busy, setBusy] = useState(false);
   const [cooldown, setCooldown] = useState(0);

@@ -51,6 +51,7 @@ import {
   isNormalParcelPickupLate,
   NORMAL_PICKUP_SLA_MINUTES,
 } from "../services/parcelLateRefundService.js";
+import { rebaseGstAfterDiscount } from "../utils/gst.js";
 import { roundCurrency } from "../utils/money.js";
 import { recordParcelEvent, PARCEL_EVENT_ACTOR } from "../services/parcelEventService.js";
 import ParcelEvent from "../models/parcelEvent.js";
@@ -438,6 +439,10 @@ export const validateBookingCoupon = async (req, res) => {
       fareAmount: priced.fare,
     });
 
+    // The tax as it will be RECORDED once the discount is applied, so the
+    // booking screen shows the same GST the invoice will.
+    const taxed = rebaseGstAfterDiscount(priced, discount.payableFare);
+
     return handleResponse(res, 200, "Coupon applied", {
       couponId: discount.coupon._id,
       code: discount.coupon.code,
@@ -445,6 +450,19 @@ export const validateBookingCoupon = async (req, res) => {
       discountAmount: discount.discountAmount,
       payableFare: discount.payableFare,
       couponSnapshot: discount.couponSnapshot,
+      // Split so the booking screen can print lines that add up: the discount
+      // comes off the taxable value, then tax applies to what remains.
+      // `discountAmount` above stays the customer's total saving.
+      taxableDiscount:
+        Math.round((taxed.preDiscountTaxableAmount - taxed.taxableAmount) * 100) / 100,
+      tax: {
+        percent: taxed.gstPercent,
+        amount: taxed.gstAmount,
+        cgst: taxed.cgst,
+        sgst: taxed.sgst,
+        taxableAmount: taxed.taxableAmount,
+        inclusive: taxed.gstInclusive,
+      },
     });
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);
@@ -768,6 +786,26 @@ export const createParcel = async (req, res) => {
         expressCharge: priced.expressCharge,
         dailyFare: priced.dailyFare,
         billableDays: priced.billableDays,
+        /**
+         * The tax split, which used to be dropped on the floor here.
+         *
+         * `priced.fare` has always been tax-INCLUSIVE — `applyBillableDaysToFare`
+         * runs `applyGst` over the multi-day total — but only the pre-tax line
+         * items were copied onto the booking, so every outstation booking stored
+         * `gstAmount: 0` and `taxableAmount: 0` by schema default. The customer
+         * was charged the tax; the invoice printed no tax block and a zero
+         * subtotal, and the admin GST report totalled outstation tax as nil.
+         */
+        gstPercent: priced.gstPercent,
+        gstAmount: priced.gstAmount,
+        cgst: priced.cgst,
+        sgst: priced.sgst,
+        igst: priced.igst,
+        taxableAmount: priced.taxableAmount,
+        gstInclusive: priced.gstInclusive,
+        gstin: priced.gstin,
+        // A coupon moves the tax onto what the customer actually pays.
+        ...(discount ? rebaseGstAfterDiscount(priced, discount.payableFare) : {}),
       },
       coupon: discount?.coupon?._id || null,
       couponSnapshot: discount?.couponSnapshot || null,

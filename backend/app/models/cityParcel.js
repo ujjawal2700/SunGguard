@@ -508,7 +508,25 @@ export const RIDER_SAFE_FIELDS = [
   "paymentStatus",
   "codOnlineQr",
   "codCollection",
+  /**
+   * The rider's stored payout, which is only written once the job is settled.
+   * Until then it is 0, so the available-jobs feed recomputes the offer from
+   * the two line items below.
+   */
   "riderEarning",
+  /**
+   * The pre-tax line items the payout is a percentage of.
+   *
+   * `fetchAvailableForRider` maps `computeRiderEarning(parcel.fareBreakdown)`
+   * over this projection. Without these two fields that argument was
+   * undefined, the helper fell through to `Number(undefined) || 0` twice, and
+   * every open city job was advertised to every rider as "earn ₹0" — which is
+   * a job no rider accepts. Only these two are projected, not the whole
+   * breakdown: they are all the payout maths reads, and the rest of the fare
+   * is none of the rider's business.
+   */
+  "fareBreakdown.baseFare",
+  "fareBreakdown.distanceFare",
   "pickupEta",
   "deliveryEta",
   "deliveryDeadline",

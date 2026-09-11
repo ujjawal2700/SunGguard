@@ -2003,6 +2003,28 @@ const AdminParcelDashboard = () => {
                       Active (shown on customer booking form)
                     </label>
 
+                    {/*
+                      The courier's office address.
+
+                      `handleAddCourier` has always validated this block, and
+                      the create endpoint requires address, city, state and
+                      pincode — but the fields were only ever rendered in the
+                      EDIT modal. Adding a courier therefore failed on every
+                      attempt with "Street / building address is required",
+                      naming a field that was nowhere on the screen, so no
+                      courier company could be created through the admin at
+                      all. The state, the change handler and the "add" branch
+                      of the map picker already existed; only the inputs were
+                      missing.
+                    */}
+                    <CourierLocationFields
+                      location={addCourierForm.location}
+                      onFieldChange={(field, value) =>
+                        updateCourierFormLocation(setAddCourierForm, field, value)
+                      }
+                      onOpenMap={() => setCourierMapPickerTarget("add")}
+                    />
+
                     <button
                       type="submit"
                       disabled={courierSaving}

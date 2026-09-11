@@ -188,7 +188,19 @@ export const riderFailedAttemptSchema = Joi.object({
   photoUrl: trimmed.required().messages({
     "any.required": "Photograph the door so we can show the customer",
   }),
-  calledAt: Joi.date().optional(),
+  /**
+   * When the rider rang the receiver, or null when they did not.
+   *
+   * `.optional()` alone permits the key to be ABSENT but still rejects an
+   * explicit null, and the rider app always sends the key — the failure form
+   * has no call-time input, so every report carried `calledAt: null` and was
+   * refused with `"calledAt" must be a valid date`. That made it impossible to
+   * report a failed delivery from the app at all, which is the first step of
+   * the whole return flow. Null is the real domain value here: the service
+   * defaults this parameter to null and the model stores it as a nullable
+   * Date.
+   */
+  calledAt: Joi.date().optional().allow(null),
   waitedMinutes: Joi.number().min(0).max(240).required(),
   location: riderLocationSchema.required(),
 });

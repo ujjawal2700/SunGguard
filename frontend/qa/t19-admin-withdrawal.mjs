@@ -1,0 +1,33 @@
+import * as H from "./helpers.mjs";
+let passed=0, failed=0;
+const check=(ok,l,e="")=>{ ok?(H.pass(l,e),passed++):(H.fail(l,e),failed++); };
+console.log("\n=== T19: admin reviews the withdrawal ===");
+const browser = await H.launch();
+const { ctx, page } = await H.newCtx(browser, "admin");
+const calls=[];
+page.on("response", async r=>{ if(/withdraw/i.test(r.url())&&r.request().method()!=="GET") calls.push({s:r.status(), b:await r.json().catch(()=>({}))}); });
+await H.loginAdmin(page);
+await page.goto(`${H.APP}/admin/withdrawals`, { waitUntil:"networkidle" });
+await page.waitForTimeout(4500);
+await page.locator("button").filter({hasText:/delivery partners/i}).first().click().catch(()=>{});
+await page.waitForTimeout(3500);
+const body = await page.locator("body").innerText();
+console.log("  page:", body.split("\n").filter(Boolean).slice(14,36).join(" | ").slice(0,600));
+check(/100/.test(body), "admin sees the ₹100 withdrawal request");
+check(/QA Driver One|9000000011/i.test(body), "request shows the rider");
+await H.shot(page,"t19-before");
+const btns = await page.evaluate(()=>[...document.querySelectorAll("button")].filter(b=>b.offsetParent).map(b=>(b.innerText||"").trim()).filter(Boolean));
+console.log("  buttons:", btns.join(" | ").slice(0,260));
+const approve = page.locator("button").filter({hasText:/approve|mark paid|paid|accept/i}).first();
+check(await approve.count()>0, "an approve/paid control exists");
+if(await approve.count()>0){
+  await approve.click(); await page.waitForTimeout(2500);
+  const conf = page.locator("button").filter({hasText:/confirm|yes|approve|mark/i}).last();
+  if(await conf.count()>0 && await conf.isEnabled()) await conf.click().catch(()=>{});
+  await page.waitForTimeout(4500);
+  check(calls.some(c=>c.s<400), "withdrawal review accepted", calls.length?`HTTP ${calls[0].s}`:"no request");
+}
+await page.reload({waitUntil:"networkidle"}); await page.waitForTimeout(3000);
+await H.shot(page,"t19-after");
+console.log(`\n  T19 result: ${passed} passed, ${failed} failed`);
+await ctx.close(); await browser.close();

@@ -15,12 +15,19 @@ export async function applyParcelDeliveredRiderEarning(parcel) {
   const settings = await ParcelConfig.getSearchSettings();
   let amount = roundCurrency(computeRiderParcelEarnings(parcel, settings));
   // Older parcels may have fare set but empty/zero breakdown components.
+  // The share is taken on the PRE-TAX value: `fare` is tax-inclusive since GST
+  // was added to the rate card, and a rider is never paid a cut of the tax.
   if (!(amount > 0) && Number(parcel.fare) > 0) {
+    const taxable =
+      Number(parcel.fareBreakdown?.taxableAmount) ||
+      Math.max(
+        0,
+        roundCurrency(
+          Number(parcel.fare) - (Number(parcel.fareBreakdown?.gstAmount) || 0),
+        ),
+      );
     amount = roundCurrency(
-      computeRiderParcelEarnings(
-        Number(parcel.fare),
-        settings.riderSharePercent || 80,
-      ),
+      computeRiderParcelEarnings(taxable, settings.riderSharePercent || 80),
     );
   }
   if (!(amount > 0)) return null;

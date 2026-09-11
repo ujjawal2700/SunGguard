@@ -602,8 +602,28 @@ const CityParcelBooking = () => {
         )}
 
         <div className="mt-6">
+          {/*
+            The `key` on each AddressStep is load-bearing, not decoration.
+
+            Both branches render the SAME component type at the SAME position,
+            so without a distinct key React reconciles them as one instance and
+            keeps it mounted across the step change — only the props swap. The
+            Google Places widget inside LocationPicker binds its
+            `place_changed` listener when it mounts, so a surviving instance
+            could still fire the pickup step's handler, which closes over
+            `setPickup`. Picking a destination then wrote the drop's
+            coordinates into the PICKUP, the trip collapsed to zero distance,
+            and the customer was told "pickup and drop look like the same
+            place" with no way to recover. It reproduced about one run in four,
+            because it is a race between that listener firing and React
+            re-registering the new one.
+
+            Keying the two steps apart forces a remount, so each step gets its
+            own freshly-bound widget and the handlers cannot cross over.
+          */}
           {step === 0 ? (
             <AddressStep
+              key="address-pickup"
               heading="Where do we collect it?"
               nameLabel="Sender"
               value={pickup}
@@ -616,6 +636,7 @@ const CityParcelBooking = () => {
             />
           ) : step === 1 ? (
             <AddressStep
+              key="address-drop"
               heading="Where is it going?"
               nameLabel="Receiver"
               value={drop}
@@ -758,9 +779,18 @@ const CityParcelBooking = () => {
                       // for the first time on the invoice. Skipped when the
                       // rate card is tax-inclusive — the total already contains
                       // it, and listing it as an extra would read as a surcharge.
+                      // Once a coupon is applied the server re-attributes the
+                      // tax onto the discounted amount — that is what goes on
+                      // the booking and the invoice, so it is what has to be
+                      // shown here. Falling back to the undiscounted quote
+                      // would print a GST figure the invoice contradicts.
                       !quote.fareBreakdown?.gstInclusive && [
-                        `GST (${Number(quote.fareBreakdown?.gstPercent) || 0}%)`,
-                        quote.fareBreakdown?.gstAmount,
+                        `GST (${
+                          Number(
+                            appliedCoupon?.tax?.percent ?? quote.fareBreakdown?.gstPercent,
+                          ) || 0
+                        }%)`,
+                        appliedCoupon?.tax?.amount ?? quote.fareBreakdown?.gstAmount,
                       ],
                     ]
                       .filter(Boolean)
@@ -775,7 +805,13 @@ const CityParcelBooking = () => {
                       <div className="flex justify-between text-[13px]">
                         <span className="text-emerald-700">Coupon ({appliedCoupon.code})</span>
                         <Data className="text-emerald-700">
-                          -₹{Number(appliedCoupon.discountAmount).toFixed(2)}
+                          {/* The discount off the taxable value, so this column
+                              adds up against the GST line below it. The total
+                              saving, tax included, is shown separately. */}
+                          -₹
+                          {Number(
+                            appliedCoupon.taxableDiscount ?? appliedCoupon.discountAmount,
+                          ).toFixed(2)}
                         </Data>
                       </div>
                     ) : null}

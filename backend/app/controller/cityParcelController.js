@@ -68,6 +68,7 @@ import {
 } from "../constants/cityParcelWorkflow.js";
 import { recordCodCollection } from "../services/riderCashService.js";
 import { recordPorterCodCollected } from "../services/porter/customerLedgerService.js";
+import { rebaseGstAfterDiscount } from "../utils/gst.js";
 import { computeBookingDiscount, incrementCouponUsage } from "../services/finance/couponService.js";
 import logger from "../services/logger.js";
 
@@ -245,6 +246,11 @@ export const validateBookingCoupon = async (req, res) => {
       fareAmount: quote.fare,
     });
 
+    // The tax as it will be RECORDED on the booking once the discount is
+    // applied, so the booking screen shows the same GST the invoice will.
+    // Without this the screen would keep showing tax on the undiscounted fare.
+    const taxed = rebaseGstAfterDiscount(quote.fareBreakdown, discount.payableFare);
+
     return handleResponse(res, 200, "Coupon applied", {
       couponId: discount.coupon._id,
       code: discount.coupon.code,
@@ -252,6 +258,19 @@ export const validateBookingCoupon = async (req, res) => {
       discountAmount: discount.discountAmount,
       payableFare: discount.payableFare,
       couponSnapshot: discount.couponSnapshot,
+      // Split so the booking screen can print lines that add up: the discount
+      // comes off the taxable value, then tax applies to what remains.
+      // `discountAmount` above stays the customer's total saving.
+      taxableDiscount:
+        Math.round((taxed.preDiscountTaxableAmount - taxed.taxableAmount) * 100) / 100,
+      tax: {
+        percent: taxed.gstPercent,
+        amount: taxed.gstAmount,
+        cgst: taxed.cgst,
+        sgst: taxed.sgst,
+        taxableAmount: taxed.taxableAmount,
+        inclusive: taxed.gstInclusive,
+      },
     });
   } catch (error) {
     return fail(res, error);
@@ -329,7 +348,16 @@ export const createCityParcel = async (req, res) => {
       distanceKm: quote.distanceKm,
       deliverySpeed,
       fare: quote.fare,
-      fareBreakdown: quote.fareBreakdown,
+      // With a coupon, tax is re-attributed onto what the customer actually
+      // pays — see `rebaseGstAfterDiscount`. `fare` and the pre-tax line items
+      // are deliberately untouched, so the rider's share and the platform's
+      // margin are exactly what they were.
+      fareBreakdown: discount
+        ? {
+            ...quote.fareBreakdown,
+            ...rebaseGstAfterDiscount(quote.fareBreakdown, discount.payableFare),
+          }
+        : quote.fareBreakdown,
       deliveryEta: sla.deliveryEta,
       deliveryDeadline: sla.deliveryDeadline,
       coupon: discount?.coupon?._id || null,
@@ -881,14 +909,30 @@ export const riderGetAssigned = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
+    /**
+     * `riderEarning` is only written to the booking once the job settles, so
+     * for the whole time a rider is actually carrying the parcel the stored
+     * value is 0 — and the job screen showed them "0 you earn" from accept
+     * right through to delivery. The available-jobs feed already recomputes
+     * the offer from the pre-tax line items; the assigned feed has to agree
+     * with it, or the number a rider accepted changes the moment they do.
+     *
+     * A settled value wins when there is one: after delivery the stored
+     * figure is what was actually paid, including any adjustment, and must
+     * not be replaced by a fresh estimate off the current rate card.
+     */
+    const config = await CityParcelConfig.getConfig();
+
     // The receiver's full number is never sent to the rider app. They see
     // the last four to read back, which is all the check requires.
     const masked = parcels.map((p) => {
       // Destructured out rather than spread over: spreading the receiver and
       // adding phoneLast4 would keep the full number in the payload.
       const { phone, ...receiverSafe } = p.receiver || {};
+      const stored = Number(p.riderEarning) || 0;
       return {
         ...p,
+        riderEarning: stored > 0 ? stored : computeRiderEarning(p.fareBreakdown, config),
         receiver: {
           ...receiverSafe,
           phoneLast4: String(phone || "").replace(/\D/g, "").slice(-4),
