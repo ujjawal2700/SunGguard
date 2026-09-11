@@ -3,6 +3,7 @@ import {
   signupDelivery,
   loginDelivery,
   verifyDeliveryOTP,
+  checkDeliveryPhone,
   getDeliveryProfile,
   updateDeliveryProfile,
   updateDeliveryPayoutDetails,
@@ -42,6 +43,10 @@ router.post(
 );
 router.post("/send-login-otp", loginDelivery);
 router.post("/verify-otp", verifyDeliveryOTP);
+
+// Lets the join form warn as soon as the phone is entered, instead of only
+// after all 4 signup steps and document uploads are complete.
+router.get("/check-phone/:phone", checkDeliveryPhone);
 
 // Profile routes — GET /profile stays reachable without requireActiveDelivery
 // so a deactivated rider's app can still load their own profile (and see why

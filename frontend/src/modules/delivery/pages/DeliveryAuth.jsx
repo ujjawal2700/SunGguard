@@ -233,6 +233,7 @@ const DeliveryAuth = () => {
   const [loading, setLoading] = useState(false);
   const [timer, setTimer] = useState(30);
   const [legalKind, setLegalKind] = useState(null);
+  const [checkingPhone, setCheckingPhone] = useState(false);
 
 
   useEffect(() => {
@@ -648,7 +649,8 @@ const DeliveryAuth = () => {
                           </div>
 
                           <button
-                            onClick={() => {
+                            disabled={checkingPhone}
+                            onClick={async () => {
                               const error = validateSignupStep1({
                                 signupName,
                                 signupPhone,
@@ -661,11 +663,30 @@ const DeliveryAuth = () => {
                                 toast.error(error);
                                 return;
                               }
-                              setSignupStep(2);
+
+                              setCheckingPhone(true);
+                              try {
+                                const res = await deliveryApi.checkPhone(signupPhone);
+                                if (res.data?.result?.registered) {
+                                  toast.error(
+                                    res.data?.message ||
+                                      "This phone number is already registered. Please login instead."
+                                  );
+                                  return;
+                                }
+                                setSignupStep(2);
+                              } catch (err) {
+                                toast.error(
+                                  err.response?.data?.message ||
+                                    "Couldn't verify phone number. Please try again."
+                                );
+                              } finally {
+                                setCheckingPhone(false);
+                              }
                             }}
-                            className="w-full py-4 bg-black  text-primary-foreground rounded-2xl text-sm font-black tracking-widest uppercase shadow-lg shadow-brand-200 hover:bg-brand-700 transition-all flex items-center justify-center gap-2"
+                            className="w-full py-4 bg-black  text-primary-foreground rounded-2xl text-sm font-black tracking-widest uppercase shadow-lg shadow-brand-200 hover:bg-brand-700 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                           >
-                            Next Step <ArrowRight className="w-4 h-4" />
+                            {checkingPhone ? "Checking..." : "Next Step"} <ArrowRight className="w-4 h-4" />
                           </button>
                         </motion.div>
                       )}

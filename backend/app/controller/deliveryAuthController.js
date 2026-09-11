@@ -154,6 +154,41 @@ const deliverOtpSms = async (phone, otp) => {
 };
 
 /* ===============================
+   CHECK PHONE – already registered?
+================================ */
+/**
+ * Lets the signup form ask before the applicant fills out all 4 steps,
+ * instead of only finding out "already exists" after document uploads.
+ * Mirrors the same gate signupDelivery uses (isVerified), so a pending or
+ * rejected applicant can still resubmit — only an already-approved partner
+ * is turned away here.
+ */
+export const checkDeliveryPhone = async (req, res) => {
+    try {
+        const phone = String(req.params.phone || "").trim();
+
+        if (!/^\d{10}$/.test(phone)) {
+            return handleResponse(res, 400, "A valid 10-digit phone number is required");
+        }
+
+        const delivery = await Delivery.findOne({ phone }).select("isVerified");
+
+        if (delivery && delivery.isVerified) {
+            return handleResponse(
+                res,
+                200,
+                "This phone number is already registered. Please login instead.",
+                { registered: true },
+            );
+        }
+
+        return handleResponse(res, 200, "Phone number is available", { registered: false });
+    } catch (error) {
+        return handleResponse(res, 500, error.message);
+    }
+};
+
+/* ===============================
    SIGNUP – Send OTP
 ================================ */
 export const signupDelivery = async (req, res) => {
