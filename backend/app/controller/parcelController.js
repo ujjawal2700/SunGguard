@@ -33,6 +33,7 @@ import {
   computeParcelDailyFare,
 } from "../utils/parcelFare.js";
 import { createParcelCodRemitRazorpayOrder } from "../services/parcelRazorpayService.js";
+import { isZoneGatingActive, resolveZoneForPoint } from "../services/deliveryZoneService.js";
 import {
   openBookingPayment,
   verifyBookingReceipt,
@@ -183,7 +184,7 @@ const DEFAULT_FIRST_MILE_KM = 5;
  * the rule, which is how the quote came to refuse outstation pickups that
  * `createParcel` would happily have taken.
  */
-async function resolveFirstMile({ lat, lng, isOutstation }) {
+async function resolveFirstMile({ lat, lng, isOutstation, zoneId = null }) {
   if (!isOutstation) {
     const nearest = await findNearestParcelSellerWithDistance(lat, lng);
     if (!nearest) {
@@ -194,7 +195,9 @@ async function resolveFirstMile({ lat, lng, isOutstation }) {
     return { distanceKm: nearest.distanceKm, warehouse: null, nearest };
   }
 
-  const warehouse = await Warehouse.findNearestActive(lat, lng);
+  // Zone-scoped when the pickup resolved into one, so a booking never binds
+  // to a warehouse a rider from that zone could never be routed to.
+  const warehouse = await Warehouse.findNearestActive(lat, lng, null, zoneId);
   if (warehouse) {
     const metres = distanceMeters(lat, lng, Number(warehouse.lat), Number(warehouse.lng));
     return {
@@ -700,12 +703,46 @@ export const createParcel = async (req, res) => {
       if (dropProblem) return handleResponse(res, 400, dropProblem);
     }
 
+    /**
+     * Outstation dispatch used to be unzoned by design (see
+     * services/deliveryZoneService.js). It now runs the same zone gate the
+     * local City Parcel flow already used: the pickup has to resolve into a
+     * zone, and that zone confines both which warehouse the booking can route
+     * through and which riders are ever offered the job. The drop can still
+     * be anywhere — only the pickup end is zone-gated, since that's the end a
+     * rider is actually dispatched to.
+     *
+     * Resolved BEFORE resolveFirstMile so the warehouse lookup below can be
+     * scoped to it — finding the nearest warehouse first and checking its
+     * zone after would let a customer's booking bind to a warehouse outside
+     * their own pickup zone.
+     *
+     * Skipped while no zone exists yet (a fresh install), same fallback every
+     * other zone-gated flow uses.
+     */
+    let outstationZoneId = null;
+    if (isOutstation && (await isZoneGatingActive())) {
+      const zone = await resolveZoneForPoint(
+        Number(pickupAddress.lat),
+        Number(pickupAddress.lng),
+      );
+      if (!zone) {
+        return handleResponse(
+          res,
+          400,
+          "Pickup location is outside our serviceable zones. Please choose a pickup point inside a serviceable zone.",
+        );
+      }
+      outstationZoneId = zone._id;
+    }
+
     // Shared with the quote endpoint, so the price the customer was shown is
     // the price this books against.
     const firstMile = await resolveFirstMile({
       lat: Number(pickupAddress.lat),
       lng: Number(pickupAddress.lng),
       isOutstation,
+      zoneId: outstationZoneId,
     });
     if (firstMile.error) {
       return handleResponse(res, 400, firstMile.error);
@@ -766,6 +803,7 @@ export const createParcel = async (req, res) => {
       courierCompanyId: courierDoc._id,
       sellerId: isOutstation ? null : nearest?.seller?._id,
       warehouseId: isOutstation && warehouse ? warehouse._id : null,
+      zoneId: outstationZoneId,
       parcelType,
       deliveryInstruction: isOutstation ? "deliver_to_warehouse" : "deliver_to_receiver",
       deliverySpeed: speedValue,
@@ -2144,6 +2182,96 @@ export const riderUpdateStatus = async (req, res) => {
     delete resultPayload.otp;
 
     return handleResponse(res, 200, "Parcel status updated successfully", resultPayload);
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+/**
+ * Lets the rider pick which zone warehouse they actually drop at, instead of
+ * being locked to whichever one auto-assignment picked at booking time (see
+ * tryAutoAssignParcelToWarehouse in parcelWorkflowService.js). Available in
+ * the same window as the final hub-drop confirmation (riderCompleteDelivery
+ * below) — after customer pickup, before the parcel is marked delivered.
+ */
+export const riderUpdateWarehouse = async (req, res) => {
+  try {
+    const { parcelId, warehouseId } = req.body || {};
+    if (!parcelId || !warehouseId) {
+      return handleResponse(res, 400, "parcelId and warehouseId are required");
+    }
+
+    const parcel = await Parcel.findById(parcelId);
+    if (!parcel) {
+      return handleResponse(res, 404, "Parcel not found");
+    }
+
+    if (String(parcel.deliveryPartnerId) !== String(req.user.id)) {
+      return handleResponse(res, 403, "You are not authorized for this parcel");
+    }
+
+    if (parcel.deliveryInstruction !== "deliver_to_warehouse") {
+      return handleResponse(res, 400, "This parcel is not routed to a warehouse");
+    }
+
+    if (!["PICKED_UP", "OUT_FOR_DELIVERY"].includes(parcel.status)) {
+      return handleResponse(
+        res,
+        409,
+        "The drop warehouse can only be changed after customer pickup and before it is marked delivered",
+      );
+    }
+
+    const warehouse = await Warehouse.findById(warehouseId).lean();
+    if (!warehouse || warehouse.isActive === false) {
+      return handleResponse(res, 400, "Selected warehouse is not available");
+    }
+
+    // Zone-scoped: a rider may only drop at a warehouse inside this parcel's
+    // own zone — the same boundary their dispatch was confined to. Unzoned
+    // parcels (booked before zones existed) keep the old, unrestricted pick.
+    if (parcel.zoneId && String(warehouse.zoneId || "") !== String(parcel.zoneId)) {
+      return handleResponse(res, 400, "That warehouse is outside this parcel's delivery zone");
+    }
+
+    parcel.warehouseId = warehouse._id;
+    parcel.dropAddress = {
+      name: warehouse.name,
+      phone: warehouse.phone || parcel.dropAddress?.phone || "0000000000",
+      fullAddress: warehouse.address + (warehouse.city ? `, ${warehouse.city}` : ""),
+      lat: Number(warehouse.lat),
+      lng: Number(warehouse.lng),
+    };
+    await parcel.save();
+
+    await recordParcelEvent({
+      parcelId: parcel._id,
+      status: parcel.status,
+      previousStatus: parcel.status,
+      actor: PARCEL_EVENT_ACTOR.DELIVERY,
+      actorId: parcel.deliveryPartnerId,
+      note: `Drop warehouse changed to ${warehouse.name}`,
+    });
+
+    const populated = await Parcel.findById(parcel._id)
+      .populate("deliveryPartnerId", "name phone vehicleType vehicleNumber profileImage location")
+      .populate("warehouseId", "name address city phone lat lng");
+
+    emitToAdmins("parcel:status:update", populated || parcel);
+    emitToCustomer(parcel.customerId, {
+      event: "parcel:status:update",
+      payload: {
+        parcelId: String(parcel._id),
+        status: parcel.status,
+        parcel: populated || parcel,
+      },
+    });
+
+    const resultDoc = populated || parcel;
+    const resultPayload = resultDoc.toObject ? resultDoc.toObject() : { ...resultDoc };
+    delete resultPayload.otp;
+
+    return handleResponse(res, 200, "Drop warehouse updated", resultPayload);
   } catch (error) {
     return handleResponse(res, 500, error.message);
   }

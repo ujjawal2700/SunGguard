@@ -75,6 +75,28 @@ export const adminListZones = async (req, res) => {
   }
 };
 
+/**
+ * Active zones for anyone who needs to pick or validate against one without
+ * admin rights: delivery-partner onboarding/profile (choosing their one work
+ * zone), and the customer outstation-pickup picker (checking a point falls
+ * inside a serviceable zone before it ever reaches the server).
+ *
+ * Ships `points` (the same ring the admin map editor draws) so callers can
+ * run the point-in-polygon check locally instead of round-tripping to the
+ * server for every pin the user drops.
+ */
+export const publicListActiveZones = async (req, res) => {
+  try {
+    const zones = await DeliveryZone.find({ isActive: true })
+      .select("_id name city color points")
+      .sort({ name: 1 })
+      .lean();
+    return handleResponse(res, 200, "Zones retrieved", zones);
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
 export const adminGetZone = async (req, res) => {
   try {
     const { id } = req.params;

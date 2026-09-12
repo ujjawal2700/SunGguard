@@ -15,6 +15,7 @@ import {
   ChevronUp,
   Wallet,
   Banknote,
+  Warehouse,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import Button from "@/shared/components/ui/Button";
@@ -135,6 +136,13 @@ const Profile = () => {
       sub: "Bike, License, Insurance",
       color: "text-orange-600 bg-orange-50",
       path: "/delivery/profile/vehicle-info",
+    },
+    {
+      icon: Warehouse,
+      label: "Nearby Warehouses",
+      sub: "Outstation drop points in your zone",
+      color: "text-purple-600 bg-purple-50",
+      path: "/delivery/profile/warehouses",
     },
     {
       icon: CreditCard,

@@ -91,17 +91,6 @@ export const adminPorterApi = {
         axiosInstance.get('/porter/admin/gst-ledger', { params }),
 
     /* ----------------------------------------------------------------------
-       Rider zone assignment
-       ----------------------------------------------------------------------
-       A rider with zones assigned is offered local jobs from those zones
-       only. A rider with none falls back to their live GPS location.
-       -------------------------------------------------------------------- */
-    getRiderZones: (params) =>
-        axiosInstance.get('/porter/admin/rider-zones', { params }),
-    setRiderZones: (riderId, zoneIds) =>
-        axiosInstance.patch(`/porter/admin/riders/${riderId}/zones`, { zoneIds }),
-
-    /* ----------------------------------------------------------------------
        Invoices
        ----------------------------------------------------------------------
        Not under /admin: a customer downloads the same invoice from the same

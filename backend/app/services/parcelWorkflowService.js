@@ -5,6 +5,7 @@ import Delivery from "../models/delivery.js";
 import Warehouse from "../models/warehouse.js";
 import { distanceMeters } from "../utils/geoUtils.js";
 import { getParcelRiderIdsNearPickup } from "./deliveryNearbyService.js";
+import { getActiveZoneById, isPointInZoneId } from "./deliveryZoneService.js";
 import {
   emitParcelBroadcast,
   retractParcelBroadcast,
@@ -26,8 +27,8 @@ import { assertRiderCanTakeJobs } from "./porter/riderCashLimitService.js";
 
 async function assertRiderWithinPickupRadius(deliveryOid, parcelId) {
   const [rider, parcel, settings] = await Promise.all([
-    Delivery.findById(deliveryOid).select("location").lean(),
-    Parcel.findById(parcelId).select("pickupAddress").lean(),
+    Delivery.findById(deliveryOid).select("location zoneIds").lean(),
+    Parcel.findById(parcelId).select("pickupAddress zoneId").lean(),
     ParcelConfig.getSearchSettings(),
   ]);
 
@@ -52,6 +53,32 @@ async function assertRiderWithinPickupRadius(deliveryOid, parcelId) {
     const err = new Error("Rider location is unavailable");
     err.statusCode = 400;
     throw err;
+  }
+
+  /**
+   * Checked on the claim as well as on the broadcast/feed — a rider holding
+   * an id from an earlier round, or one who has since ridden out of their
+   * zone, could otherwise still take a job the push never should have let
+   * them see. Mirrors cityParcelWorkflowService.js's acceptAtomic: an
+   * assigned rider is judged against their assignment, not their GPS; an
+   * unassigned one (legacy, or none configured) falls back to physically
+   * standing in the job's zone.
+   */
+  if (parcel.zoneId) {
+    const assignedZoneIds = (rider.zoneIds || []).map(String);
+    const inZone = assignedZoneIds.length
+      ? assignedZoneIds.includes(String(parcel.zoneId))
+      : await isPointInZoneId(parcel.zoneId, lat, lng);
+
+    if (!inZone) {
+      const err = new Error(
+        assignedZoneIds.length
+          ? "This delivery is outside the zone you are assigned to."
+          : "This delivery is reserved for riders inside its delivery zone.",
+      );
+      err.statusCode = 403;
+      throw err;
+    }
   }
 
   const radiusKm = settings.baseSearchRadiusKm;
@@ -223,11 +250,15 @@ async function emitParcelBroadcastForPickup(parcel, extra = {}) {
   const lng = Number(parcel.pickupAddress?.lng);
   const settings = await ParcelConfig.getSearchSettings();
   const radiusKm = parcel.searchMeta?.radiusKm ?? settings.baseSearchRadiusKm;
+  // Null for a parcel with no zone (unzoned install, or booked before zones
+  // existed) — emitParcelBroadcast then keeps the old, unzoned reach.
+  const zone = await getActiveZoneById(parcel.zoneId);
   await emitParcelBroadcast(
     lat,
     lng,
     radiusKm,
     parcelBroadcastPayloadFromDoc(parcel, extra, settings),
+    { zone },
   );
 }
 
@@ -241,7 +272,9 @@ export async function tryAutoAssignParcelToWarehouse(parcelDoc) {
   const lng = Number(parcelDoc.pickupAddress?.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
 
-  const warehouse = await Warehouse.findNearestActive(lat, lng);
+  // Zone-scoped when the booking has one, so a job never routes to a
+  // warehouse outside the zone its own dispatch is confined to.
+  const warehouse = await Warehouse.findNearestActive(lat, lng, null, parcelDoc.zoneId || null);
   if (!warehouse?._id) return null;
 
   const dropAddress = {
@@ -515,7 +548,7 @@ export async function fetchAvailableParcelsForRider(deliveryId) {
   if (!deliveryOid) return [];
 
   const rider = await Delivery.findById(deliveryOid)
-    .select("location isParcelService isVerified isOnline")
+    .select("location isParcelService isVerified isOnline zoneIds")
     .lean();
 
   if (
@@ -559,15 +592,32 @@ export async function fetchAvailableParcelsForRider(deliveryId) {
     .limit(30)
     .lean();
 
-  return parcels.filter((parcel) => {
+  const assignedZoneIds = (rider.zoneIds || []).map(String);
+
+  const filtered = [];
+  for (const parcel of parcels) {
     const pickupLat = Number(parcel.pickupAddress?.lat);
     const pickupLng = Number(parcel.pickupAddress?.lng);
-    if (!Number.isFinite(pickupLat) || !Number.isFinite(pickupLng)) {
-      return false;
-    }
+    if (!Number.isFinite(pickupLat) || !Number.isFinite(pickupLng)) continue;
+
     const radiusKm = settings.baseSearchRadiusKm;
-    return distanceMeters(pickupLat, pickupLng, lat, lng) <= radiusKm * 1000;
-  });
+    if (distanceMeters(pickupLat, pickupLng, lat, lng) > radiusKm * 1000) continue;
+
+    // Same zone rule the broadcast and the claim both enforce (see
+    // emitParcelBroadcastForPickup / assertRiderWithinPickupRadius above) —
+    // otherwise the pull feed would hand a rider a job the push would never
+    // have sent them, and the claim would then refuse.
+    if (parcel.zoneId) {
+      const inZone = assignedZoneIds.length
+        ? assignedZoneIds.includes(String(parcel.zoneId))
+        : await isPointInZoneId(parcel.zoneId, lat, lng);
+      if (!inZone) continue;
+    }
+
+    filtered.push(parcel);
+  }
+
+  return filtered;
 }
 
 export async function parcelAcceptAtomic(deliveryId, parcelId, idempotencyKey) {

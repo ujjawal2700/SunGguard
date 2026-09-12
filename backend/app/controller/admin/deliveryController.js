@@ -73,12 +73,14 @@ export const getDeliveryPartners = async (req, res) => {
       "experience",
       "experienceDetails",
       "currentArea",
+      "zoneIds",
       "createdAt",
     ].join(" ");
 
     const [deliveryPartners, total] = await Promise.all([
       Delivery.find(query)
         .select(partnerFields)
+        .populate("zoneIds", "name city color")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -118,9 +120,10 @@ export const getDeliveryPartnerById = async (req, res) => {
   try {
     const rider = await Delivery.findById(req.params.id)
       .select(
-        "name phone email address vehicleType vehicleNumber drivingLicenseNumber aadharNumber panNumber accountHolder accountNumber ifsc profileImage documents isVerified applicationStatus isParcelService isQuickCommerceService experience experienceDetails currentArea createdAt",
+        "name phone email address vehicleType vehicleNumber drivingLicenseNumber aadharNumber panNumber accountHolder accountNumber ifsc profileImage documents isVerified applicationStatus isParcelService isQuickCommerceService experience experienceDetails currentArea zoneIds createdAt",
         // CAR WASH DISABLED — removed isCarWashService from select
       )
+      .populate("zoneIds", "name city color")
       .lean();
     if (!rider) {
       return handleResponse(res, 404, "Delivery partner not found");

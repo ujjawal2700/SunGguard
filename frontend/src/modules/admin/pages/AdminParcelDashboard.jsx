@@ -32,6 +32,8 @@ import {
 import { toast } from "sonner";
 import { parcelApi } from "../../customer/services/parcelApi";
 import MapPicker from "../../../shared/components/MapPicker";
+import { zonesApi } from "@shared/services/zonesApi";
+import { isPointInPolygon, formatZoneLabel } from "@shared/utils/zoneGeometry";
 import {
   composeCourierFullAddress,
   emptyCourierLocation,
@@ -287,12 +289,37 @@ const AdminParcelDashboard = () => {
     contactPerson: "",
     lat: 22.7196,
     lng: 75.8577,
+    zoneId: "",
     isActive: true,
     notes: "",
   };
   const [addWarehouseForm, setAddWarehouseForm] = useState(emptyWarehouseForm);
   const [editWarehouseForm, setEditWarehouseForm] =
     useState(emptyWarehouseForm);
+  const [zones, setZones] = useState([]);
+
+  // Fetched once — reused for the add/edit zone dropdowns and to draw the
+  // boundary the map picker enforces, so opening either form costs no extra
+  // network round trip beyond this single load.
+  useEffect(() => {
+    zonesApi
+      .getActiveZones()
+      .then((res) => setZones(res.data?.results || []))
+      .catch(() => {});
+  }, []);
+
+  const zoneById = useCallback(
+    (zoneId) => zones.find((z) => String(z._id) === String(zoneId)) || null,
+    [zones],
+  );
+
+  /** The zone bound to whichever warehouse form the map picker is currently open for. */
+  const activeWarehouseZone =
+    warehouseMapPickerTarget === "edit"
+      ? zoneById(editWarehouseForm.zoneId)
+      : warehouseMapPickerTarget === "add"
+        ? zoneById(addWarehouseForm.zoneId)
+        : null;
   const courierEditScrollRef = useRef(null);
   const courierEditModalRef = useRef(null);
   const parcelDetailScrollRef = useRef(null);
@@ -984,6 +1011,7 @@ const AdminParcelDashboard = () => {
       contactPerson: w.contactPerson || "",
       lat: Number(w.lat ?? w.location?.coordinates?.[1] ?? 22.7196),
       lng: Number(w.lng ?? w.location?.coordinates?.[0] ?? 75.8577),
+      zoneId: String(w.zoneId?._id || w.zoneId || ""),
       isActive: w.isActive !== false,
       notes: w.notes || "",
     });
@@ -992,10 +1020,13 @@ const AdminParcelDashboard = () => {
 
   /**
    * Same rules the warehouse Joi schema applies, so the admin is corrected
-   * here rather than by a 400 after a round trip.
+   * here rather than by a 400 after a round trip. Zone checks mirror the
+   * server's too (adminCreateWarehouse/adminUpdateWarehouse): once any zone
+   * exists, a warehouse must belong to one and its pin must sit inside it —
+   * caught here so the round trip to the server isn't what breaks the news.
    */
-  const validateWarehouseForm = (form) =>
-    firstError(
+  const validateWarehouseForm = (form) => {
+    const basic = firstError(
       checkName(form.name, "Warehouse name"),
       checkText(form.address, "Warehouse address", { min: 3 }),
       form.city ? checkName(form.city, "City") : null,
@@ -1005,6 +1036,18 @@ const AdminParcelDashboard = () => {
       form.contactPerson ? checkName(form.contactPerson, "Contact person") : null,
       checkCoords(form.lat, form.lng, "Warehouse location"),
     );
+    if (basic) return basic;
+
+    if (zones.length > 0) {
+      if (!form.zoneId) return "Please select which zone this warehouse belongs to";
+      const zone = zoneById(form.zoneId);
+      if (!zone) return "The selected zone is no longer available";
+      if (!isPointInPolygon(Number(form.lat), Number(form.lng), zone.points || [])) {
+        return `The pinned location is outside the "${zone.name}" zone boundary`;
+      }
+    }
+    return null;
+  };
 
   const handleAddWarehouse = async (e) => {
     e.preventDefault();
@@ -2277,6 +2320,31 @@ const AdminParcelDashboard = () => {
                       </div>
                     </div>
 
+                    {zones.length > 0 && (
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">
+                          Zone *
+                        </label>
+                        <select
+                          value={addWarehouseForm.zoneId}
+                          onChange={(e) =>
+                            setAddWarehouseForm((f) => ({ ...f, zoneId: e.target.value }))
+                          }
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary bg-white"
+                        >
+                          <option value="">Select a zone</option>
+                          {zones.map((zone) => (
+                            <option key={zone._id} value={zone._id}>
+                              {formatZoneLabel(zone.name, zone.city)}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-[11px] text-slate-400">
+                          The map pin below must land inside this zone's boundary.
+                        </p>
+                      </div>
+                    )}
+
                     {/* Map Location Picker */}
                     <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-2.5">
                       <div className="flex items-center justify-between">
@@ -2286,7 +2354,13 @@ const AdminParcelDashboard = () => {
                         </span>
                         <button
                           type="button"
-                          onClick={() => setWarehouseMapPickerTarget("add")}
+                          onClick={() => {
+                            if (zones.length > 0 && !addWarehouseForm.zoneId) {
+                              toast.error("Select a zone first");
+                              return;
+                            }
+                            setWarehouseMapPickerTarget("add");
+                          }}
                           className="px-2.5 py-1 rounded-lg bg-primary text-white text-[11px] font-bold hover:bg-primary/90 transition-all flex items-center gap-1">
                           <MapPin size={12} /> Pick on Map
                         </button>
@@ -3672,6 +3746,31 @@ const AdminParcelDashboard = () => {
                     </div>
                   </div>
 
+                  {zones.length > 0 && (
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">
+                        Zone *
+                      </label>
+                      <select
+                        value={editWarehouseForm.zoneId}
+                        onChange={(e) =>
+                          setEditWarehouseForm((f) => ({ ...f, zoneId: e.target.value }))
+                        }
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary bg-white"
+                      >
+                        <option value="">Select a zone</option>
+                        {zones.map((zone) => (
+                          <option key={zone._id} value={zone._id}>
+                            {formatZoneLabel(zone.name, zone.city)}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[11px] text-slate-400">
+                        The map pin below must land inside this zone's boundary.
+                      </p>
+                    </div>
+                  )}
+
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-2.5">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
@@ -3680,7 +3779,13 @@ const AdminParcelDashboard = () => {
                       </span>
                       <button
                         type="button"
-                        onClick={() => setWarehouseMapPickerTarget("edit")}
+                        onClick={() => {
+                          if (zones.length > 0 && !editWarehouseForm.zoneId) {
+                            toast.error("Select a zone first");
+                            return;
+                          }
+                          setWarehouseMapPickerTarget("edit");
+                        }}
                         className="px-2.5 py-1 rounded-lg bg-primary text-white text-[11px] font-bold hover:bg-primary/90 transition-all flex items-center gap-1">
                         <MapPin size={12} /> Update on Map
                       </button>
@@ -3815,6 +3920,10 @@ const AdminParcelDashboard = () => {
         searchPlaceholder="Search warehouse area or address..."
         showRadius={false}
         preferCurrentLocationOnOpen={false}
+        boundary={activeWarehouseZone?.points || null}
+        boundaryLabel={
+          activeWarehouseZone?.name ? `the "${activeWarehouseZone.name}" zone` : "the selected zone"
+        }
       />
     </div>
   );

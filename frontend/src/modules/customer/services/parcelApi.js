@@ -43,6 +43,9 @@ export const parcelApi = {
   // Warehouse APIs
   getNearestWarehouse: (lat, lng) =>
     axiosInstance.get("/warehouse/nearest", { params: { lat, lng } }),
+  /** Warehouses a rider may drop THIS accepted parcel at, nearest first. */
+  getWarehousesForParcel: (parcelId) =>
+    axiosInstance.get(`/warehouse/for-parcel/${parcelId}`),
   getActiveWarehouses: () => axiosInstance.get("/warehouse/active"),
   adminGetWarehouses: () => axiosInstance.get("/warehouse"),
   adminCreateWarehouse: (data) => axiosInstance.post("/warehouse", data),
@@ -70,6 +73,7 @@ export const parcelApi = {
     ),
   riderRejectParcel: (parcelId) => axiosInstance.post(`/parcel/rider/reject/${parcelId}`),
   riderUpdateStatus: (data) => axiosInstance.put("/parcel/rider/status", data),
+  riderUpdateWarehouse: (data) => axiosInstance.put("/parcel/rider/warehouse", data),
   riderCompleteDelivery: (data) => axiosInstance.put("/parcel/rider/complete", data),
   riderGetEarnings: () => axiosInstance.get("/parcel/rider/earnings"),
 };

@@ -154,7 +154,9 @@ describe("Warehouse & Outstation Parcel Workflow", () => {
         pickupAddress: { lat: 26.90, lng: 75.78 },
       });
 
-      expect(mockWarehouseFindNearestActive).toHaveBeenCalledWith(26.90, 75.78);
+      // Zone-scoped when the parcel has one — this parcel doesn't, so the
+      // zone arg is null (see tryAutoAssignParcelToWarehouse).
+      expect(mockWarehouseFindNearestActive).toHaveBeenCalledWith(26.90, 75.78, null, null);
       expect(mockParcelFindOneAndUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ _id: parcelId }),
         expect.objectContaining({
@@ -224,8 +226,8 @@ describe("Warehouse & Outstation Parcel Workflow", () => {
         pickupAddress: { lat: 28.5, lng: 77.1 },
       });
 
-      // Assigned warehouse
-      expect(mockWarehouseFindNearestActive).toHaveBeenCalledWith(28.5, 77.1);
+      // Assigned warehouse (unzoned parcel, so the zone arg is null)
+      expect(mockWarehouseFindNearestActive).toHaveBeenCalledWith(28.5, 77.1, null, null);
       // No seller lookup or seller socket emission
       expect(mockFindNearestParcelSellerNearPickup).not.toHaveBeenCalled();
       expect(mockIoTo).not.toHaveBeenCalledWith(expect.stringMatching(/^seller:/));

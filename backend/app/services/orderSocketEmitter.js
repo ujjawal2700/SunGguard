@@ -392,11 +392,16 @@ export async function emitReturnBroadcastForCustomer(customerLocation, payload) 
 /**
  * Broadcast a parcel pickup offer to every eligible parcel/both rider
  * inside the configured search radius (first accept wins).
+ *
+ * `zone`, when given (outstation bookings with a resolved zone — see
+ * parcelWorkflowService.js), additionally confines candidates to riders
+ * belonging to that zone, the same rule the local City Parcel broadcast
+ * already enforces (see deliveryNearbyService.js).
  */
-export async function emitParcelBroadcast(lat, lng, radiusKm, payload) {
+export async function emitParcelBroadcast(lat, lng, radiusKm, payload, { zone = null } = {}) {
   const s = getIo();
   // Parcel-only + "both" riders (isParcelService: true), online, verified.
-  let ids = await getParcelRiderIdsNearPickup(lat, lng, radiusKm);
+  let ids = await getParcelRiderIdsNearPickup(lat, lng, radiusKm, { zone });
 
   if (!ids.length) {
     return { ids: [] };

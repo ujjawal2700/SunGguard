@@ -40,6 +40,11 @@ const personName = trimmed
 const lat = Joi.number().min(-90).max(90).required();
 const lng = Joi.number().min(-180).max(180).required();
 
+/** Indian PIN: six digits, never leading zero. Optional — not every address form collects it. */
+const pincode = trimmed
+  .pattern(/^[1-9]\d{5}$/)
+  .messages({ "string.pattern.base": "Enter a valid 6-digit pincode" });
+
 const addressSchema = Joi.object({
   fullAddress: trimmed.min(5).max(500).required().messages({
     "string.min": "Address looks too short to find",
@@ -48,6 +53,7 @@ const addressSchema = Joi.object({
   lat,
   lng,
   addressNote: trimmed.max(200).allow("").optional(),
+  pincode: pincode.allow("").optional(),
 });
 
 const packageSchema = Joi.object({

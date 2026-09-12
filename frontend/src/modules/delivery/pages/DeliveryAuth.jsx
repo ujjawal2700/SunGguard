@@ -25,6 +25,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import Lottie from "lottie-react";
 import deliveryRiding from "@/assets/Delivery Riding.json";
 import { deliveryApi } from "../services/deliveryApi";
+import { zonesApi } from "@shared/services/zonesApi";
+import { formatZoneLabel } from "@shared/utils/zoneGeometry";
 import { useAuth } from "@core/context/AuthContext";
 import { useSettings } from "@core/context/SettingsContext";
 import LegalSheet from "@shared/components/auth/LegalSheet";
@@ -141,7 +143,16 @@ const isValidFullName = (value) => {
   return trimmed.length >= 2 && /^[A-Za-z]+(?:[ '.-][A-Za-z]+)*$/.test(trimmed);
 };
 
-const validateSignupStep1 = ({ signupName, signupPhone, signupEmail, signupAddress, profileImageFile, signupServiceType }) => {
+const validateSignupStep1 = ({
+  signupName,
+  signupPhone,
+  signupEmail,
+  signupAddress,
+  profileImageFile,
+  signupServiceType,
+  zones,
+  signupZoneId,
+}) => {
   if (!signupName.trim() || !signupPhone || !signupEmail || !signupAddress || !profileImageFile) {
     return "Please fill all personal information fields and upload photo";
   }
@@ -156,6 +167,9 @@ const validateSignupStep1 = ({ signupName, signupPhone, signupEmail, signupAddre
   }
   if (!signupServiceType) {
     return "Please select which services you will serve";
+  }
+  if ((zones || []).length > 0 && !signupZoneId) {
+    return "Please select the zone you will deliver in";
   }
   return null;
 };
@@ -218,6 +232,8 @@ const DeliveryAuth = () => {
   const [signupIfsc, setSignupIfsc] = useState("");
   const [signupAccountHolder, setSignupAccountHolder] = useState("");
   const [signupServiceType, setSignupServiceType] = useState("");
+  const [signupZoneId, setSignupZoneId] = useState("");
+  const [zones, setZones] = useState([]);
   const [showVehicleDropdown, setShowVehicleDropdown] = useState(false);
   const [profileImageFile, setProfileImageFile] = useState(null);
   const [profileImagePreview, setProfileImagePreview] = useState("");
@@ -243,6 +259,21 @@ const DeliveryAuth = () => {
     }
     return () => clearInterval(interval);
   }, [step, timer]);
+
+  // Fetched once, up front, so picking a zone (and validating it) never costs
+  // a network round trip beyond this single load.
+  useEffect(() => {
+    let cancelled = false;
+    zonesApi
+      .getActiveZones()
+      .then((res) => {
+        if (!cancelled) setZones(res.data?.results || []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /**
    * Documents are accepted as uploaded and checked by a human at approval.
@@ -278,6 +309,8 @@ const DeliveryAuth = () => {
           signupAddress,
           profileImageFile,
           signupServiceType,
+          zones,
+          signupZoneId,
         });
         if (step1Error) { toast.error(step1Error); return; }
 
@@ -309,6 +342,7 @@ const DeliveryAuth = () => {
         formData.append("panNumber", signupPanNumber);
         formData.append("pan_number", signupPanNumber);
         formData.append("serviceType", signupServiceType);
+        if (signupZoneId) formData.append("zoneId", signupZoneId);
 
         if (profileImageFile) formData.append("profileImage", profileImageFile);
         if (aadharFile) formData.append("aadhar", aadharFile);
@@ -401,6 +435,7 @@ const DeliveryAuth = () => {
     setSignupVehicleNumber("");
     setSignupDLNumber("");
     setSignupServiceType("");
+    setSignupZoneId("");
     setSignupAadharNumber("");
     setSignupPanNumber("");
     setSignupAccountNumber("");
@@ -648,6 +683,31 @@ const DeliveryAuth = () => {
                             </div>
                           </div>
 
+                          {zones.length > 0 && (
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">Work Zone</label>
+                              <div className="relative">
+                                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300 w-4 h-4 pointer-events-none z-10" />
+                                <select
+                                  value={signupZoneId}
+                                  onChange={(e) => setSignupZoneId(e.target.value)}
+                                  className="w-full pl-11 pr-10 py-3.5 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-400 transition-all appearance-none"
+                                >
+                                  <option value="">Select the zone you'll deliver in</option>
+                                  {zones.map((zone) => (
+                                    <option key={zone._id} value={zone._id}>
+                                      {formatZoneLabel(zone.name, zone.city)}
+                                    </option>
+                                  ))}
+                                </select>
+                                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-300 w-4 h-4 pointer-events-none" />
+                              </div>
+                              <p className="text-[10px] text-gray-400 font-bold ml-1">
+                                You'll only be offered deliveries starting in this zone
+                              </p>
+                            </div>
+                          )}
+
                           <button
                             disabled={checkingPhone}
                             onClick={async () => {
@@ -658,6 +718,8 @@ const DeliveryAuth = () => {
                                 signupAddress,
                                 profileImageFile,
                                 signupServiceType,
+                                zones,
+                                signupZoneId,
                               });
                               if (error) {
                                 toast.error(error);

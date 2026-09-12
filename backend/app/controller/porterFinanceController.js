@@ -2,8 +2,6 @@ import handleResponse from "../utils/helper.js";
 import getPagination from "../utils/pagination.js";
 import CityParcelConfig from "../models/cityParcelConfig.js";
 import ParcelConfig from "../models/parcelConfig.js";
-import Delivery from "../models/delivery.js";
-import DeliveryZone from "../models/deliveryZone.js";
 import { normalizeGstConfig } from "../utils/gst.js";
 import { getPorterGstReport, getPorterGstLedger } from "../services/porter/gstReportService.js";
 import {
@@ -15,7 +13,7 @@ import { PORTER_BOOKING_KIND, ALL_PORTER_BOOKING_KINDS } from "../constants/port
 
 /**
  * The porter desk's money surfaces: GST configuration and reporting, booking
- * invoices, payment history, and rider zone assignment.
+ * invoices, and payment history.
  *
  * Grouped in one controller because they share a single concern — what the
  * platform charged, what it collected, and who it collected it from — and
@@ -264,121 +262,6 @@ export const getMyTransactions = async (req, res) => {
     const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 25));
     const transactions = await getCustomerPorterTransactions(req.user.id, limit);
     return handleResponse(res, 200, "Transactions", { transactions });
-  } catch (error) {
-    return fail(res, error);
-  }
-};
-
-/* ==========================================================================
-   Rider zone assignment
-   ========================================================================== */
-
-/**
- * Which zones a rider is staffed to.
- *
- * An empty list means "wherever they physically are" — the local job feed
- * falls back to the rider's live GPS fix, which is how zone gating worked
- * before assignment existed. A non-empty list is a hard restriction: they see
- * only those zones' jobs, wherever they happen to be standing.
- */
-export const adminSetRiderZones = async (req, res) => {
-  try {
-    const { zoneIds } = req.body || {};
-
-    if (zoneIds !== null && !Array.isArray(zoneIds)) {
-      return handleResponse(res, 400, "zoneIds must be a list, or null to clear");
-    }
-
-    const ids = [...new Set((zoneIds || []).map(String))].filter(Boolean);
-
-    /**
-     * Every id has to be a zone that exists and is active. Assigning a rider
-     * to a deleted or deactivated zone would silently give them no work at
-     * all, and the admin would have no way to see why.
-     */
-    if (ids.length) {
-      const found = await DeliveryZone.find({ _id: { $in: ids }, isActive: true })
-        .select("_id")
-        .lean();
-      if (found.length !== ids.length) {
-        return handleResponse(res, 400, "One or more of those zones no longer exist");
-      }
-    }
-
-    const rider = await Delivery.findByIdAndUpdate(
-      req.params.id,
-      { $set: { zoneIds: ids } },
-      { new: true },
-    )
-      .select("name phone zoneIds")
-      .populate("zoneIds", "name city color")
-      .lean();
-
-    if (!rider) return handleResponse(res, 404, "Rider not found");
-
-    return handleResponse(res, 200, "Zones updated", { rider });
-  } catch (error) {
-    return fail(res, error);
-  }
-};
-
-/** Riders with their zone assignments, for the assignment screen. */
-export const adminListRiderZones = async (req, res) => {
-  try {
-    const { page, limit } = getPagination(req, { defaultLimit: 25, maxLimit: 100 });
-    const skip = (page - 1) * limit;
-
-    const match = { isVerified: true, isParcelService: true };
-    if (String(req.query.search || "").trim()) {
-      const rx = new RegExp(
-        String(req.query.search).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-        "i",
-      );
-      match.$or = [{ name: rx }, { phone: rx }];
-    }
-    // "Which riders cover this zone" — the question an admin asks when a zone
-    // has jobs nobody is taking.
-    if (req.query.zoneId) match.zoneIds = req.query.zoneId;
-
-    const [riders, total, zones] = await Promise.all([
-      Delivery.find(match)
-        .select("name phone profileImage isOnline zoneIds")
-        .populate("zoneIds", "name city color")
-        .sort({ name: 1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      Delivery.countDocuments(match),
-      DeliveryZone.find({ isActive: true }).select("name city color").sort({ name: 1 }).lean(),
-    ]);
-
-    return handleResponse(res, 200, "Rider zones", {
-      items: riders.map((rider) => ({
-        id: String(rider._id),
-        name: rider.name,
-        phone: rider.phone,
-        avatar: rider.profileImage || "",
-        isOnline: Boolean(rider.isOnline),
-        zones: (rider.zoneIds || []).map((zone) => ({
-          id: String(zone._id),
-          name: zone.name,
-          city: zone.city,
-          color: zone.color,
-        })),
-        /** No assignment means the rider is matched on live location instead. */
-        scope: (rider.zoneIds || []).length ? "ASSIGNED" : "LIVE_LOCATION",
-      })),
-      zones: zones.map((zone) => ({
-        id: String(zone._id),
-        name: zone.name,
-        city: zone.city,
-        color: zone.color,
-      })),
-      page,
-      limit,
-      total,
-      totalPages: Math.ceil(total / limit) || 1,
-    });
   } catch (error) {
     return fail(res, error);
   }

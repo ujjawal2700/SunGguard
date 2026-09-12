@@ -29,9 +29,18 @@ function buildParcelDeliveryFilter() {
 }
 
 /**
- * `zone`, when given, additionally requires the rider to stand inside that
- * polygon. Tested in the same pass as the radius, so confining a broadcast to
- * a zone costs nothing beyond the point-in-polygon arithmetic.
+ * `zone`, when given, additionally requires the rider to belong there. Tested
+ * in the same pass as the radius, so confining a broadcast to a zone costs
+ * nothing beyond the point-in-polygon arithmetic.
+ *
+ * "Belong" mirrors the rule the pull feed and the accept gate already use
+ * (see cityParcelWorkflowService.js / parcelWorkflowService.js): a rider with
+ * a self-selected zone (`zoneIds`, one entry — see models/delivery.js) is
+ * judged against that assignment, wherever they physically are; a rider with
+ * none falls back to their live GPS fix. Without this, the push broadcast
+ * disagreed with the pull feed and the claim — a rider merely passing through
+ * a zone that is not theirs could be buzzed for it, only to be refused the
+ * moment they tried to accept.
  */
 function filterByHaversine(candidates, lat, lng, maxDistanceM, zone = null) {
   return candidates
@@ -42,7 +51,14 @@ function filterByHaversine(candidates, lat, lng, maxDistanceM, zone = null) {
       if (!Number.isFinite(dlat) || !Number.isFinite(dlng)) return false;
       if (Math.abs(dlat) < 1e-5 && Math.abs(dlng) < 1e-5) return false;
       if (distanceMeters(dlat, dlng, lat, lng) > maxDistanceM) return false;
-      if (zone && !isPointInPolygon(dlat, dlng, zone.points || [])) return false;
+      if (zone) {
+        const assignedZoneIds = (d.zoneIds || []).map(String);
+        if (assignedZoneIds.length) {
+          if (!assignedZoneIds.includes(String(zone._id))) return false;
+        } else if (!isPointInPolygon(dlat, dlng, zone.points || [])) {
+          return false;
+        }
+      }
       return true;
     })
     .map((d) => d._id.toString());
@@ -198,7 +214,7 @@ export async function getParcelRiderIdsNearPickup(
       "location.coordinates.0": { $exists: true },
       "location.coordinates.1": { $exists: true },
     })
-      .select("_id location")
+      .select("_id location zoneIds")
       .limit(HAVERSINE_FALLBACK_LIMIT())
       .lean();
 

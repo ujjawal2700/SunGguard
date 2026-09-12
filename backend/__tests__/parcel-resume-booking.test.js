@@ -117,6 +117,15 @@ jest.unstable_mockModule("../app/services/deliveryBusyService.js", () => ({
   getDeliveryPartnerActiveJobInfo: jest.fn().mockResolvedValue({ hasActiveJob: false }),
   markDeliveryPartnerBusy: jest.fn(),
 }));
+// No zones configured — outstation zone gating (createParcel) no-ops, same
+// as it did before zones existed at all. Without this mock the real service
+// would hit the real (unmocked) DeliveryZone model and hang with no DB.
+jest.unstable_mockModule("../app/services/deliveryZoneService.js", () => ({
+  isZoneGatingActive: jest.fn().mockResolvedValue(false),
+  resolveZoneForPoint: jest.fn().mockResolvedValue(null),
+  getActiveZoneById: jest.fn().mockResolvedValue(null),
+  isPointInZoneId: jest.fn().mockResolvedValue(false),
+}));
 
 const { createParcel } = await import("../app/controller/parcelController.js");
 

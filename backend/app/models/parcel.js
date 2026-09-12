@@ -22,6 +22,11 @@ const addressDetailsSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  pincode: {
+    type: String,
+    trim: true,
+    default: "",
+  },
 }, { _id: false });
 
 const packageDetailsSchema = new mongoose.Schema({
@@ -247,6 +252,20 @@ const parcelSchema = new mongoose.Schema(
     warehouseId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Warehouse",
+      default: null,
+      index: true,
+    },
+    /**
+     * The zone the pickup point resolved into at creation, for outstation
+     * bookings only (see resolveFirstMile/createParcel). Null for a local
+     * parcel, or an outstation one booked before any zone existed. This is
+     * the hard boundary outstation dispatch matches candidate riders and
+     * candidate warehouses against — see deliveryNearbyService.js and
+     * tryAutoAssignParcelToWarehouse in parcelWorkflowService.js.
+     */
+    zoneId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "DeliveryZone",
       default: null,
       index: true,
     },

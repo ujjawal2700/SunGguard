@@ -24,6 +24,7 @@ import Settings from "../pages/profile/Settings";
 import HelpSupport from "../pages/profile/HelpSupport";
 import HelpSupportChat from "../pages/profile/HelpSupportChat";
 import Withdrawals from "../pages/profile/Withdrawals";
+import Warehouses from "../pages/profile/Warehouses";
 import Wallet from "../pages/profile/Wallet";
 import Notifications from "../pages/Notifications";
 import ParcelTaskPage from "../pages/ParcelTaskPage";
@@ -67,6 +68,7 @@ const DeliveryRoutes = () => {
         <Route path="profile/help-support" element={<HelpSupport />} />
         <Route path="profile/help-support/chat" element={<HelpSupportChat />} />
         <Route path="profile/withdrawals" element={<Withdrawals />} />
+        <Route path="profile/warehouses" element={<Warehouses />} />
         <Route path="profile/wallet" element={<Wallet />} />
         {/* Legal / Informational pages for delivery partners */}
         <Route path="profile/privacy" element={<DeliveryPrivacyPage />} />

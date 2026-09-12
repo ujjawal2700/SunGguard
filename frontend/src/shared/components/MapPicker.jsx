@@ -3,12 +3,14 @@ import {
   GoogleMap,
   Marker,
   Autocomplete,
+  Polygon,
 } from "@react-google-maps/api";
 import { Search, MapPin, Navigation, Loader2 } from "lucide-react";
 import Modal from "./ui/Modal";
 import Button from "./ui/Button";
 import Input from "./ui/Input";
 import { useMapsLoader } from "@core/maps/useMapsLoader";
+import { isPointInPolygon } from "@shared/utils/zoneGeometry";
 
 const mapContainerStyle = {
   width: "100%",
@@ -101,6 +103,23 @@ const MapPicker = ({
   showRadius = true,
   radiusLabel = "Service Radius (km)",
   descriptionText = "Customers within this radius from your shop will be able to see and order from you.",
+  /**
+   * Optional zone ring ([{lat, lng}, ...]) the pin must land inside. Drawn as
+   * a read-only overlay so the boundary is visible while picking, and
+   * enforced on click/drag and on confirm — a point outside it is refused
+   * rather than silently saved and rejected later by the server.
+   *
+   * Use `boundary` when there is exactly one zone to pin inside (e.g. an
+   * admin who has already picked which zone a warehouse belongs to). Use
+   * `boundaries` — a list of `{ points, name?, color? }` zones — when the
+   * picker itself has to decide, from all of them, which one (if any) the
+   * dropped pin falls inside (e.g. a customer choosing an outstation pickup
+   * point anywhere the platform serves). The two are mutually exclusive;
+   * `boundary` wins if both are somehow given.
+   */
+  boundary = null,
+  boundaries = null,
+  boundaryLabel = "the selected zone",
 }) => {
   const initialCoords = parseLatLng(initialLocation);
   const [center, setCenter] = useState(initialCoords || defaultCenter);
@@ -166,30 +185,65 @@ const MapPicker = ({
     if (coords) {
       setCenter(coords);
       setMarker(coords);
+    } else if (Array.isArray(boundary) && boundary.length >= 3) {
+      // No pin yet — centre on the zone so the boundary is visible right away
+      // instead of the admin panning across the whole map to find it.
+      const centroid = boundary.reduce(
+        (acc, p) => ({ lat: acc.lat + p.lat / boundary.length, lng: acc.lng + p.lng / boundary.length }),
+        { lat: 0, lng: 0 },
+      );
+      setCenter(centroid);
+      setMarker(null);
     } else {
       setCenter(defaultCenter);
       setMarker(null);
     }
-  }, [isOpen, initialLocation, initialRadius, preferCurrentLocationOnOpen]);
+  }, [isOpen, initialLocation, initialRadius, preferCurrentLocationOnOpen, boundary]);
+
+  const hasBoundaries = Array.isArray(boundaries) && boundaries.length > 0;
+
+  const isInsideBoundary = useCallback(
+    (point) => {
+      if (Array.isArray(boundary) && boundary.length) {
+        return isPointInPolygon(point.lat, point.lng, boundary);
+      }
+      if (hasBoundaries) {
+        return boundaries.some((zone) => isPointInPolygon(point.lat, point.lng, zone?.points || []));
+      }
+      return true;
+    },
+    [boundary, hasBoundaries, boundaries],
+  );
 
   const onMapClick = useCallback((e) => {
     if (Date.now() < suppressMapClickUntilRef.current) return;
-    clearCircleOverlay();
     const newPos = {
       lat: e.latLng.lat(),
       lng: e.latLng.lng(),
     };
+    if (!isInsideBoundary(newPos)) {
+      alert(`That point is outside ${boundaryLabel}. Pick a point inside the zone boundary shown on the map.`);
+      return;
+    }
+    clearCircleOverlay();
     setMarker(newPos);
-  }, [clearCircleOverlay]);
+  }, [clearCircleOverlay, isInsideBoundary, boundaryLabel]);
 
   const onMarkerDragEnd = useCallback((e) => {
-    clearCircleOverlay();
     const newPos = {
       lat: e.latLng.lat(),
       lng: e.latLng.lng(),
     };
+    if (!isInsideBoundary(newPos)) {
+      alert(`That point is outside ${boundaryLabel}. Pick a point inside the zone boundary shown on the map.`);
+      // Snap back — the marker's visual position already moved with the
+      // drag gesture, so the state has to be re-set to force it back.
+      setMarker((prev) => (prev ? { ...prev } : prev));
+      return;
+    }
+    clearCircleOverlay();
     setMarker(newPos);
-  }, [clearCircleOverlay]);
+  }, [clearCircleOverlay, isInsideBoundary, boundaryLabel]);
 
   const handlePlaceChanged = () => {
     suppressMapClickUntilRef.current = Date.now() + 600;
@@ -304,6 +358,11 @@ const MapPicker = ({
   const handleConfirm = async () => {
     if (!marker || typeof marker.lat !== 'number' || typeof marker.lng !== 'number') {
       alert("Please select a location on the map.");
+      return;
+    }
+
+    if (!isInsideBoundary(marker)) {
+      alert(`That point is outside ${boundaryLabel}. Pick a point inside the zone boundary shown on the map.`);
       return;
     }
 
@@ -441,6 +500,42 @@ const MapPicker = ({
                   animation={window.google.maps.Animation.DROP}
                 />
               )}
+              {Array.isArray(boundary) && boundary.length >= 3 && (
+                <Polygon
+                  paths={boundary}
+                  options={{
+                    fillColor: "#2563EB",
+                    fillOpacity: 0.08,
+                    strokeColor: "#2563EB",
+                    strokeOpacity: 0.7,
+                    strokeWeight: 2,
+                    clickable: false,
+                    zIndex: 0,
+                  }}
+                />
+              )}
+              {!boundary &&
+                hasBoundaries &&
+                boundaries.map((zone, i) => {
+                  const points = zone?.points || [];
+                  if (points.length < 3) return null;
+                  const color = zone?.color || "#2563EB";
+                  return (
+                    <Polygon
+                      key={zone?._id || i}
+                      paths={points}
+                      options={{
+                        fillColor: color,
+                        fillOpacity: 0.08,
+                        strokeColor: color,
+                        strokeOpacity: 0.7,
+                        strokeWeight: 2,
+                        clickable: false,
+                        zIndex: 0,
+                      }}
+                    />
+                  );
+                })}
             </GoogleMap>
           )}
         </div>

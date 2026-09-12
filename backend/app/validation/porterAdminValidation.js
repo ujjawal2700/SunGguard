@@ -107,6 +107,11 @@ export const adminUpdateCourierSchema = Joi.object({
   .min(1)
   .messages({ "object.min": "Nothing to update" });
 
+/** A Mongo ObjectId string — the zone a warehouse belongs to. */
+const objectIdString = trimmed
+  .pattern(/^[0-9a-fA-F]{24}$/)
+  .messages({ "string.pattern.base": "Invalid zone selected" });
+
 export const adminCreateWarehouseSchema = Joi.object({
   name: nameString.required(),
   address: trimmed.min(3).max(200).required().messages({
@@ -120,6 +125,7 @@ export const adminCreateWarehouseSchema = Joi.object({
   contactPerson: nameString.allow(""),
   lat: lat.required(),
   lng: lng.required(),
+  zoneId: objectIdString.allow(""),
   isActive: Joi.boolean(),
   notes: trimmed.max(500).allow(""),
 });
@@ -134,6 +140,7 @@ export const adminUpdateWarehouseSchema = Joi.object({
   contactPerson: nameString.allow(""),
   lat,
   lng,
+  zoneId: objectIdString.allow(""),
   isActive: Joi.boolean(),
   notes: trimmed.max(500).allow(""),
 })

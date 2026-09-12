@@ -12,6 +12,7 @@ import {
     MoreVertical,
     Phone,
     MapPin,
+    MapPinned,
     Truck,
     User,
     ShieldCheck,
@@ -27,6 +28,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import Pagination from '@shared/components/ui/Pagination';
 import { adminApi } from '../services/adminApi';
+import { formatZoneLabel } from '@shared/utils/zoneGeometry';
 
 /** Mongo's 24-char hex id isn't something anyone reads at a glance — show
  *  the last 6 characters, which is plenty to tell riders apart on screen. */
@@ -79,6 +81,8 @@ const ActiveDeliveryBoys = () => {
                 // Onboarding address is what the rider actually typed in; currentArea
                 // only fills in once they've sent a live GPS ping, so it's a fallback.
                 location: r.address || r.currentArea || 'Unknown',
+                zoneName: r.zoneIds?.[0]?.name || '',
+                zoneCity: r.zoneIds?.[0]?.city || '',
                 joinDate: new Date(r.createdAt).toLocaleDateString()
             }));
 
@@ -341,6 +345,16 @@ return (
                                             <Truck className="h-3.5 w-3.5 shrink-0" />
                                             <span className="text-[10px] font-semibold truncate">{rider.vehicle} • <span className="text-slate-900 font-bold">{rider.vehicleNum}</span></span>
                                         </div>
+                                        <div className="flex items-center gap-2 text-indigo-500">
+                                            <MapPinned className="h-3.5 w-3.5 shrink-0" />
+                                            {rider.zoneName ? (
+                                                <span className="text-[10px] font-bold truncate">
+                                                    {formatZoneLabel(rider.zoneName, rider.zoneCity)}
+                                                </span>
+                                            ) : (
+                                                <span className="text-[10px] font-bold text-amber-500 truncate">No zone selected</span>
+                                            )}
+                                        </div>
                                     </div>
 
                                     {/* Action Footer */}
@@ -460,6 +474,14 @@ return (
                                 <div className="space-y-1">
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Last Synced Area</p>
                                     <p className="text-sm font-bold text-slate-900">{viewingRider.location}</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Work Zone</p>
+                                    <p className="text-sm font-bold text-slate-900">
+                                        {viewingRider.zoneName
+                                            ? formatZoneLabel(viewingRider.zoneName, viewingRider.zoneCity)
+                                            : "Not selected"}
+                                    </p>
                                 </div>
                             </div>
 

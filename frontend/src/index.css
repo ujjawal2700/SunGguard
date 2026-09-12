@@ -523,8 +523,9 @@ body {
 
 /* Google Places Autocomplete dropdown (.pac-container) is appended straight
    to <body> by Google's own script, outside any component's DOM. Our modal
-   overlay sits at z-[600] and locks body pointer-events: none, so without this
-   the dropdown paints underneath or clicks pass through onto the map canvas. */
+   overlay sits at z-[2500] and locks body pointer-events: none, so without
+   this the dropdown paints underneath or clicks pass through onto the map
+   canvas. */
 .pac-container {
   z-index: 10000 !important;
   pointer-events: auto !important;

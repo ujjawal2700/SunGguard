@@ -12,6 +12,7 @@ import {
     Mail,
     Truck,
     MapPin,
+    MapPinned,
     Calendar,
     IdCard,
     RotateCw,
@@ -24,6 +25,7 @@ import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { adminApi } from '../services/adminApi';
+import { formatZoneLabel } from '@shared/utils/zoneGeometry';
 
 const DEFAULT_AVATAR = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
 
@@ -92,6 +94,8 @@ const mapDeliveryPartner = (r) => ({
     experience: r.experience || 'Not Specified',
     experienceDetails: r.experienceDetails || '',
     preferredArea: r.address || r.currentArea || 'Not Specified',
+    zoneName: r.zoneIds?.[0]?.name || '',
+    zoneCity: r.zoneIds?.[0]?.city || '',
     // CAR WASH DISABLED — isCarWashService: r.isCarWashService,
     isParcelService: r.isParcelService,
     isQuickCommerceService: r.isQuickCommerceService !== false,
@@ -439,6 +443,16 @@ return (
                                                     <span className="text-[10px] font-bold font-mono">{rider.vehicleNumber}</span>
                                                 </div>
                                             )}
+                                            <div className="flex items-center gap-2">
+                                                <MapPinned className="h-3.5 w-3.5 text-indigo-400" />
+                                                {rider.zoneName ? (
+                                                    <span className="text-[10px] font-bold text-indigo-600">
+                                                        {formatZoneLabel(rider.zoneName, rider.zoneCity)}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-[10px] font-bold text-amber-500">No zone selected</span>
+                                                )}
+                                            </div>
                                         </div>
                                     </td>
                                     <td className="px-8 py-6">
@@ -606,6 +620,14 @@ return (
                                         <DetailField label="Phone Number" value={viewingRider.phone} mono />
                                         <DetailField label="Email Address" value={viewingRider.email} />
                                         <DetailField label="Permanent Address" value={viewingRider.address} />
+                                        <DetailField
+                                            label="Work Zone"
+                                            value={
+                                                viewingRider.zoneName
+                                                    ? formatZoneLabel(viewingRider.zoneName, viewingRider.zoneCity)
+                                                    : "Not selected"
+                                            }
+                                        />
                                     </div>
                                 </div>
 

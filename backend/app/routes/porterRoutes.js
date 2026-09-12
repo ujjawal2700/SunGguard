@@ -11,6 +11,7 @@ import {
   adminCreateZone,
   adminUpdateZone,
   adminDeleteZone,
+  publicListActiveZones,
 } from "../controller/deliveryZoneController.js";
 import { verifyToken, allowRoles } from "../middleware/authMiddleware.js";
 
@@ -48,8 +49,6 @@ import {
   adminUpdateGstSettings,
   adminGetGstReport,
   adminGetGstLedger,
-  adminSetRiderZones,
-  adminListRiderZones,
   getBookingInvoice,
   getBookingPayments,
   getMyTransactions,
@@ -69,6 +68,10 @@ const adminOnly = [verifyToken, allowRoles("admin", "parcel_admin")];
 // Customer / Public - Active Porter Banners
 router.get("/banners/active", getActivePorterBanners);
 router.post("/banners/:id/click", trackClick);
+
+// Public — active delivery zones (rider onboarding/profile zone picker,
+// customer outstation pickup-zone validation). No admin rights required.
+router.get("/zones/active", publicListActiveZones);
 
 // Admin Porter Dashboard & Payouts
 router.get("/admin/dashboard", ...adminOnly, adminGetPorterDashboard);
@@ -122,16 +125,6 @@ router.put("/admin/gst-settings", ...adminOnly, adminUpdateGstSettings);
 router.get("/admin/gst-report", ...adminOnly, adminGetGstReport);
 // Line-by-line, for export to an accountant.
 router.get("/admin/gst-ledger", ...adminOnly, adminGetGstLedger);
-
-/* --------------------------------------------------------------------------
-   Rider zone assignment
-   --------------------------------------------------------------------------
-   A rider with zones assigned is offered local jobs from those zones only,
-   wherever they are standing. A rider with none falls back to the zones their
-   live GPS fix puts them inside.
-   ------------------------------------------------------------------------ */
-router.get("/admin/rider-zones", ...adminOnly, adminListRiderZones);
-router.patch("/admin/riders/:id/zones", ...adminOnly, adminSetRiderZones);
 
 /* --------------------------------------------------------------------------
    Invoices and payment history

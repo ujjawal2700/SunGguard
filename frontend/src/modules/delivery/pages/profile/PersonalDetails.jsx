@@ -1,16 +1,19 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, User, Mail, Phone, MapPin } from "lucide-react";
+import { ArrowLeft, User, Mail, Phone, MapPin, ChevronDown } from "lucide-react";
 import Button from "@/shared/components/ui/Button";
 import Input from "@/shared/components/ui/Input";
 import { toast } from "sonner";
 import { useAuth } from "@core/context/AuthContext";
 import { deliveryApi } from "../../services/deliveryApi";
+import { zonesApi } from "@shared/services/zonesApi";
+import { formatZoneLabel } from "@shared/utils/zoneGeometry";
 
 const buildFormFromUser = (user) => ({
   fullName: user?.name || "",
   email: user?.email || "",
   address: user?.address || "",
+  zoneId: user?.zoneIds?.[0]?._id || user?.zoneIds?.[0] || "",
 });
 
 const PersonalDetails = () => {
@@ -19,6 +22,7 @@ const PersonalDetails = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState(() => buildFormFromUser(user));
+  const [zones, setZones] = useState([]);
 
   // Re-sync whenever the real profile loads/refreshes — but not while the
   // rider has unsaved edits open, or a background refresh would wipe them.
@@ -26,6 +30,27 @@ const PersonalDetails = () => {
     if (isEditing) return;
     setFormData(buildFormFromUser(user));
   }, [user, isEditing]);
+
+  useEffect(() => {
+    let cancelled = false;
+    zonesApi
+      .getActiveZones()
+      .then((res) => {
+        if (!cancelled) setZones(res.data?.results || []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const currentZoneName = useMemo(() => {
+    const assigned = user?.zoneIds?.[0];
+    if (!assigned) return "";
+    if (typeof assigned === "object") return formatZoneLabel(assigned.name, assigned.city);
+    const match = zones.find((z) => z._id === assigned);
+    return match ? formatZoneLabel(match.name, match.city) : "";
+  }, [user?.zoneIds, zones]);
 
   const profileImage = useMemo(() => {
     if (user?.profileImage) return user.profileImage;
@@ -50,6 +75,7 @@ const PersonalDetails = () => {
         name: formData.fullName.trim(),
         email: formData.email.trim(),
         address: formData.address.trim(),
+        zoneId: formData.zoneId || "",
       });
       if (response.data?.success) {
         // Pulls the saved copy back into the shared AuthContext user, so
@@ -159,6 +185,42 @@ const PersonalDetails = () => {
               />
             </div>
           </div>
+
+          {zones.length > 0 && (
+            <div className="relative">
+              <label className="block text-xs font-medium text-gray-700 mb-1 ml-1">Work Zone</label>
+              {isEditing ? (
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 z-10">
+                    <MapPin size={18} />
+                  </div>
+                  <select
+                    value={formData.zoneId}
+                    onChange={(e) => setFormData({ ...formData, zoneId: e.target.value })}
+                    className="w-full pl-10 pr-9 py-2 rounded-xl text-sm border bg-white border-gray-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all appearance-none"
+                  >
+                    <option value="">No zone selected</option>
+                    {zones.map((zone) => (
+                      <option key={zone._id} value={zone._id}>
+                        {formatZoneLabel(zone.name, zone.city)}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                </div>
+              ) : (
+                <Input
+                  value={currentZoneName || "Not selected"}
+                  readOnly
+                  icon={MapPin}
+                  className="bg-gray-50 border-transparent"
+                />
+              )}
+              <p className="text-[11px] text-gray-400 mt-1 ml-1">
+                You only receive delivery jobs from this one zone. Switching replaces it — you can't work two at once.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

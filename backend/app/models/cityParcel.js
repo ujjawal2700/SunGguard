@@ -30,6 +30,7 @@ const addressSchema = new mongoose.Schema(
     lng: { type: Number, required: true },
     /** Flat number, floor, landmark — what the rider needs at the door. */
     addressNote: { type: String, trim: true, default: "" },
+    pincode: { type: String, trim: true, default: "" },
   },
   { _id: false },
 );

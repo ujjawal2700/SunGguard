@@ -9,6 +9,8 @@ export const deliveryApi = {
   checkPhone: (phone) =>
     axiosInstance.get(`/delivery/check-phone/${encodeURIComponent(phone)}`),
   getProfile: () => axiosInstance.get("/delivery/profile"),
+  /** Active warehouses in the rider's own zone, nearest first. */
+  getMyWarehouses: () => axiosInstance.get("/warehouse/mine"),
   updateProfile: (data) => axiosInstance.put("/delivery/profile", data),
   getStats: () => axiosInstance.get("/delivery/stats"),
   getEarnings: () => axiosInstance.get("/delivery/earnings"),

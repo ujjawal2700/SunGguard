@@ -41,6 +41,8 @@ import {
 } from "../utils/bookingValidation";
 import { parcelApi } from "../services/parcelApi";
 import MapPicker from "../../../shared/components/MapPicker";
+import { zonesApi } from "@shared/services/zonesApi";
+import { zonesContainingPoint } from "@shared/utils/zoneGeometry";
 import { useAuth } from "@core/context/AuthContext";
 import { useSettings } from "@core/context/SettingsContext";
 import { openParcelRazorpayCheckout } from "../utils/parcelRazorpay";
@@ -645,6 +647,7 @@ const ParcelDeliveryPage = () => {
   const [destinationCity, setDestinationCity] = useState(outstationDraft.destinationCity || "");
   const [nearestWarehouse, setNearestWarehouse] = useState(null);
   const [warehouseLoading, setWarehouseLoading] = useState(false);
+  const [zones, setZones] = useState([]);
   const [bookingDurationMode, setBookingDurationMode] = useState(
     outstationDraft.bookingDurationMode || "one_day",
   );
@@ -798,6 +801,24 @@ const ParcelDeliveryPage = () => {
       cancelled = true;
     };
   }, [pickupDetails.lat, pickupDetails.lng]);
+
+  // Fetched once — outstation pickup has to resolve into one of these zones
+  // (see createParcel's zone gate), checked here client-side too so the
+  // customer finds out before submitting rather than from a 400.
+  useEffect(() => {
+    zonesApi
+      .getActiveZones()
+      .then((res) => setZones(res.data?.results || []))
+      .catch(() => {});
+  }, []);
+
+  const pickupOutOfZone = useMemo(() => {
+    if (!zones.length) return false;
+    const lat = Number(pickupDetails.lat);
+    const lng = Number(pickupDetails.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+    return zonesContainingPoint(zones, lat, lng).length === 0;
+  }, [zones, pickupDetails.lat, pickupDetails.lng]);
 
   const saveCustomCourierName = useCallback(() => {
     const name = customCourierName.trim();
@@ -1085,6 +1106,11 @@ const ParcelDeliveryPage = () => {
         if (problem) return problem;
         if (!pickupDetails.lat || !pickupDetails.lng)
           return "Set the pickup point on the map.";
+        // Gated here, not just at final submit — the customer should not be
+        // able to fill out courier/package/payment for a pickup that was
+        // never bookable, only to be turned away at the very last step.
+        if (pickupOutOfZone)
+          return "Pickup location is outside our serviceable zones. Please choose a pickup point inside a serviceable zone.";
         return null;
       }
       if (index === 1) {
@@ -1116,6 +1142,7 @@ const ParcelDeliveryPage = () => {
     },
     [
       pickupDetails,
+      pickupOutOfZone,
       selectedCourier,
       isOtherCourier,
       customCourierNameSaved,
@@ -1185,6 +1212,11 @@ const ParcelDeliveryPage = () => {
     }
     if (!pickupDetails.lat || !pickupDetails.lng) {
       return toast.error("Please select pickup location on the map.");
+    }
+    if (pickupOutOfZone) {
+      return toast.error(
+        "Pickup location is outside our serviceable zones. Please choose a pickup point inside a serviceable zone.",
+      );
     }
     if (!pickupDetails.name || !pickupDetails.phone) {
       return toast.error("Please enter sender details.");
@@ -1280,6 +1312,7 @@ const ParcelDeliveryPage = () => {
           fullAddress: composedAddress,
           lat: pickupDetails.lat,
           lng: pickupDetails.lng,
+          pincode: pickupDetails.pincode?.trim() || undefined,
         },
         dropAddress,
         packageDetails: {
@@ -1687,6 +1720,18 @@ const ParcelDeliveryPage = () => {
                           )}
                         </button>
                       </motion.div>
+
+                      {pickupOutOfZone && (
+                        <motion.div variants={stackItem}>
+                          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800 flex items-start gap-2">
+                            <span className="text-base leading-none">⚠️</span>
+                            <span>
+                              This pickup point is outside our serviceable zones. Please drop the
+                              pin somewhere we currently deliver from.
+                            </span>
+                          </div>
+                        </motion.div>
+                      )}
 
                       <motion.div variants={stackItem}>
                         <ParcelReviewsSection />
@@ -2502,6 +2547,8 @@ const ParcelDeliveryPage = () => {
           title="Select Pickup Location"
           searchPlaceholder="Search for pickup area..."
           showRadius={false}
+          boundaries={zones}
+          boundaryLabel="a serviceable zone"
         />
       )}
     </div>

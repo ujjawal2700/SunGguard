@@ -6,6 +6,7 @@ import { generateOTP, useRealSMS } from "../utils/otp.js";
 import { uploadImageWithFallback } from "../services/mediaService.js";
 import { clearRiderPresence } from "../services/firebaseService.js";
 import { syncDeliveryPartnerBusyFlag } from "../services/deliveryBusyService.js";
+import { getActiveZoneById, isZoneGatingActive } from "../services/deliveryZoneService.js";
 
 const generateToken = (delivery) =>
     jwt.sign(
@@ -242,6 +243,28 @@ export const signupDelivery = async (req, res) => {
             );
         }
 
+        /**
+         * The one zone this rider will work — self-selected here instead of
+         * assigned later by an admin. Required once an admin has drawn at
+         * least one zone; before that (a fresh install with none configured
+         * yet) signup is unaffected, same as every other zone-gated flow.
+         */
+        const zoneId = pickBodyString(body, ["zoneId", "zone_id"]);
+        let resolvedZoneId = null;
+        if (zoneId) {
+            const zone = await getActiveZoneById(zoneId);
+            if (!zone) {
+                return handleResponse(
+                    res,
+                    400,
+                    "The selected zone is no longer available. Please pick another.",
+                );
+            }
+            resolvedZoneId = zone._id;
+        } else if (await isZoneGatingActive()) {
+            return handleResponse(res, 400, "Please select the zone you will deliver in");
+        }
+
         let otp = generateOTP();
 
         let aadharUrl = delivery?.documents?.aadhar || "";
@@ -338,6 +361,9 @@ export const signupDelivery = async (req, res) => {
             deliveryData.panNumber = resolvedPanNumber;
         } else if (/^[A-Z]{5}\d{4}[A-Z]$/.test(finalPan)) {
             deliveryData.panNumber = finalPan;
+        }
+        if (resolvedZoneId) {
+            deliveryData.zoneIds = [resolvedZoneId];
         }
 
         if (!delivery) {
@@ -476,7 +502,10 @@ export const verifyDeliveryOTP = async (req, res) => {
 ================================ */
 export const getDeliveryProfile = async (req, res) => {
     try {
-        const delivery = await Delivery.findById(req.user.id);
+        const delivery = await Delivery.findById(req.user.id).populate(
+            "zoneIds",
+            "name city color",
+        );
         if (!delivery) {
             return handleResponse(res, 404, "Delivery partner not found");
         }
@@ -508,6 +537,7 @@ export const updateDeliveryProfile = async (req, res) => {
             experienceDetails,
             isParcelService,
             isQuickCommerceService,
+            zoneId,
         } = req.body;
 
         const delivery = await Delivery.findById(req.user.id);
@@ -569,7 +599,32 @@ export const updateDeliveryProfile = async (req, res) => {
             );
         }
 
+        /**
+         * The rider's one work zone. Self-service replacement for the old
+         * admin "assign a rider to zones" screen — only one zone at a time,
+         * so switching areas is a deliberate swap, not an accumulating list.
+         * Sending an empty string clears it, reverting to the legacy
+         * "wherever the rider's live GPS puts them" behaviour.
+         */
+        if (typeof zoneId !== "undefined") {
+            const trimmedZoneId = String(zoneId || "").trim();
+            if (!trimmedZoneId) {
+                delivery.zoneIds = [];
+            } else {
+                const zone = await getActiveZoneById(trimmedZoneId);
+                if (!zone) {
+                    return handleResponse(
+                        res,
+                        400,
+                        "The selected zone is no longer available. Please pick another.",
+                    );
+                }
+                delivery.zoneIds = [zone._id];
+            }
+        }
+
         await delivery.save();
+        await delivery.populate("zoneIds", "name city color");
 
         // Fire-and-forget — never blocks the HTTP response. A failed cleanup
         // is also safe: the scheduled sweep job will pick it up on TTL.

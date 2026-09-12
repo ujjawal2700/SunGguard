@@ -77,6 +77,11 @@ const ParcelTaskPage = () => {
   const [isSheetDragging, setIsSheetDragging] = useState(false);
   // Customer at the door asking to pay by UPI instead of cash.
   const [codQrOpen, setCodQrOpen] = useState(false);
+  // Picking which zone warehouse to actually drop this parcel at.
+  const [warehousePickerOpen, setWarehousePickerOpen] = useState(false);
+  const [zoneWarehouses, setZoneWarehouses] = useState([]);
+  const [loadingWarehouses, setLoadingWarehouses] = useState(false);
+  const [changingWarehouseId, setChangingWarehouseId] = useState("");
   const mapRef = useRef(null);
   const routePolylineRef = useRef(null);
   const assignedRequestRef = useRef({ inFlight: false, lastFetchedAt: 0 });
@@ -450,6 +455,42 @@ const ParcelTaskPage = () => {
       toast.error(error.response?.data?.message || "Failed to update status");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const openWarehousePicker = async () => {
+    if (!parcel) return;
+    setWarehousePickerOpen(true);
+    setLoadingWarehouses(true);
+    try {
+      const res = await parcelApi.getWarehousesForParcel(parcel._id);
+      setZoneWarehouses(res.data?.results || []);
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Couldn't load nearby warehouses");
+    } finally {
+      setLoadingWarehouses(false);
+    }
+  };
+
+  const handleSelectWarehouse = async (warehouseId) => {
+    if (!parcel || changingWarehouseId) return;
+    setChangingWarehouseId(warehouseId);
+    try {
+      const res = await parcelApi.riderUpdateWarehouse({
+        parcelId: parcel._id,
+        warehouseId,
+      });
+      if (res.data?.success) {
+        setParcel(res.data.result || parcel);
+        setWarehousePickerOpen(false);
+        toast.success("Drop warehouse updated");
+      } else {
+        toast.error(res.data?.message || "Failed to update warehouse");
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to update warehouse");
+    } finally {
+      setChangingWarehouseId("");
     }
   };
 
@@ -895,14 +936,94 @@ const ParcelTaskPage = () => {
             !completed &&
             !cancelled && (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-2.5 space-y-3">
-              <p className="text-xs font-bold text-slate-800">
-                {isOutstation ? `Drop at ${dropName}` : "Drop at seller hub"}
-              </p>
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-xs font-bold text-slate-800">
+                  {isOutstation ? `Drop at ${dropName}` : "Drop at seller hub"}
+                </p>
+                {isOutstation && (
+                  <button
+                    type="button"
+                    onClick={openWarehousePicker}
+                    disabled={saving}
+                    className="shrink-0 text-[11px] font-black text-primary underline disabled:opacity-50"
+                  >
+                    Change
+                  </button>
+                )}
+              </div>
               <p className="text-[11px] text-slate-600 leading-snug">
                 {isOutstation
                   ? "No OTP needed here. Upload a warehouse photo, hand the parcel (and COD cash if any) at the warehouse, then confirm."
                   : "No OTP needed here. Upload a hub photo, hand the parcel (and COD cash if any) to the hub, then confirm."}
               </p>
+              {isOutstation && warehousePickerOpen && (
+                <div className="rounded-xl border border-slate-200 bg-white p-2.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-black text-slate-500 uppercase tracking-wide">
+                      Warehouses in your zone
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setWarehousePickerOpen(false)}
+                      className="text-[11px] font-bold text-slate-400"
+                    >
+                      Close
+                    </button>
+                  </div>
+                  {loadingWarehouses && (
+                    <p className="text-[11px] text-slate-400 py-2 text-center">Loading…</p>
+                  )}
+                  {!loadingWarehouses && zoneWarehouses.length === 0 && (
+                    <p className="text-[11px] text-slate-400 py-2 text-center">
+                      No other warehouses found in this parcel's zone.
+                    </p>
+                  )}
+                  {!loadingWarehouses &&
+                    zoneWarehouses.map((w, index) => {
+                      const isCurrent = String(w._id) === String(parcel.warehouseId?._id || parcel.warehouseId);
+                      return (
+                        <button
+                          key={w._id}
+                          type="button"
+                          onClick={() => handleSelectWarehouse(w._id)}
+                          disabled={Boolean(changingWarehouseId) || isCurrent}
+                          className={`w-full text-left rounded-lg border px-2.5 py-2 flex items-start justify-between gap-2 transition-colors ${
+                            isCurrent
+                              ? "border-primary bg-primary/5"
+                              : "border-slate-100 hover:border-slate-300"
+                          } disabled:opacity-70`}
+                        >
+                          <div className="min-w-0">
+                            <p className="text-[12px] font-bold text-slate-800 truncate">
+                              {w.name}
+                              {index === 0 && !isCurrent ? (
+                                <span className="ml-1.5 text-[9px] font-black uppercase text-emerald-600">
+                                  Nearest
+                                </span>
+                              ) : null}
+                              {isCurrent ? (
+                                <span className="ml-1.5 text-[9px] font-black uppercase text-primary">
+                                  Current
+                                </span>
+                              ) : null}
+                            </p>
+                            <p className="text-[10px] text-slate-500 truncate">
+                              {w.address}
+                              {w.city ? `, ${w.city}` : ""}
+                            </p>
+                          </div>
+                          {Number.isFinite(w.distanceMeters) && (
+                            <span className="shrink-0 text-[10px] font-bold text-slate-400">
+                              {w.distanceMeters >= 1000
+                                ? `${(w.distanceMeters / 1000).toFixed(1)} km`
+                                : `${w.distanceMeters} m`}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                </div>
+              )}
               <ParcelProofCapture
                 label={isOutstation ? "Warehouse drop photo proof" : "Hub drop photo proof"}
                 hint={isOutstation ? "Photo of parcel handed over at the warehouse" : "Photo of parcel handed over at the seller hub"}

@@ -49,7 +49,13 @@ const emptyAddress = {
   formattedAddress: "",
   // The two things a map pin cannot tell us.
   line: "", landmark: "",
+  // Auto-filled from the reverse lookup's address components when a pin is
+  // dropped or searched, but always editable — the geocoder's postal_code is
+  // occasionally missing or off by a block.
+  pincode: "",
 };
+
+const PINCODE_PATTERN = /^[1-9]\d{5}$/;
 
 /** The API wants one address string; the form collects it in readable parts. */
 /**
@@ -82,7 +88,14 @@ const AddressStep = ({
     <Card className="p-4">
       <LocationPicker
         value={value}
-        onChange={onChange}
+        onChange={(next) =>
+          onChange({
+            ...next,
+            // A pincode the customer already typed is never overwritten by a
+            // fresh pin — only an empty box gets auto-filled.
+            pincode: value.pincode || next.components?.pincode || "",
+          })
+        }
         onDetect={onDetect}
         detecting={detecting}
         detectError={detectError}
@@ -143,6 +156,19 @@ const AddressStep = ({
           onChange={(e) => onChange({ ...value, landmark: e.target.value })}
           maxLength={LANDMARK_MAX}
           placeholder="Near City Mall"
+          className={inputClass}
+        />
+      </Field>
+
+      <Field label="Pincode">
+        <input
+          value={value.pincode}
+          onChange={(e) =>
+            onChange({ ...value, pincode: e.target.value.replace(/\D/g, "").slice(0, 6) })
+          }
+          maxLength={6}
+          inputMode="numeric"
+          placeholder="e.g. 452010"
           className={inputClass}
         />
       </Field>
@@ -382,6 +408,9 @@ const CityParcelBooking = () => {
 
     if (step === 0) {
       if (!addressReady(pickup)) return "Set the pickup point on the map.";
+      if (pickup.pincode && !PINCODE_PATTERN.test(pickup.pincode)) {
+        return "Enter a valid 6-digit pickup pincode.";
+      }
       return firstProblem(
         checkPersonName(sender.name, "Sender name"),
         checkPhone(sender.phone, "Sender phone"),
@@ -389,6 +418,9 @@ const CityParcelBooking = () => {
     }
     if (step === 1) {
       if (!addressReady(drop)) return "Set the drop point on the map.";
+      if (drop.pincode && !PINCODE_PATTERN.test(drop.pincode)) {
+        return "Enter a valid 6-digit drop pincode.";
+      }
       return firstProblem(
         checkPersonName(receiver.name, "Receiver name"),
         checkPhone(receiver.phone, "Receiver phone"),
@@ -413,11 +445,13 @@ const CityParcelBooking = () => {
         fullAddress: composeAddress(pickup),
         lat: pickup.lat, lng: pickup.lng,
         addressNote: pickup.landmark || "",
+        pincode: pickup.pincode || undefined,
       },
       dropAddress: {
         fullAddress: composeAddress(drop),
         lat: drop.lat, lng: drop.lng,
         addressNote: drop.landmark || "",
+        pincode: drop.pincode || undefined,
       },
       package: {
         packageType: pkg.packageType,
